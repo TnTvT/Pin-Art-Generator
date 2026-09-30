@@ -90,7 +90,9 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Distinguish the base from the pins visually and show both the top and side in the initial view.
 - Support drag-to-rotate, scroll-to-zoom, right-drag-to-pan, and keyboard panning when the canvas is focused.
 - Provide **Top view**, **Fit model**, and **Reset view**.
+- **Top view** uses orthographic projection with positive Y pointing upward; pin height does not change apparent size or spacing. **Fit model** retains the active projection and **Reset view** restores the initial perspective view.
 - Parameter changes preserve the user's camera; **Fit model** explicitly reframes the current model while retaining the viewing direction.
+- Fit against the actual base-and-pin bounds, excluding the background grid. Use projected bounds with a small margin, reset zoom/pan offset, and clear orbit damping so the fitted view remains centered. Top-view framing depends on the footprint, not pin height.
 - Resize the canvas with its container. Release rendering resources and event listeners on unmount.
 - Show an actionable error and disable camera buttons if WebGL cannot initialize.
 - Keep labels keyboard-accessible and make layout feedback available through an accessible status region.

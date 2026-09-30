@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { getMetrics, type Parameters } from '../pin-design/model';
+import { type Parameters } from '../pin-design/model';
 import { updatePinInstances } from './pin-grid';
+import { fitCameraToBounds } from './camera-fit';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
 
@@ -14,7 +15,7 @@ export interface Preview {
 export function createPreview(container: HTMLDivElement): Preview {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#f1f4f5');
-  const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 100000);
+  let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = new THREE.PerspectiveCamera(36, 1, 0.01, 100000);
   camera.up.set(0, 0, 1);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -25,12 +26,6 @@ export function createPreview(container: HTMLDivElement): Preview {
   renderer.domElement.tabIndex = 0;
   renderer.domElement.setAttribute('aria-label', 'Interactive 3D pin model. Drag to rotate, scroll to zoom, right-drag or use arrow keys to pan.');
   container.appendChild(renderer.domElement);
-
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.12;
-  controls.maxPolarAngle = Math.PI;
-  controls.listenToKeyEvents(renderer.domElement);
 
   scene.add(new THREE.HemisphereLight('#ffffff', '#8d9ba9', 2.2));
   const keyLight = new THREE.DirectionalLight('#ffffff', 3);
@@ -63,7 +58,34 @@ export function createPreview(container: HTMLDivElement): Preview {
   let disposed = false;
   let initialized = false;
   let radius = 1;
+  let aspect = 1;
+  let orthographicHalfHeight = 1;
   const center = new THREE.Vector3();
+  const bounds = new THREE.Box3();
+  let controls = createControls();
+
+  function createControls() {
+    const nextControls = new OrbitControls(camera, renderer.domElement);
+    nextControls.enableDamping = true;
+    nextControls.dampingFactor = 0.12;
+    nextControls.maxPolarAngle = Math.PI;
+    nextControls.listenToKeyEvents(renderer.domElement);
+    nextControls.addEventListener('change', requestRender);
+    return nextControls;
+  }
+
+  function updateProjection() {
+    if (camera instanceof THREE.OrthographicCamera) {
+      camera.left = -orthographicHalfHeight * aspect;
+      camera.right = orthographicHalfHeight * aspect;
+      camera.top = orthographicHalfHeight;
+      camera.bottom = -orthographicHalfHeight;
+    } else {
+      camera.aspect = aspect;
+    }
+    camera.far = Math.max(100000, radius * 50, camera.position.length() * 5);
+    camera.updateProjectionMatrix();
+  }
 
   function requestRender() {
     if (disposed || frame !== null) return;
@@ -77,32 +99,44 @@ export function createPreview(container: HTMLDivElement): Preview {
   function setView(action: ViewAction) {
     controls.update();
     const direction = action === 'top'
-      ? new THREE.Vector3(0, -0.0001, 1).normalize()
+      ? new THREE.Vector3(0, 0, 1)
       : action === 'reset'
         ? new THREE.Vector3(1.15, -1.55, 1.3).normalize()
         : camera.position.clone().sub(controls.target).normalize();
-    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
-    const distance = radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2) * 1.18;
+    controls.removeEventListener('change', requestRender);
+    controls.dispose();
+    if (action === 'top' || action === 'reset') {
+      camera = action === 'top'
+        ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100000)
+        : new THREE.PerspectiveCamera(36, aspect, 0.01, 100000);
+      camera.up.set(0, action === 'top' ? 1 : 0, action === 'top' ? 0 : 1);
+    }
+    const distance = fitCameraToBounds(camera, bounds, aspect, direction);
+    if (camera instanceof THREE.OrthographicCamera) {
+      orthographicHalfHeight = camera.top;
+    }
+    controls = createControls();
     controls.target.copy(center);
-    camera.position.copy(center).addScaledVector(direction, distance);
+    controls.maxDistance = Math.max(radius * 20, distance * 2);
+    updateProjection();
     controls.update();
     requestRender();
   }
 
   function update(parameters: Parameters, heights?: Float32Array) {
-    const metrics = getMetrics(parameters);
     base.scale.set(parameters.width, parameters.depth, parameters.thickness);
     base.position.z = parameters.thickness / 2;
     updatePinInstances(pins, parameters, heights);
-    const totalHeight = parameters.thickness + parameters.extension;
-    const width = Math.max(parameters.width, metrics.width);
-    const depth = Math.max(parameters.depth, metrics.depth);
-    radius = Math.hypot(width, depth, totalHeight) / 2;
-    center.set(0, 0, totalHeight / 2);
-    grid.scale.setScalar(Math.max(width, depth) * 1.8 / 400);
-    camera.far = Math.max(100000, radius * 50, camera.position.length() * 5);
-    camera.updateProjectionMatrix();
+    bounds.set(
+      new THREE.Vector3(-parameters.width / 2, -parameters.depth / 2, 0),
+      new THREE.Vector3(parameters.width / 2, parameters.depth / 2, parameters.thickness),
+    );
+    if (pins.boundingBox) bounds.union(pins.boundingBox);
+    const size = bounds.getSize(new THREE.Vector3());
+    radius = size.length() / 2;
+    bounds.getCenter(center);
+    grid.scale.setScalar(Math.max(size.x, size.y) * 1.8 / 400);
+    updateProjection();
     controls.maxDistance = Math.max(radius * 20, camera.position.distanceTo(controls.target) * 2);
     if (!initialized) {
       initialized = true;
@@ -114,13 +148,12 @@ export function createPreview(container: HTMLDivElement): Preview {
   function resize() {
     const { width, height } = container.getBoundingClientRect();
     if (width <= 0 || height <= 0) return;
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    aspect = width / height;
+    updateProjection();
     renderer.setSize(width, height);
     requestRender();
   }
 
-  controls.addEventListener('change', requestRender);
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(container);
   resize();
