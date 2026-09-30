@@ -61,6 +61,8 @@ src/
 │       ├── preview.ts
 │       ├── preview.test.ts
 │       ├── appearance.ts
+│       ├── orientation-helper.ts
+│       ├── orientation-helper.test.ts
 │       ├── camera-fit.ts
 │       ├── camera-fit.test.ts
 │       ├── pin-grid.ts
@@ -92,6 +94,8 @@ Sampling math and Three.js instance transforms run without a browser GPU. Canvas
 - Extension starts at the top of the base plate.
 - The grid remains centered and supports up to 100 columns × 100 rows.
 - Empty or invalid inputs retain the last valid model. Out-of-bounds and overlapping arrays remain visible with warnings.
+
+The top-right XYZ orientation helper follows the camera as you orbit: red X, green Y, and blue Z (world up). It is an indicator, not a camera control, and stays fixed in size during pan and zoom. Top view shows X to the right, Y upward, and Z toward the viewer.
 
 ## Image mapping
 

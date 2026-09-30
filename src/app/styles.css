@@ -94,8 +94,8 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
 .canvas-container canvas:focus-visible { outline: 2px solid var(--accent); }
 .viewport-tag { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--overlay); padding: 6px 10px; color: var(--muted); font-size: 10px; pointer-events: none; }
 .status-dot { height: 5px; width: 5px; border-radius: 50%; background: var(--accent); }
-.axis-key { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 7px; font-size: 10px; font-weight: 600; pointer-events: none; }
-.axis-key span { border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; background: var(--overlay); color: var(--muted); }
+.orientation-helper { position: absolute; top: 12px; right: 12px; width: 96px; height: 96px; border: 1px solid var(--border); border-radius: 50%; background: var(--overlay); pointer-events: none; }
+.orientation-helper text { font-family: inherit; font-size: 11px; font-weight: 650; }
 .viewport-dimensions { position: absolute; bottom: 20px; right: 20px; font-size: 11px; font-weight: 600; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; pointer-events: none; }
 .viewport-dimensions span { display: block; font-size: 9px; font-weight: 400; color: var(--muted); margin-top: 3px; }
 .preview-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; font-size: 10px; color: var(--muted); }

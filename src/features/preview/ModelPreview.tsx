@@ -53,7 +53,6 @@ export default function ModelPreview({ parameters, heights }: { parameters: Para
           </Alert>
         )}
         <div className="viewport-tag"><span className="status-dot" />Live preview</div>
-        <div className="axis-key"><span>X</span><span>Y</span><span>Z ↑</span></div>
         <div className="viewport-dimensions">{parameters.width} × {parameters.depth} mm<span>Base dimensions</span></div>
       </div>
       <div className="preview-footer">

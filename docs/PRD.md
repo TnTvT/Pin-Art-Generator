@@ -91,8 +91,9 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Switching themes preserves parameters, partial input drafts, image mapping, accordion state, and the current camera, including projection and zoom. Do not recreate the renderer.
 - Base plate and Pin array are independently collapsible accordion groups, initially expanded. Collapsing a group preserves its values and does not alter the preview.
 - Show **All dimensions in mm** in the top header; do not add a separate Workspace subheader.
-- Distinguish the base from the pins visually and show both the top and side in the initial view.
+- Distinguish the base from the pins visually and show both the top and side in the initial perspective view, looking from positive X and positive Y with Z up. The orientation helper shows X down-left, Y down-right, and Z upward. **Reset view** returns to this same orientation.
 - Support drag-to-rotate, scroll-to-zoom, right-drag-to-pan, and keyboard panning when the canvas is focused.
+- Show a compact, read-only XYZ orientation helper in the top-right of the canvas instead of static axis tiles. Use labeled red X, green Y, and blue Z axes that follow camera rotation, with Z as world up. Keep its size and position fixed during pan and zoom; support both camera projections and color themes without intercepting canvas gestures.
 - Provide **Top view**, **Fit model**, and **Reset view**.
 - **Top view** uses orthographic projection with positive Y pointing upward; pin height does not change apparent size or spacing. **Fit model** retains the active projection and **Reset view** restores the initial perspective view.
 - Parameter changes preserve the user's camera; **Fit model** explicitly reframes the current model while retaining the viewing direction.
@@ -110,6 +111,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Upload failures, replacement races, removal during decoding, and unmount release resources without restoring stale images.
 - File-input controls allow reselecting the same image.
 - Camera controls, preview updates, and cleanup are covered by integration tests.
+- Verify orientation-helper alignment in Top view, rotation tracking, pan/zoom independence, and cleanup with the preview.
 - Theme switching and persistence are covered by tests, including camera and design preservation. Check both themes and narrow-screen layouts in the browser.
 - `npm test` and `npm run build` pass for behavior changes.
 - Use browser smoke checks for actual image decoding, WebGL rendering, the 10,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.

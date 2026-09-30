@@ -4,6 +4,7 @@ import { type Parameters } from '../pin-design/model';
 import { updatePinInstances } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
 import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
+import { createOrientationHelper } from './orientation-helper';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
 
@@ -30,6 +31,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   renderer.domElement.tabIndex = 0;
   renderer.domElement.setAttribute('aria-label', 'Interactive 3D pin model. Drag to rotate, scroll to zoom, right-drag or use arrow keys to pan.');
   container.appendChild(renderer.domElement);
+  const orientationHelper = createOrientationHelper(container);
 
   scene.add(new THREE.HemisphereLight('#ffffff', '#8d9ba9', 2.2));
   const keyLight = new THREE.DirectionalLight('#ffffff', 3);
@@ -96,6 +98,7 @@ export function createPreview(container: HTMLDivElement): Preview {
     frame = window.requestAnimationFrame(() => {
       frame = null;
       controls.update();
+      orientationHelper.update(camera);
       renderer.render(scene, camera);
     });
   }
@@ -105,7 +108,7 @@ export function createPreview(container: HTMLDivElement): Preview {
     const direction = action === 'top'
       ? new THREE.Vector3(0, 0, 1)
       : action === 'reset'
-        ? new THREE.Vector3(1.15, -1.55, 1.3).normalize()
+        ? new THREE.Vector3(1.15, 1.55, 1.3).normalize()
         : camera.position.clone().sub(controls.target).normalize();
     controls.removeEventListener('change', requestRender);
     controls.dispose();
@@ -182,6 +185,7 @@ export function createPreview(container: HTMLDivElement): Preview {
       controls.removeEventListener('change', requestRender);
       controls.dispose();
       pins.dispose();
+      orientationHelper.dispose();
       baseGeometry.dispose();
       baseMaterial.dispose();
       edgesGeometry.dispose();

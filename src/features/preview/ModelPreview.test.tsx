@@ -56,5 +56,6 @@ describe('preview integration', () => {
     renderWithProviders(<ModelPreview parameters={DEFAULTS} />);
     expect(screen.getByRole('alert')).toHaveTextContent('3D preview unavailable');
     expect(screen.getByRole('button', { name: 'Fit model' })).toBeDisabled();
+    expect(screen.queryByText('Z ↑')).not.toBeInTheDocument();
   });
 });

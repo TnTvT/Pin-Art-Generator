@@ -68,6 +68,49 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('defaults and resets to a Z-up view with X down-left and Y down-right', () => {
+    const initial = renderedCamera();
+    const center = new Vector3(0, 0, 11.5);
+    function expectDefaultOrientation(camera: Camera) {
+      const origin = center.clone().project(camera);
+      const horizontal = center.clone().add(new Vector3(20, 0, 0)).project(camera);
+      const depth = center.clone().add(new Vector3(0, 20, 0)).project(camera);
+      const vertical = center.clone().add(new Vector3(0, 0, 20)).project(camera);
+      expect(camera).toBeInstanceOf(PerspectiveCamera);
+      expect(horizontal.x).toBeLessThan(origin.x);
+      expect(horizontal.y).toBeLessThan(origin.y);
+      expect(depth.x).toBeGreaterThan(origin.x);
+      expect(depth.y).toBeLessThan(origin.y);
+      expect(vertical.x).toBeCloseTo(origin.x);
+      expect(vertical.y).toBeGreaterThan(origin.y);
+    }
+    expectDefaultOrientation(initial);
+    preview.setView('top');
+    renderedCamera();
+    preview.setView('reset');
+    expectDefaultOrientation(renderedCamera());
+  });
+
+  it('updates the orientation helper on view changes and removes it on disposal', () => {
+    renderedCamera();
+    const container = canvas.parentElement!;
+    const helper = container.querySelector('[aria-label="XYZ orientation helper"]')!;
+    expect(helper).not.toBeNull();
+    const firstOrientation = helper.innerHTML;
+    preview.setView('top');
+    renderedCamera();
+    expect(helper.innerHTML).not.toBe(firstOrientation);
+    expect(helper.querySelector('[data-axis="X"] circle')).toHaveAttribute('cx', '78.000');
+    preview.setView('fit');
+    renderedCamera();
+    expect(helper.querySelector('[data-axis="X"] circle')).toHaveAttribute('cx', '78.000');
+    preview.setView('reset');
+    renderedCamera();
+    expect(helper.innerHTML).toBe(firstOrientation);
+    preview.dispose();
+    expect(container.childElementCount).toBe(0);
+  });
+
   it('recolors the scene in place while preserving the orthographic camera and pins', () => {
     preview.setView('top');
     const camera = renderedCamera() as OrthographicCamera;
