@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Badge, Button } from '@mantine/core';
+import { Accordion, Alert, Badge, Button } from '@mantine/core';
 import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
@@ -51,37 +51,14 @@ export default function App() {
       <header className="app-header">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</div>
-          <span>Pin Art<span className="brand-secondary"> Studio</span></span>
+          <h1>Pin Art<span className="brand-secondary"> Studio</span></h1>
           <Badge variant="light" color="gray" size="sm">MVP</Badge>
         </div>
-        <span className="header-caption">A little precision. A lot of possibility.</span>
+        <span className="unit-label">All dimensions in <strong>mm</strong></span>
       </header>
       <main>
-        <div className="page-heading">
-          <h1>Workspace</h1>
-          <span className="unit-label">All dimensions in <strong>mm</strong></span>
-        </div>
         <div className="workspace">
-          <aside className="controls-panel" aria-label="Design parameters">
-            <div className="controls-heading"><h2>Parameters</h2><span>01 / DESIGN</span></div>
-            <section className="control-section">
-              <div className="section-heading"><h3>Base plate</h3><span>Foundation</span></div>
-              <div className="field-pair">{field('width', 'Base width')}{field('depth', 'Base depth')}</div>
-              {field('thickness', 'Base thickness')}
-            </section>
-            <section className="control-section">
-              <div className="section-heading"><h3>Pin array</h3><Badge color="teal" variant="light" size="sm">{metrics.count.toLocaleString('en-US')} pins</Badge></div>
-              <div className="field-pair">{field('columns', 'Columns', true)}{field('rows', 'Rows', true)}</div>
-              <p className="field-help">A centered grid of columns × rows.</p>
-              {field('spacing', 'Pin spacing', false, 20)}
-              <p className="field-help">Measured from center to center.</p>
-              {field('diameter', 'Pin diameter', false, 10)}
-              {field('extension', image.source ? 'Max extension' : 'Pin extension', false, 80)}
-              <p className="field-help">Height above the base plate.</p>
-            </section>
-            <div className="controls-bottom"><Button variant="default" fullWidth onClick={resetParameters}>Reset parameters</Button></div>
-          </aside>
-          <div className="preview-column">
+          <aside className="design-sidebar" aria-label="Design controls">
             <ImageMappingPanel
               source={image.source}
               loading={image.loading}
@@ -96,6 +73,33 @@ export default function App() {
               onMinimumChange={setMinimum}
               onInvertChange={setInverted}
             />
+            <section className="controls-panel" aria-label="Parameters">
+              <div className="controls-heading"><h2>Parameters</h2><span>01 / DESIGN</span></div>
+              <Accordion multiple defaultValue={['base', 'pins']} order={3} className="parameter-accordion">
+                <Accordion.Item value="base">
+                  <Accordion.Control><span className="section-heading"><span>Base plate</span><span>Foundation</span></span></Accordion.Control>
+                  <Accordion.Panel>
+                    <div className="field-pair">{field('width', 'Base width')}{field('depth', 'Base depth')}</div>
+                    {field('thickness', 'Base thickness')}
+                  </Accordion.Panel>
+                </Accordion.Item>
+                <Accordion.Item value="pins">
+                  <Accordion.Control><span className="section-heading"><span>Pin array</span><Badge color="teal" variant="light" size="sm">{metrics.count.toLocaleString('en-US')} pins</Badge></span></Accordion.Control>
+                  <Accordion.Panel>
+                    <div className="field-pair">{field('columns', 'Columns', true)}{field('rows', 'Rows', true)}</div>
+                    <p className="field-help">A centered grid of columns × rows.</p>
+                    {field('spacing', 'Pin spacing', false, 20)}
+                    <p className="field-help">Measured from center to center.</p>
+                    {field('diameter', 'Pin diameter', false, 10)}
+                    {field('extension', image.source ? 'Max extension' : 'Pin extension', false, 80)}
+                    <p className="field-help">Height above the base plate.</p>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion>
+              <div className="controls-bottom"><Button variant="default" fullWidth onClick={resetParameters}>Reset parameters</Button></div>
+            </section>
+          </aside>
+          <div className="preview-column">
             <ModelPreview parameters={parameters} heights={mapping.heightMap?.heights} />
             <div className="metrics" aria-label="Design measurements">
               <div className="metric"><span>Total pins</span><strong>{metrics.count.toLocaleString('en-US')}<small>{parameters.columns} columns × {parameters.rows} rows</small></strong></div>

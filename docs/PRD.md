@@ -84,7 +84,9 @@ This is brightness mapping, not inference of an object's physical depth from a p
 ## 6. Preview and interface requirements
 
 - Use English throughout the product, including labels, instructions, errors, and buttons.
-- Use a light, compact interface with a parameter panel and prominent preview. Stack the panels on narrow screens.
+- Use a light, compact interface with image mapping above parameters in the left sidebar and a prominent preview on the right. Stack the panels on narrow screens.
+- Base plate and Pin array are independently collapsible accordion groups, initially expanded. Collapsing a group preserves its values and does not alter the preview.
+- Show **All dimensions in mm** in the top header; do not add a separate Workspace subheader.
 - Distinguish the base from the pins visually and show both the top and side in the initial view.
 - Support drag-to-rotate, scroll-to-zoom, right-drag-to-pan, and keyboard panning when the canvas is focused.
 - Provide **Top view**, **Fit model**, and **Reset view**.
