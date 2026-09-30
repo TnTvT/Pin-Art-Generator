@@ -10,6 +10,21 @@ vi.mock('../features/preview/ModelPreview', () => ({
 }));
 
 describe('workspace parameter flow', () => {
+  it('keeps parameter drafts and collapsed groups when the theme changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.clear(screen.getByLabelText('Columns'));
+    await user.type(screen.getByLabelText('Columns'), '10');
+    await user.clear(screen.getByLabelText('Pin diameter'));
+    const baseToggle = screen.getByRole('button', { name: /Base plate/ });
+    await user.click(baseToggle);
+    await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+    expect(baseToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('Columns')).toHaveValue('10');
+    expect(screen.getByLabelText('Pin diameter')).toHaveValue('');
+    expect(screen.getByTestId('preview-parameters')).toHaveTextContent('10 × 16');
+  });
+
   it('groups image mapping before parameters in the sidebar and puts units in the header', () => {
     renderWithProviders(<App />);
     const sidebar = screen.getByRole('complementary', { name: 'Design controls' });

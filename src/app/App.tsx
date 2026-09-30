@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Accordion, Alert, Badge, Button } from '@mantine/core';
+import ThemeToggle from './ThemeToggle';
 import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
@@ -54,7 +55,10 @@ export default function App() {
           <h1>Pin Art<span className="brand-secondary"> Studio</span></h1>
           <Badge variant="light" color="gray" size="sm">MVP</Badge>
         </div>
-        <span className="unit-label">All dimensions in <strong>mm</strong></span>
+        <div className="header-actions">
+          <span className="unit-label">All dimensions in <strong>mm</strong></span>
+          <ThemeToggle />
+        </div>
       </header>
       <main>
         <div className="workspace">

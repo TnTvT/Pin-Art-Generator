@@ -17,6 +17,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Initial MVP | Parametric base, uniform pin array, interactive 3D preview, English UI | Implemented |
 | Image mapping | Local image upload, grayscale heights, range controls, inversion, sample image | Implemented |
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
+| Appearance | Light/dark themes with a locally saved preference | Implemented |
 | Future printing workflow | STL/3MF export and physical moving-pin design | Deferred; requirements not defined |
 
 The initial request prioritized a quick demo without tests. A later explicit request added automated testing. That later requirement governs the current project.
@@ -84,7 +85,10 @@ This is brightness mapping, not inference of an object's physical depth from a p
 ## 6. Preview and interface requirements
 
 - Use English throughout the product, including labels, instructions, errors, and buttons.
-- Use a light, compact interface with image mapping above parameters in the left sidebar and a prominent preview on the right. Stack the panels on narrow screens.
+- Use a compact interface with image mapping above parameters in the left sidebar and a prominent preview on the right. Stack the panels on narrow screens.
+- Default to light mode. Provide a keyboard-accessible header button to switch between light and dark mode, and remember the selection locally across reloads.
+- Apply the selected theme to panels, controls, text, preview overlays, and the 3D background, grid, and materials. Keep source image colors unchanged.
+- Switching themes preserves parameters, partial input drafts, image mapping, accordion state, and the current camera, including projection and zoom. Do not recreate the renderer.
 - Base plate and Pin array are independently collapsible accordion groups, initially expanded. Collapsing a group preserves its values and does not alter the preview.
 - Show **All dimensions in mm** in the top header; do not add a separate Workspace subheader.
 - Distinguish the base from the pins visually and show both the top and side in the initial view.
@@ -106,12 +110,13 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Upload failures, replacement races, removal during decoding, and unmount release resources without restoring stale images.
 - File-input controls allow reselecting the same image.
 - Camera controls, preview updates, and cleanup are covered by integration tests.
+- Theme switching and persistence are covered by tests, including camera and design preservation. Check both themes and narrow-screen layouts in the browser.
 - `npm test` and `npm run build` pass for behavior changes.
 - Use browser smoke checks for actual image decoding, WebGL rendering, the 10,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.
 
 ## 8. Current boundaries and future work
 
-- Design state is in memory. Reloading the page resets the design; save/load and persistence are not implemented.
+- Design state is in memory. Reloading the page resets the design; design save/load and persistence are not implemented. The appearance preference is saved locally.
 - There is no authentication, backend, or public API.
 - The preview represents fixed cylindrical pins on a solid base. Sliding pins, holes, retainers, print clearances, and assembly are not modeled.
 - STL/3MF export, manufacturing checks, image cropping, contrast controls, and per-pin manual editing require separate product decisions.

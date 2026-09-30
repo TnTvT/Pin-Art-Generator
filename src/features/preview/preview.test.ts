@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OrthographicCamera, PerspectiveCamera, Vector3, type Camera } from 'three';
+import { Color, GridHelper, InstancedMesh, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
 import { DEFAULTS } from '../pin-design/model';
 import { createPreview, type Preview } from './preview';
 
@@ -68,6 +68,28 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('recolors the scene in place while preserving the orthographic camera and pins', () => {
+    preview.setView('top');
+    const camera = renderedCamera() as OrthographicCamera;
+    camera.zoom = 2;
+    const position = camera.position.clone();
+    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const grid = scene.children.find((child) => child instanceof GridHelper) as GridHelper;
+    const pins = scene.children.find((child) => child instanceof InstancedMesh) as InstancedMesh;
+    const matrices = pins.instanceMatrix.array.slice();
+    preview.setColorScheme('dark');
+    expect(renderedCamera()).toBe(camera);
+    expect((scene.background as Color).getHexString()).toBe('171f27');
+    expect(grid.material.color.getHexString()).not.toBe('ffffff');
+    expect(camera.position.distanceTo(position)).toBeCloseTo(0);
+    expect(camera.zoom).toBe(2);
+    expect(pins.instanceMatrix.array).toEqual(matrices);
+    preview.setColorScheme('light');
+    renderedCamera();
+    expect((scene.background as Color).getHexString()).toBe('f1f4f5');
+    expect(grid.material.color.getHexString()).toBe('ffffff');
+  });
+
   it('fits the top-view footprint tightly even when pins are very tall', () => {
     preview.update({ ...DEFAULTS, extension: 1000 });
     preview.setView('top');

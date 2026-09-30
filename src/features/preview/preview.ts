@@ -3,23 +3,27 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { type Parameters } from '../pin-design/model';
 import { updatePinInstances } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
+import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
 
 export interface Preview {
   update: (parameters: Parameters, heights?: Float32Array) => void;
   setView: (action: ViewAction) => void;
+  setColorScheme: (colorScheme: PreviewColorScheme) => void;
   dispose: () => void;
 }
 
 export function createPreview(container: HTMLDivElement): Preview {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#f1f4f5');
+  const colors = PREVIEW_COLORS.light;
+  const background = new THREE.Color(colors.background);
+  scene.background = background;
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = new THREE.PerspectiveCamera(36, 1, 0.01, 100000);
   camera.up.set(0, 0, 1);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor('#f1f4f5');
+  renderer.setClearColor(colors.background);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.3;
@@ -36,15 +40,15 @@ export function createPreview(container: HTMLDivElement): Preview {
   scene.add(fillLight);
 
   const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const baseMaterial = new THREE.MeshStandardMaterial({ color: '#5b6b78', roughness: 0.7, metalness: 0.15 });
+  const baseMaterial = new THREE.MeshStandardMaterial({ color: colors.base, roughness: 0.7, metalness: 0.15 });
   const base = new THREE.Mesh(baseGeometry, baseMaterial);
   scene.add(base);
   const edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
-  const edgesMaterial = new THREE.LineBasicMaterial({ color: '#354652', transparent: true, opacity: 0.45 });
+  const edgesMaterial = new THREE.LineBasicMaterial({ color: colors.edges, transparent: true, opacity: 0.45 });
   base.add(new THREE.LineSegments(edgesGeometry, edgesMaterial));
 
   const pinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
-  const pinMaterial = new THREE.MeshStandardMaterial({ color: '#2dada3', roughness: 0.32, metalness: 0.28 });
+  const pinMaterial = new THREE.MeshStandardMaterial({ color: colors.pins, roughness: 0.32, metalness: 0.28 });
   const pins = new THREE.InstancedMesh(pinGeometry, pinMaterial, 10000);
   pins.count = 0;
   pins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -161,6 +165,16 @@ export function createPreview(container: HTMLDivElement): Preview {
   return {
     update,
     setView,
+    setColorScheme(colorScheme) {
+      const nextColors = PREVIEW_COLORS[colorScheme];
+      background.set(nextColors.background);
+      renderer.setClearColor(nextColors.background);
+      baseMaterial.color.set(nextColors.base);
+      edgesMaterial.color.set(nextColors.edges);
+      pinMaterial.color.set(nextColors.pins);
+      grid.material.color.set(nextColors.gridTint);
+      requestRender();
+    },
     dispose() {
       disposed = true;
       if (frame !== null) cancelAnimationFrame(frame);

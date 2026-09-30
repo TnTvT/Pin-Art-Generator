@@ -26,6 +26,10 @@ npm run build
 
 The build includes TypeScript checking.
 
+## Appearance
+
+Use **Dark mode** or **Light mode** in the header to switch the entire workspace, including the 3D preview. Light is the default and your choice is saved locally. Switching themes preserves the design, image mapping, and camera; reloading still resets the design.
+
 ## Project structure
 
 ```text
@@ -34,6 +38,8 @@ src/
 ├── app/
 │   ├── App.tsx
 │   ├── App.test.tsx
+│   ├── ThemeToggle.tsx
+│   ├── ThemeToggle.test.tsx
 │   └── styles.css
 ├── features/
 │   ├── pin-design/
@@ -53,6 +59,10 @@ src/
 │   │   └── ImageMappingPanel.test.tsx
 │   └── preview/
 │       ├── preview.ts
+│       ├── preview.test.ts
+│       ├── appearance.ts
+│       ├── camera-fit.ts
+│       ├── camera-fit.test.ts
 │       ├── pin-grid.ts
 │       ├── pin-grid.test.ts
 │       ├── ModelPreview.tsx

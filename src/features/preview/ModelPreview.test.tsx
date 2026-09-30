@@ -5,18 +5,31 @@ import { renderWithProviders } from '../../test/render';
 import { DEFAULTS } from '../pin-design/model';
 import ModelPreview from './ModelPreview';
 import { createPreview } from './preview';
+import ThemeToggle from '../../app/ThemeToggle';
 
 vi.mock('./preview', () => ({ createPreview: vi.fn() }));
 
 const update = vi.fn();
 const setView = vi.fn();
+const setColorScheme = vi.fn();
 const dispose = vi.fn();
 
 beforeEach(() => {
-  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, dispose });
+  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, dispose });
 });
 
 describe('preview integration', () => {
+  it('updates the scene theme without recreating the preview or resetting the view', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<><ThemeToggle /><ModelPreview parameters={DEFAULTS} /></>);
+    expect(setColorScheme).toHaveBeenLastCalledWith('light');
+    await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+    expect(setColorScheme).toHaveBeenLastCalledWith('dark');
+    expect(createPreview).toHaveBeenCalledOnce();
+    expect(setView).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
   it('passes parameter and height changes to the scene and cleans it up on unmount', () => {
     const { rerender, unmount } = renderWithProviders(<ModelPreview parameters={DEFAULTS} />);
     expect(update).toHaveBeenLastCalledWith(DEFAULTS, undefined);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Group } from '@mantine/core';
+import { Alert, Button, Group, useComputedColorScheme } from '@mantine/core';
 import { createPreview, type Preview, type ViewAction } from './preview';
 import { type Parameters } from '../pin-design/model';
 
@@ -7,6 +7,7 @@ export default function ModelPreview({ parameters, heights }: { parameters: Para
   const container = useRef<HTMLDivElement>(null);
   const preview = useRef<Preview | null>(null);
   const [error, setError] = useState(false);
+  const colorScheme = useComputedColorScheme('light', { getInitialValueInEffect: false });
 
   useEffect(() => {
     if (!container.current) return;
@@ -24,6 +25,10 @@ export default function ModelPreview({ parameters, heights }: { parameters: Para
   useEffect(() => {
     preview.current?.update(parameters, heights);
   }, [parameters, heights]);
+
+  useEffect(() => {
+    preview.current?.setColorScheme(colorScheme);
+  }, [colorScheme]);
 
   const setView = (action: ViewAction) => preview.current?.setView(action);
 

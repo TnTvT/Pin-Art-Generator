@@ -14,6 +14,7 @@ Pin Art Studio's product requirements and significant decisions live here.
 | [ADR-002](decisions/002-pin-geometry-and-preview.md) | Grid geometry, parameter behavior, and instanced rendering |
 | [ADR-003](decisions/003-local-image-height-mapping.md) | Local image processing and grayscale-to-height mapping |
 | [ADR-004](decisions/004-feature-folders-and-testing.md) | Feature ownership, colocated tests, and verification boundaries |
+| [ADR-005](decisions/005-color-schemes.md) | Shared light/dark themes, preference persistence, and in-place scene updates |
 
 These records were written on September 30, 2026, from the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 
