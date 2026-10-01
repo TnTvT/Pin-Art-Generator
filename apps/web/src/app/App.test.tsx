@@ -10,6 +10,15 @@ vi.mock('../features/preview/ModelPreview', () => ({
 }));
 
 describe('workspace parameter flow', () => {
+  it('provides keyboard access to scrollable controls without nesting the preview inside them', () => {
+    renderWithProviders(<App />);
+    const sidebar = screen.getByRole('complementary', { name: 'Design controls' });
+    expect(sidebar).toHaveAttribute('tabindex', '0');
+    expect(within(sidebar).getByRole('region', { name: 'Print export' })).toBeInTheDocument();
+    expect(sidebar).not.toContainElement(screen.getByTestId('preview-parameters'));
+    expect(sidebar).not.toContainElement(screen.getByLabelText('Design measurements'));
+  });
+
   it('keeps parameter drafts and collapsed groups when the theme changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
@@ -31,7 +40,7 @@ describe('workspace parameter flow', () => {
     const imageMapping = within(sidebar).getByRole('region', { name: 'Image mapping' });
     const parameters = within(sidebar).getByRole('heading', { name: 'Parameters' });
     expect(imageMapping.compareDocumentPosition(parameters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(screen.getByRole('banner')).getByText(/All dimensions in/)).toHaveTextContent('All dimensions in mm');
+    expect(within(screen.getByRole('banner')).getByText(/All dimensions in/).parentElement).toHaveTextContent('All dimensions in mm');
     expect(screen.queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument();
   });
 

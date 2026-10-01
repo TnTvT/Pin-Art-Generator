@@ -87,7 +87,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 ## 6. Preview and interface requirements
 
 - Use English throughout the product, including labels, instructions, errors, and buttons.
-- Use a compact interface with image mapping above parameters in the left sidebar and a prominent preview on the right. Stack the panels on narrow screens.
+- Use a viewport-height workspace with 16px page padding and a 56px header. Image mapping stays above parameters in the independently scrollable, keyboard-accessible left sidebar; the prominent right-side preview and measurements stay visible without scrolling the whole page. On narrow screens, show the preview above separately scrollable controls, with 12px outer padding.
 - Default to light mode. Provide a keyboard-accessible header button to switch between light and dark mode, and remember the selection locally across reloads.
 - Apply the selected theme to panels, controls, text, preview overlays, and the 3D background, grid, and materials. Keep source image colors unchanged.
 - Switching themes preserves parameters, partial input drafts, image mapping, accordion state, and the current camera, including projection and zoom. Do not recreate the renderer.

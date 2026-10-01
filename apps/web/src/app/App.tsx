@@ -64,13 +64,13 @@ export default function App() {
           <Badge variant="light" color="gray" size="sm">MVP</Badge>
         </div>
         <div className="header-actions">
-          <span className="unit-label">All dimensions in <strong>mm</strong></span>
+          <span className="unit-label"><span className="unit-description">All dimensions in </span><strong>mm</strong></span>
           <ThemeToggle />
         </div>
       </header>
       <main>
         <div className="workspace">
-          <aside className="design-sidebar" aria-label="Design controls">
+          <aside className="design-sidebar" aria-label="Design controls" tabIndex={0}>
             <ImageMappingPanel
               source={image.source}
               loading={image.loading}
