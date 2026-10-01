@@ -45,7 +45,7 @@ describe('export panel', () => {
     await user.click(screen.getByRole('radio', { name: 'Detachable' }));
     fireEvent.change(screen.getByLabelText('Insertion depth'), { target: { value: '1.5' } });
     fireEvent.change(screen.getByLabelText('Insertion depth'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '300' } });
+    fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '240' } });
     fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Base color'), { target: { value: '#abcdef' } });
     fireEvent.change(screen.getByLabelText('Base color'), { target: { value: '#ab' } });
@@ -55,11 +55,11 @@ describe('export panel', () => {
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.mode).toBe('detachable');
     expect(payload.socket).toEqual({ insertionDepth: 1.5, clearance: 0.2 });
-    expect(payload.plate).toEqual({ width: 300, depth: 256 });
+    expect(payload.plate).toEqual({ width: 240, depth: 256 });
     expect(payload.materials).toEqual(['#abcdef', '#2dada3']);
   });
 
-  it('blocks invalid sockets and beds in detachable mode but not large fixed models', async () => {
+  it('blocks invalid sockets and beds while keeping oversized fixed STL available', async () => {
     const user = userEvent.setup();
     const { rerender } = renderWithProviders(<Panel parameters={{ ...DEFAULTS, thickness: 2 }} />);
     await user.click(screen.getByRole('radio', { name: 'Detachable' }));
@@ -69,6 +69,8 @@ describe('export panel', () => {
     expect(screen.getByText(/5 mm margin on every side/)).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: 'Fixed' }));
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByText(/3MF blocked: Bambu X1C/)).toBeInTheDocument();
   });
 
   it('explains blocked image processing and blocks unsafe geometry', () => {

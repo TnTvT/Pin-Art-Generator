@@ -17,13 +17,15 @@ def test_fixed_layout_is_centered_and_row_major():
     ]
 
 
-def test_detachable_fills_first_plate_beside_base_then_new_rows():
+def test_detachable_reserves_centered_base_plate_and_centers_pin_plate():
     request = ExportRequest.model_validate(request_payload(mode="detachable", plate={"width": 42, "depth": 42}))
     plates = plan_layout(request)
-    assert len(plates) == 1
+    assert len(plates) == 2
     assert [(part.pin_index, part.x, part.y) for part in plates[0].parts] == [
-        (None, 15, 15), (0, 30, 6), (1, 36, 6),
-        (2, 6, 30), (3, 12, 30),
+        (None, 21, 21),
+    ]
+    assert [(part.pin_index, part.x, part.y) for part in plates[1].parts] == [
+        (0, 12, 21), (1, 18, 21), (2, 24, 21), (3, 30, 21),
     ]
     assert [asdict(plate) for plate in plates] == [asdict(plate) for plate in plan_layout(request)]
 
@@ -34,7 +36,7 @@ def test_detachable_base_only_first_plate_and_remaining_pins_next():
     assert [plate.index for plate in plates] == [0, 1]
     assert [part.pin_index for part in plates[0].parts] == [None]
     assert [(part.pin_index, part.x, part.y) for part in plates[1].parts] == [
-        (0, 6, 6), (1, 12, 6), (2, 18, 6), (3, 24, 6),
+        (0, 6, 15), (1, 12, 15), (2, 18, 15), (3, 24, 15),
     ]
 
 
@@ -87,9 +89,9 @@ def test_part_name_rounds_only_label_and_includes_row_column_and_printed_length(
     payload = request_payload(mode="detachable")
     payload["heights"][0] = 4.1234567
     request = ExportRequest.model_validate(payload)
-    parts = plan_layout(request)[0].parts
-    assert parts[1].name == "Pin R01 C01 6.123 mm"
-    assert parts[3].name == "Pin R02 C01 8.000 mm"
+    parts = [part for plate in plan_layout(request)[1:] for part in plate.parts]
+    assert parts[0].name == "Pin R01 C01 6.123 mm"
+    assert parts[2].name == "Pin R02 C01 8.000 mm"
     assert request.heights[0] == 4.1234567
 
 

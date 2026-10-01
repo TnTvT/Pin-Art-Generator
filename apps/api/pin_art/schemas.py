@@ -3,6 +3,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pin_art.bambu_profile import BED_DEPTH, BED_WIDTH, PRINTABLE_HEIGHT
+
 
 PositiveNumber = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 NonnegativeNumber = Annotated[float, Field(ge=0, allow_inf_nan=False)]
@@ -66,6 +68,14 @@ class ExportRequest(DomainModel):
             raise ValueError("derived grid dimensions must be finite")
         if grid_width > parameters.width or grid_depth > parameters.depth:
             raise ValueError("pin grid must fit within the base")
+        if self.format == "3mf":
+            if parameters.width > BED_WIDTH or parameters.depth > BED_DEPTH:
+                raise ValueError("Bambu X1C 3MF base must fit the 256 × 256 mm bed; reduce the base or export STL")
+            if self.mode == "detachable" and (self.plate.width > BED_WIDTH or self.plate.depth > BED_DEPTH):
+                raise ValueError("Bambu X1C 3MF usable plate dimensions must not exceed 256 × 256 mm; reduce the bed area or export STL")
+            height = max(parameters.thickness, max(self.heights) + self.socket.insertion_depth) if self.mode == "detachable" else parameters.thickness + max(self.heights)
+            if height > PRINTABLE_HEIGHT:
+                raise ValueError("Bambu X1C 3MF parts must fit the profile's 250 mm printable height; reduce height or export STL")
         if self.mode == "fixed":
             if count > 1 and parameters.spacing < parameters.diameter:
                 raise ValueError("fixed pins must not overlap")

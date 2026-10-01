@@ -27,6 +27,17 @@ describe('export request mapping', () => {
 });
 
 describe('print validation', () => {
+  it('checks the X1C envelope only for 3MF and uses resolved rather than configured maximum heights', () => {
+    const large = { ...DEFAULTS, width: 300 };
+    expect(validateExport(large, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toMatch(/X1C/);
+    expect(validateExport(large, undefined, DEFAULT_EXPORT_OPTIONS, 'stl')).toBeNull();
+    const tall = { ...DEFAULTS, extension: 250 };
+    expect(validateExport(tall, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toMatch(/250 mm/);
+    expect(validateExport(tall, new Float32Array(320).fill(20), DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
+    const customBed = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const, plate: { width: 300, depth: 256 } };
+    expect(validateExport(DEFAULTS, undefined, customBed, '3mf')).toMatch(/256/);
+    expect(() => buildExportRequest(large, undefined, DEFAULT_MODEL_COLORS, DEFAULT_EXPORT_OPTIONS, '3mf')).toThrow(/X1C/);
+  });
   it('blocks overlap and a grid outside the base', () => {
     expect(validateExport({ ...DEFAULTS, spacing: 1 }, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/overlap/i);
     expect(validateExport({ ...DEFAULTS, width: 50 }, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/beyond the base/i);

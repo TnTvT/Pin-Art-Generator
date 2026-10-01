@@ -19,6 +19,7 @@ Pin Art Studio's product requirements and significant decisions live here.
 | [ADR-007](decisions/007-bambu-3mf-compatibility.md) | Standard colors plus Bambu filament/plate metadata without printer presets |
 | [ADR-008](decisions/008-detachable-sockets-and-plates.md) | Blind sockets, diametral fit clearance, and multi-plate printing layouts |
 | [ADR-009](decisions/009-pnpm-turbo-uv-monorepo.md) | pnpm/Turborepo app orchestration with an independently uv-managed Python service |
+| [ADR-010](decisions/010-x1c-profile-and-centered-export-plates.md) | X1C preset identity, centered reusable meshes, and dedicated base/pin plates |
 
 These records were written on September 30, 2026, from the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

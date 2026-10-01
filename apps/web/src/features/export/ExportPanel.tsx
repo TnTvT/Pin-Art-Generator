@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, ColorInput, Group, NumberInput, SegmentedControl } from '@mantine/core';
 import { type ModelColors, type Parameters } from '../pin-design/model';
-import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport, type ExportFormat, type ExportMode, type ExportOptions } from './export-request';
+import { BAMBU_PROFILE, buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport, type ExportFormat, type ExportMode, type ExportOptions } from './export-request';
 import { fetchExport } from './export-client';
 
 interface ExportPanelProps {
@@ -26,6 +26,7 @@ export default function ExportPanel({ parameters, heights, colors, onColorsChang
   const mounted = useRef(false);
   const downloadUrls = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const validation = blockedReason || validateExport(parameters, heights, options);
+  const bambuValidation = validation || validateExport(parameters, heights, options, '3mf');
 
   useEffect(() => {
     mounted.current = true;
@@ -112,19 +113,20 @@ export default function ExportPanel({ parameters, heights, colors, onColorsChang
           <SegmentedControl fullWidth value={options.mode} onChange={(value) => setOptions((current) => ({ ...current, mode: value as ExportMode }))}
             data={[{ label: 'Fixed', value: 'fixed' }, { label: 'Detachable', value: 'detachable' }]} disabled={busy !== null} size="sm" />
         </fieldset>
-        <p className="field-help">{options.mode === 'fixed' ? 'Pins joined to the base in one printable sculpture.' : 'Separate pins and a socketed base, automatically arranged on up to 36 plates.'}</p>
+        <p className="field-help">{options.mode === 'fixed' ? 'Pins joined to the base in one printable sculpture.' : 'Plate 1 contains only the centered socket base. Upright pins start on plate 2, with additional pin-only plates as needed. The preview stays assembled.'}</p>
         {options.mode === 'detachable' && <>
           <div className="field-pair">{numericField('insertionDepth', 'Insertion depth')}{numericField('clearance', 'Socket clearance')}</div>
           <p className="field-help">Clearance adds to the socket diameter. Minimum floor: 1 mm; walls and edges: 0.8 mm.</p>
           <div className="field-pair">{numericField('bedWidth', 'Bed width')}{numericField('bedDepth', 'Bed depth')}</div>
           <p className="field-help">5 mm bed margins, diameter + 4 mm pin separation. The server determines the actual plate count.</p>
         </>}
-        <p className="field-help">STL contains geometry only. Bambu 3MF preserves your printable colors; verify filament assignments in Bambu Studio.</p>
+        <p className="field-help">3MF printer: {BAMBU_PROFILE.name} · 256 × 256 mm bed · 250 mm profile height. Uses the 0.20mm Standard X1C preset; verify material profiles and filament assignments in Bambu Studio. STL remains printer-independent.</p>
         {parameters.columns * parameters.rows >= 2500 && <p className="field-help">Dense exports can take a minute. STL may require several GB of memory; use fewer pins on memory-constrained computers.</p>}
         {validation && <p id="export-block-reason" className="export-blocked" role="status">Export blocked: {validation}</p>}
+        {!validation && bambuValidation && <p id="bambu-block-reason" className="export-blocked" role="status">3MF blocked: {bambuValidation}</p>}
         <div className="export-actions">
           <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!validation} aria-describedby={validation ? 'export-block-reason' : undefined}>Download STL</Button>
-          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!validation} aria-describedby={validation ? 'export-block-reason' : undefined}>Download Bambu 3MF</Button>
+          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!bambuValidation} aria-describedby={validation ? 'export-block-reason' : bambuValidation ? 'bambu-block-reason' : undefined}>Download Bambu 3MF</Button>
         </div>
         <div aria-live="polite" role="status">
           {busy && <p className="field-help">Preparing {busy === '3mf' ? 'Bambu 3MF' : 'STL'}…</p>}

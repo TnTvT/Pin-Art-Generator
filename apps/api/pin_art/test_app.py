@@ -40,7 +40,7 @@ def test_api_downloads_fixed_and_detachable_models():
             response = client.post("/api/exports", json=request_payload(mode=mode, format=file_format))
             assert response.status_code == 200, response.text[:200]
             assert response.headers["Content-Type"] == content_type
-            assert response.headers["X-Plate-Count"] == "1"
+            assert response.headers["X-Plate-Count"] == ("2" if mode == "detachable" else "1")
             assert "attachment" in response.headers["Content-Disposition"]
             assert len(response.content) > 84
 

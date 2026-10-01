@@ -160,10 +160,33 @@ def test_finite_inputs_with_overflowing_derived_dimensions_are_rejected():
         ExportRequest.model_validate(payload)
 
 
-def test_fixed_bed_setting_does_not_restrict_large_ten_thousand_pin_design():
-    payload = request_payload(heights=[1] * 10000, pinMaterials=[0] * 10000, plate={"width": 10, "depth": 10})
+def test_stl_bed_setting_does_not_restrict_large_ten_thousand_pin_design():
+    payload = request_payload(format="stl", heights=[1] * 10000, pinMaterials=[0] * 10000, plate={"width": 10, "depth": 10})
     payload["parameters"].update(columns=100, rows=100, width=500, depth=500)
     assert len(ExportRequest.model_validate(payload).heights) == 10000
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_bambu_profile_blocks_oversized_base_and_print_height_only_for_3mf(mode):
+    payload = request_payload(mode=mode, plate={"width": 400, "depth": 400})
+    payload["parameters"]["width"] = 300
+    with pytest.raises(ValidationError, match="X1C"):
+        ExportRequest.model_validate(payload)
+    payload["format"] = "stl"
+    assert ExportRequest.model_validate(payload).parameters.width == 300
+    payload = request_payload(mode=mode)
+    payload["parameters"]["extension"] = 250
+    payload["heights"] = [250] * 4
+    with pytest.raises(ValidationError, match="250 mm"):
+        ExportRequest.model_validate(payload)
+    payload["format"] = "stl"
+    assert ExportRequest.model_validate(payload).heights == [250] * 4
+
+
+def test_custom_bambu_usable_area_cannot_override_physical_printer_bed():
+    payload = request_payload(mode="detachable", plate={"width": 300, "depth": 256})
+    with pytest.raises(ValidationError, match="usable plate"):
+        ExportRequest.model_validate(payload)
 
 
 @pytest.mark.parametrize("clearance", [0, 0.2])

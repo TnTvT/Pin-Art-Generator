@@ -49,13 +49,16 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
         raise ValueError("base must fit the plate with 5 mm margins")
     if parameters.diameter > usable_width or parameters.diameter > usable_depth:
         raise ValueError("pin must fit the plate with 5 mm margins")
-    plates = [LayoutPlate(0, [])]
+    plates = [
+        LayoutPlate(0, [LayoutPart("base", None, request.plate.width / 2, request.plate.depth / 2)]),
+        LayoutPlate(1, []),
+    ]
     cursor_x = MARGIN
     cursor_y = MARGIN
     row_depth = 0.0
-    for pin_index in [None, *range(count)]:
-        width = parameters.width if pin_index is None else parameters.diameter
-        depth = parameters.depth if pin_index is None else parameters.diameter
+    for pin_index in range(count):
+        width = parameters.diameter
+        depth = parameters.diameter
         if cursor_x + width > request.plate.width - MARGIN:
             cursor_x = MARGIN
             cursor_y += row_depth + PART_GAP
@@ -67,8 +70,14 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
             cursor_x = MARGIN
             cursor_y = MARGIN
             row_depth = 0.0
-        name = "base" if pin_index is None else _pin_name(request, pin_index)
+        name = _pin_name(request, pin_index)
         plates[-1].parts.append(LayoutPart(name, pin_index, cursor_x + width / 2, cursor_y + depth / 2))
         cursor_x += width + PART_GAP
         row_depth = max(row_depth, depth)
+    for plate in plates[1:]:
+        center_x = (min(part.x for part in plate.parts) + max(part.x for part in plate.parts)) / 2
+        center_y = (min(part.y for part in plate.parts) + max(part.y for part in plate.parts)) / 2
+        for part in plate.parts:
+            part.x += request.plate.width / 2 - center_x
+            part.y += request.plate.depth / 2 - center_y
     return plates

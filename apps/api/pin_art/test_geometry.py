@@ -171,7 +171,7 @@ def test_stl_rejects_geometry_collapsed_by_float32_serialization():
 def test_printed_length_is_not_rounded_to_part_name_precision():
     payload = request_payload(mode="detachable")
     payload["heights"][0] = 4.1234567
-    pin = build_plates(ExportRequest.model_validate(payload))[0].parts[1]
+    pin = build_plates(ExportRequest.model_validate(payload))[1].parts[0]
     assert pin.name.endswith("6.123 mm")
     assert pin.transform[2, 2] == 6.1234567
 

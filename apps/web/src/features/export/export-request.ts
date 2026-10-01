@@ -24,7 +24,9 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   plate: { width: 256, depth: 256 },
 };
 
-export function validateExport(parameters: Parameters, heights: Float32Array | undefined, options: ExportOptions): string | null {
+export const BAMBU_PROFILE = { name: 'Bambu Lab X1 Carbon 0.4 nozzle', width: 256, depth: 256, height: 250 } as const;
+
+export function validateExport(parameters: Parameters, heights: Float32Array | undefined, options: ExportOptions, format?: ExportFormat): string | null {
   if (Object.values(parameters).some((value) => !Number.isFinite(value) || value <= 0)
     || !Number.isInteger(parameters.columns) || !Number.isInteger(parameters.rows)
     || parameters.columns > 100 || parameters.rows > 100) return 'Use valid positive parameters and grid counts from 1 to 100.';
@@ -57,11 +59,22 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
       return 'Detached pins do not fit on the bed with 5 mm margins.';
     }
   }
+  if (format === '3mf') {
+    if (parameters.width > BAMBU_PROFILE.width || parameters.depth > BAMBU_PROFILE.depth) {
+      return 'Bambu X1C 3MF requires a base within the 256 × 256 mm bed. Reduce the base or download STL.';
+    }
+    if (options.mode === 'detachable' && (options.plate.width > BAMBU_PROFILE.width || options.plate.depth > BAMBU_PROFILE.depth)) {
+      return 'Bambu X1C usable bed dimensions must not exceed 256 × 256 mm. Reduce the bed area or download STL.';
+    }
+    const maximum = heights ? Math.max(...heights) : parameters.extension;
+    const printHeight = options.mode === 'detachable' ? Math.max(parameters.thickness, maximum + options.socket.insertionDepth) : parameters.thickness + maximum;
+    if (printHeight > BAMBU_PROFILE.height) return 'Bambu X1C 3MF parts must fit the profile’s 250 mm printable height. Reduce height or download STL.';
+  }
   return null;
 }
 
 export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, colors: ModelColors, options: ExportOptions, format: ExportFormat): ExportRequest {
-  const error = validateExport(parameters, heights, options);
+  const error = validateExport(parameters, heights, options, format);
   if (error) throw new Error(error);
   const colorValues = [colors.base, colors.pins].map((color) => color.toLowerCase());
   if (colorValues.some((color) => !/^#[0-9a-f]{6}$/.test(color))) throw new Error('Choose base and pin colors in #RRGGBB format.');

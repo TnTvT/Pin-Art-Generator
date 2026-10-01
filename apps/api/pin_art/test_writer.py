@@ -6,6 +6,7 @@ from xml.etree import ElementTree as ET
 import lib3mf
 import manifold3d
 import numpy as np
+import pytest
 
 from pin_art.geometry import Part, Plate, build_plates
 from pin_art.schemas import ExportRequest
@@ -42,7 +43,13 @@ def test_colored_multiplate_package_reads_strictly(tmp_path):
         assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2"]
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_colour"] == ["#FFFFFF", "#FF0000"]
-        assert "printer_settings_id" not in settings
+        assert settings["printer_settings_id"] == "Bambu Lab X1 Carbon 0.4 nozzle"
+        assert settings["printer_model"] == "Bambu Lab X1 Carbon"
+        assert settings["nozzle_diameter"] == ["0.4"]
+        assert settings["printable_area"] == ["0x0", "256x0", "256x256", "0x256"]
+        assert settings["printable_height"] == "250"
+        assert settings["print_settings_id"] == "0.20mm Standard @BBL X1C"
+        assert settings["inherits_group"] == ["0.20mm Standard @BBL X1C", "", "", "Bambu Lab X1 Carbon 0.4 nozzle"]
         assert "nozzle_temperature" not in settings
         root = ET.fromstring(archive.read("3D/3dmodel.model"))
         namespace = {"m": "http://schemas.microsoft.com/3dmanufacturing/material/2015/02"}
@@ -90,3 +97,78 @@ def test_actual_parts_preserve_names_geometry_properties_and_plate_membership():
                 assert "pid" in mesh.attrib
                 colors.append(mesh.attrib["pindex"])
         assert colors == ["0", "1", "0"]
+
+
+def read_model(data):
+    namespace = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        root = ET.fromstring(archive.read("3D/3dmodel.model"))
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+    objects = {entry.attrib["id"]: entry for entry in root.findall(f"{namespace}resources/{namespace}object")}
+    return namespace, root, objects, config
+
+
+def read_transform(element):
+    values = np.array([float(value) for value in element.attrib.get("transform", "1 0 0 0 1 0 0 0 1 0 0 0").split()])
+    transform = np.eye(4)
+    transform[:3, :] = values.reshape(4, 3).T
+    return transform
+
+
+def test_shared_meshes_are_centered_so_bambu_does_not_shift_repeated_pins():
+    request = small_request("fixed")
+    namespace, root, objects, config = read_model(export_3mf(request, build_plates(request)))
+    item = root.find(f"{namespace}build/{namespace}item")
+    components = objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component")
+    part_metadata = config.find("object").findall("part")
+    assert len(part_metadata) == len(components) == 3
+    assert [part.find("metadata[@key='name']").attrib["value"] for part in part_metadata] == ["base", "Pin R01 C01 5.000 mm", "Pin R01 C02 10.000 mm"]
+    assert components[1].attrib["objectid"] == components[2].attrib["objectid"]
+    for index, component in enumerate(components):
+        mesh = objects[component.attrib["objectid"]]
+        vertices = np.array([[float(vertex.attrib[axis]) for axis in ["x", "y", "z"]] for vertex in mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")])
+        np.testing.assert_allclose((vertices.min(axis=0) + vertices.max(axis=0)) / 2, 0, atol=1e-7)
+        world = np.c_[vertices, np.ones(len(vertices))] @ (read_transform(item) @ read_transform(component)).T
+        assert world[:, 2].min() == (0 if index == 0 else 3)
+        assert world[:, 2].max() == (3 if index == 0 else 3 + request.heights[index - 1])
+
+
+def test_physical_x1c_plate_origins_and_centering_ignore_custom_packing_area():
+    request = small_request()
+    namespace, root, objects, config = read_model(export_3mf(request, build_plates(request)))
+    items = {item.attrib["objectid"]: item for item in root.findall(f"{namespace}build/{namespace}item")}
+    assert len(config.findall("plate")) == 2
+    for plate_index, plate in enumerate(config.findall("plate")):
+        positions = []
+        for entry in plate.findall("model_instance/metadata[@key='object_id']"):
+            item = items[entry.attrib["value"]]
+            component = objects[item.attrib["objectid"]].find(f"{namespace}components/{namespace}component")
+            mesh = objects[component.attrib["objectid"]]
+            vertices = np.array([[float(vertex.attrib[axis]) for axis in ["x", "y", "z"]] for vertex in mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")])
+            positions.extend((np.c_[vertices, np.ones(len(vertices))] @ (read_transform(item) @ read_transform(component)).T)[:, :3])
+        positions = np.array(positions)
+        center = (positions.min(axis=0) + positions.max(axis=0)) / 2
+        np.testing.assert_allclose(center[:2], [128 + plate_index * 307.2, 128])
+        assert positions[:, 2].min() == 0
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_fractional_pin_heights_preserve_contact_with_base_or_plate(mode):
+    request = small_request(mode)
+    request.heights = [8.02507837, 7.0834999]
+    namespace, root, objects, _ = read_model(export_3mf(request, build_plates(request)))
+    lengths = []
+    for item in root.findall(f"{namespace}build/{namespace}item"):
+        for component in objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component"):
+            mesh = objects[component.attrib["objectid"]]
+            if mesh.attrib["name"] == "base":
+                continue
+            vertices = np.array([[float(vertex.attrib[axis]) for axis in ["x", "y", "z"]] for vertex in mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")])
+            transform = read_transform(item) @ read_transform(component)
+            world = np.c_[vertices, np.ones(len(vertices))] @ transform.T
+            bottom = request.parameters.thickness if mode == "fixed" else 0
+            assert world[:, 2].min() == pytest.approx(bottom, abs=1e-9)
+            length = world[:, 2].max() - world[:, 2].min()
+            lengths.append(length)
+    insertion = request.socket.insertion_depth if mode == "detachable" else 0
+    np.testing.assert_allclose(lengths, np.array(request.heights) + insertion, rtol=0, atol=1e-9)
