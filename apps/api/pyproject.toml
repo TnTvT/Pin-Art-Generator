@@ -1,0 +1,26 @@
+[project]
+name = "pin-art-export"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.142.2",
+  "uvicorn==0.54.0",
+  "pydantic==2.13.5",
+  "lib3mf==2.5.0",
+  "manifold3d==3.5.4",
+  "numpy>=2.0,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "httpx>=0.28,<0.29", "psutil>=7,<8"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pin_art*"]
+
+[tool.pytest.ini_options]
+testpaths = ["pin_art"]
+pythonpath = ["."]

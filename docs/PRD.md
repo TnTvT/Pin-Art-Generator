@@ -17,8 +17,10 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Initial MVP | Parametric base, uniform pin array, interactive 3D preview, English UI | Implemented |
 | Image mapping | Local image upload, grayscale heights, range controls, inversion, sample image | Implemented |
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
+| Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
-| Future printing workflow | STL/3MF export and physical moving-pin design | Deferred; requirements not defined |
+| Model downloads | STL, Bambu-compatible colored 3MF, detachable socket pins, multi-plate layout | Implemented; Bambu GUI/physical fit verification is user-owned |
+| Moving-pin hardware | Captive sliding pins, stops, and retainers | Deferred |
 
 The initial request prioritized a quick demo without tests. A later explicit request added automated testing. That later requirement governs the current project.
 
@@ -113,13 +115,35 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Camera controls, preview updates, and cleanup are covered by integration tests.
 - Verify orientation-helper alignment in Top view, rotation tracking, pan/zoom independence, and cleanup with the preview.
 - Theme switching and persistence are covered by tests, including camera and design preservation. Check both themes and narrow-screen layouts in the browser.
-- `npm test` and `npm run build` pass for behavior changes.
+- `pnpm test`, `pnpm typecheck`, and `pnpm build` pass for behavior changes. The root test task runs both frontend and backend suites.
 - Use browser smoke checks for actual image decoding, WebGL rendering, the 10,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.
 
 ## 8. Current boundaries and future work
 
 - Design state is in memory. Reloading the page resets the design; design save/load and persistence are not implemented. The appearance preference is saved locally.
-- There is no authentication, backend, or public API.
-- The preview represents fixed cylindrical pins on a solid base. Sliding pins, holes, retainers, print clearances, and assembly are not modeled.
-- STL/3MF export, manufacturing checks, image cropping, contrast controls, and per-pin manual editing require separate product decisions.
+- A local Python backend handles model downloads; there is no authentication, design database, or public hosting.
+- The main preview represents the assembled design. Detachable downloads include blind sockets, insertion length, and separate printable parts; socket cutaways and print layouts are not rendered in the main canvas. Captive sliding pins and retainers remain deferred.
+- Image RGB/per-pin color editing, image cropping, contrast controls, and calibrated manufacturing guarantees require separate product decisions.
 - No deployment provider, rollout process, or physical-printing guarantees have been selected.
+
+## 9. Printable models and colors
+
+- Provide English Base color and Pin color controls, default #5b6b78 and #2dada3. Preview and export use the same selected colors; theme changes affect surrounding presentation only.
+- Offer Fixed and Detachable modes with Download STL and Download 3MF. Snapshot the last valid parameters and resolved row-major image heights; never upload source images or silently alter geometry.
+- Fixed STL must be a watertight union. Fixed 3MF retains separate material regions within one assembled sculpture.
+- Fixed STL rejects zero-clearance tangent neighbors with an explanation; the model is not silently reshaped to repair point-contact geometry. Dense STL exports are memory-intensive and may take around a minute.
+- Detachable pins use blind sockets. Default insertion depth 2 mm and diametral clearance 0.2 mm; socket diameter equals pin diameter plus clearance. Require a 1 mm floor and 0.8 mm socket/edge walls. Printed pin length equals visible extension plus insertion depth. This is not a sliding mechanism or universal fit guarantee.
+- Pack the base flat and pins upright, base first and pins in stable row-major order, with 5 mm margins and 4 mm part gaps. Default usable area 256 × 256 mm is editable; split automatically into at most 36 plates. Reject oversized individual parts and invalid socket geometry.
+- Deliver one Bambu-compatible multi-plate 3MF with standard colors and matching logical filament/part/plate assignments. Deduplicate colors and reusable geometry. Do not embed printer, nozzle, temperature, process, or physical AMS assignments.
+- Detachable STL downloads are ZIP archives containing numbered plate STLs and an indexed height/material/placement manifest. STL itself carries no colors.
+- Show pending/error/retry/download plate-count feedback and prevent duplicate exports. Limit requests to 2 MB/10,000 pins, isolate one worker at a time, terminate after 120 seconds, and clean temporary output.
+- Automated checks cover geometry, dimensions, winding, sockets, layout, metadata, strict lib3mf read-back, API errors/cleanup, and UI request snapshots. Benchmark 10,000-pin cases; retain frontend tests/build checks.
+- Bambu GUI inspection and slicing are left to the user. Check printer height/envelope, exclusion zones, brims, purge structures, and physical socket fit before printing. Opening a file successfully is not a manufacturing guarantee.
+
+## 10. Engineering workspace
+
+- Keep the React/TypeScript application in `apps/web` and the Python export service in `apps/api`, retaining feature ownership and colocated tests.
+- Use pnpm workspaces for JavaScript dependencies, uv for Python dependencies/interpreter/environment, and Turborepo for root development/build/test commands. Commit both dependency lockfiles.
+- Keep product requirements and architecture decisions in root-level `docs/`.
+- Preserve the same-origin `/api` contract and local ports during the migration; do not change geometry, preview, or download behavior merely to reorganize files.
+- Avoid speculative shared packages or a Python workspace until multiple real consumers require them.

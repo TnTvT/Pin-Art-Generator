@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Group, useComputedColorScheme } from '@mantine/core';
 import { createPreview, type Preview, type ViewAction } from './preview';
-import { type Parameters } from '../pin-design/model';
+import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
 
-export default function ModelPreview({ parameters, heights }: { parameters: Parameters; heights?: Float32Array }) {
+export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS }: { parameters: Parameters; heights?: Float32Array; colors?: ModelColors }) {
   const container = useRef<HTMLDivElement>(null);
   const preview = useRef<Preview | null>(null);
   const [error, setError] = useState(false);
@@ -29,6 +29,10 @@ export default function ModelPreview({ parameters, heights }: { parameters: Para
   useEffect(() => {
     preview.current?.setColorScheme(colorScheme);
   }, [colorScheme]);
+
+  useEffect(() => {
+    preview.current?.setModelColors(colors);
+  }, [colors]);
 
   const setView = (action: ViewAction) => preview.current?.setView(action);
 
@@ -57,8 +61,9 @@ export default function ModelPreview({ parameters, heights }: { parameters: Para
       </div>
       <div className="preview-footer">
         <span><strong>Drag</strong> to rotate <span className="instruction-separator">·</span> <strong>Scroll</strong> to zoom <span className="instruction-separator">·</span> <strong>Right-drag</strong> to pan</span>
-        <span className="material-key"><i /> {heights ? 'Image-mapped heights' : 'Uniform pin height'}</span>
+        <span className="material-key"><i style={{ background: colors.pins }} /> {heights ? 'Image-mapped heights' : 'Uniform pin height'}</span>
       </div>
+      <p className="preview-concept-note">Assembled conceptual preview. Detachable sockets and print-plate layout are not rendered.</p>
     </section>
   );
 }

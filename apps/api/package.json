@@ -1,0 +1,9 @@
+{
+  "name": "@pin-art/api",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "uv run --locked uvicorn pin_art.app:app --host 127.0.0.1 --port 8000 --reload --reload-dir pin_art",
+    "test": "uv run --locked pytest"
+  }
+}

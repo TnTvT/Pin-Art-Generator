@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Color, GridHelper, InstancedMesh, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
-import { DEFAULTS } from '../pin-design/model';
+import { Color, GridHelper, InstancedMesh, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
+import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
 import { createPreview, type Preview } from './preview';
 
 const renderer = vi.hoisted(() => ({ render: vi.fn(), dispose: vi.fn(), forceContextLoss: vi.fn() }));
@@ -68,6 +68,33 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('preserves printable material colors through theme, height and camera updates', () => {
+    renderedCamera();
+    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const base = scene.children.find((child) => child instanceof Mesh && !(child instanceof InstancedMesh)) as Mesh;
+    const pins = scene.children.find((child) => child instanceof InstancedMesh) as InstancedMesh;
+    const baseMaterial = base.material as MeshStandardMaterial;
+    const pinMaterial = pins.material as MeshStandardMaterial;
+    expect(baseMaterial.color.getHexString()).toBe(DEFAULT_MODEL_COLORS.base.slice(1));
+    expect(pinMaterial.color.getHexString()).toBe(DEFAULT_MODEL_COLORS.pins.slice(1));
+    preview.setView('top');
+    const camera = renderedCamera() as OrthographicCamera;
+    camera.zoom = 2;
+    const matrices = pins.instanceMatrix.array.slice();
+    preview.setModelColors({ base: '#123456', pins: '#abcdef' });
+    expect(renderedCamera()).toBe(camera);
+    expect(camera.zoom).toBe(2);
+    expect(pins.instanceMatrix.array).toEqual(matrices);
+    preview.setColorScheme('dark');
+    preview.update(DEFAULTS, new Float32Array(320).fill(2));
+    preview.setColorScheme('light');
+    renderedCamera();
+    expect(base.material).toBe(baseMaterial);
+    expect(pins.material).toBe(pinMaterial);
+    expect(baseMaterial.color.getHexString()).toBe('123456');
+    expect(pinMaterial.color.getHexString()).toBe('abcdef');
+  });
+
   it('defaults and resets to a Z-up view with X down-left and Y down-right', () => {
     const initial = renderedCamera();
     const center = new Vector3(0, 0, 11.5);

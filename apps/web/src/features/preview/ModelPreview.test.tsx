@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render';
-import { DEFAULTS } from '../pin-design/model';
+import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
 import ModelPreview from './ModelPreview';
 import { createPreview } from './preview';
 import ThemeToggle from '../../app/ThemeToggle';
@@ -12,13 +12,24 @@ vi.mock('./preview', () => ({ createPreview: vi.fn() }));
 const update = vi.fn();
 const setView = vi.fn();
 const setColorScheme = vi.fn();
+const setModelColors = vi.fn();
 const dispose = vi.fn();
 
 beforeEach(() => {
-  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, dispose });
+  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, setModelColors, dispose });
 });
 
 describe('preview integration', () => {
+  it('sets default or supplied printable colors without recreating the scene', () => {
+    const { rerender } = renderWithProviders(<ModelPreview parameters={DEFAULTS} />);
+    expect(setModelColors).toHaveBeenLastCalledWith(DEFAULT_MODEL_COLORS);
+    const colors = { base: '#123456', pins: '#abcdef' };
+    rerender(<ModelPreview parameters={DEFAULTS} colors={colors} />);
+    expect(setModelColors).toHaveBeenLastCalledWith(colors);
+    expect(createPreview).toHaveBeenCalledOnce();
+    expect(screen.getByText(/sockets.*not rendered/i)).toBeInTheDocument();
+  });
+
   it('updates the scene theme without recreating the preview or resetting the view', async () => {
     const user = userEvent.setup();
     renderWithProviders(<><ThemeToggle /><ModelPreview parameters={DEFAULTS} /></>);

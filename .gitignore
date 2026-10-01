@@ -3,3 +3,10 @@ dist/
 .vitest/
 coverage/
 .DS_Store
+.venv/
+.turbo/
+.pnpm-store/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+*.egg-info/

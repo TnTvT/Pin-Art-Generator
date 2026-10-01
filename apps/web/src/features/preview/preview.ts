@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { type Parameters } from '../pin-design/model';
+import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
 import { updatePinInstances } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
 import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
@@ -12,6 +12,7 @@ export interface Preview {
   update: (parameters: Parameters, heights?: Float32Array) => void;
   setView: (action: ViewAction) => void;
   setColorScheme: (colorScheme: PreviewColorScheme) => void;
+  setModelColors: (colors: ModelColors) => void;
   dispose: () => void;
 }
 
@@ -42,7 +43,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   scene.add(fillLight);
 
   const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const baseMaterial = new THREE.MeshStandardMaterial({ color: colors.base, roughness: 0.7, metalness: 0.15 });
+  const baseMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.base, roughness: 0.7, metalness: 0.15 });
   const base = new THREE.Mesh(baseGeometry, baseMaterial);
   scene.add(base);
   const edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
@@ -50,7 +51,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   base.add(new THREE.LineSegments(edgesGeometry, edgesMaterial));
 
   const pinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
-  const pinMaterial = new THREE.MeshStandardMaterial({ color: colors.pins, roughness: 0.32, metalness: 0.28 });
+  const pinMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.pins, roughness: 0.32, metalness: 0.28 });
   const pins = new THREE.InstancedMesh(pinGeometry, pinMaterial, 10000);
   pins.count = 0;
   pins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -172,10 +173,13 @@ export function createPreview(container: HTMLDivElement): Preview {
       const nextColors = PREVIEW_COLORS[colorScheme];
       background.set(nextColors.background);
       renderer.setClearColor(nextColors.background);
-      baseMaterial.color.set(nextColors.base);
       edgesMaterial.color.set(nextColors.edges);
-      pinMaterial.color.set(nextColors.pins);
       grid.material.color.set(nextColors.gridTint);
+      requestRender();
+    },
+    setModelColors(modelColors) {
+      baseMaterial.color.set(modelColors.base);
+      pinMaterial.color.set(modelColors.pins);
       requestRender();
     },
     dispose() {

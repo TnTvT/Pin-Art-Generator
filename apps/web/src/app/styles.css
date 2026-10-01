@@ -45,6 +45,15 @@ main { max-width: 1600px; margin: 0 auto; padding: 16px 40px 24px; }
 .unit-label strong { color: var(--ink); }
 .workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; }
 .design-sidebar { display: grid; gap: 16px; min-width: 0; }
+.export-settings { display: grid; gap: 12px; padding: 20px; }
+.export-settings .field-help { margin: 0; }
+.export-settings .mantine-ColorInput-label, .export-settings .mantine-NumberInput-label, .export-mode legend { font-size: 11px; font-weight: 500; color: var(--muted); }
+.export-settings .mantine-ColorInput-input, .export-settings .mantine-NumberInput-input { border-color: var(--border); background: var(--input); font-size: 12px; }
+.export-mode { border: 0; margin: 0; padding: 0; min-width: 0; }
+.export-mode legend { margin-bottom: 6px; }
+.export-actions { display: grid; gap: 8px; }
+.export-blocked { color: var(--ink); border-left: 3px solid var(--accent); padding-left: 8px; font-size: 11px; margin: 0; }
+.export-feedback { color: var(--ink); font-size: 11px; margin: 0; overflow-wrap: anywhere; }
 .controls-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .controls-heading { display: flex; align-items: center; justify-content: space-between; padding: 20px; border-bottom: 1px solid var(--border); }
 h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
@@ -100,6 +109,7 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
 .viewport-dimensions span { display: block; font-size: 9px; font-weight: 400; color: var(--muted); margin-top: 3px; }
 .preview-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; font-size: 10px; color: var(--muted); }
 .preview-footer strong { font-weight: 600; }
+.preview-concept-note { margin: 0; padding: 0 20px 14px; font-size: 10px; color: var(--muted); }
 .instruction-separator { margin: 0 5px; color: var(--muted); }
 .material-key { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .material-key i { height: 6px; width: 6px; border-radius: 50%; background: var(--pin); }

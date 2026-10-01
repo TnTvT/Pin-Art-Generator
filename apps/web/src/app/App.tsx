@@ -6,13 +6,15 @@ import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
 import useSourceImage from '../features/image-mapping/useSourceImage';
 import { mapImageToPins } from '../features/image-mapping/image-mapping';
-import { DEFAULTS, formatDimension, getMetrics, getWarnings, type Parameters } from '../features/pin-design/model';
+import ExportPanel from '../features/export/ExportPanel';
+import { DEFAULTS, DEFAULT_MODEL_COLORS, formatDimension, getMetrics, getWarnings, type ModelColors, type Parameters } from '../features/pin-design/model';
 
 type Draft = Record<keyof Parameters, number | string>;
 
 export default function App() {
   const [parameters, setParameters] = useState<Parameters>({ ...DEFAULTS });
   const [draft, setDraft] = useState<Draft>({ ...DEFAULTS });
+  const [modelColors, setModelColors] = useState<ModelColors>({ ...DEFAULT_MODEL_COLORS });
   const image = useSourceImage();
   const [minimum, setMinimum] = useState(2);
   const [inverted, setInverted] = useState(false);
@@ -20,12 +22,18 @@ export default function App() {
     if (!image.source) return { heightMap: null, error: null };
     try {
       return { heightMap: mapImageToPins(image.source, parameters, minimum, inverted), error: null };
-    } catch {
-      return { heightMap: null, error: 'Image mapping is unavailable. The preview is showing uniform pins.' };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Image processing is unavailable in this browser.';
+      return { heightMap: null, error: `Image mapping failed: ${reason} The preview is showing uniform pins. Remove or replace the image to export.` };
     }
   }, [image.source, parameters, minimum, inverted]);
   const metrics = getMetrics(parameters);
   const warnings = getWarnings(parameters);
+  const exportBlockedReason = image.loading
+    ? 'Image processing is still running. Wait before exporting.'
+    : image.error
+      ? `Image processing failed: ${image.error} Replace the image or use uniform pins to export.`
+      : mapping.error || (image.source && !mapping.heightMap ? 'Resolved image heights are missing. Remove or replace the image before exporting.' : null);
 
   function changeParameter(name: keyof Parameters, value: number | string) {
     setDraft((current) => ({ ...current, [name]: value }));
@@ -77,6 +85,7 @@ export default function App() {
               onMinimumChange={setMinimum}
               onInvertChange={setInverted}
             />
+            {image.error && !image.source && <Button variant="subtle" size="xs" onClick={image.remove}>Clear image error and use uniform pins</Button>}
             <section className="controls-panel" aria-label="Parameters">
               <div className="controls-heading"><h2>Parameters</h2><span>01 / DESIGN</span></div>
               <Accordion multiple defaultValue={['base', 'pins']} order={3} className="parameter-accordion">
@@ -102,9 +111,10 @@ export default function App() {
               </Accordion>
               <div className="controls-bottom"><Button variant="default" fullWidth onClick={resetParameters}>Reset parameters</Button></div>
             </section>
+            <ExportPanel parameters={parameters} heights={mapping.heightMap?.heights} colors={modelColors} onColorsChange={setModelColors} blockedReason={exportBlockedReason} />
           </aside>
           <div className="preview-column">
-            <ModelPreview parameters={parameters} heights={mapping.heightMap?.heights} />
+            <ModelPreview parameters={parameters} heights={mapping.heightMap?.heights} colors={modelColors} />
             <div className="metrics" aria-label="Design measurements">
               <div className="metric"><span>Total pins</span><strong>{metrics.count.toLocaleString('en-US')}<small>{parameters.columns} columns × {parameters.rows} rows</small></strong></div>
               <div className="metric"><span>Grid footprint</span><strong>{formatDimension(metrics.width)} × {formatDimension(metrics.depth)} <em>mm</em><small>Centered on the base</small></strong></div>

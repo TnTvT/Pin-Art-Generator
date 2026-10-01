@@ -15,6 +15,10 @@ Pin Art Studio's product requirements and significant decisions live here.
 | [ADR-003](decisions/003-local-image-height-mapping.md) | Local image processing and grayscale-to-height mapping |
 | [ADR-004](decisions/004-feature-folders-and-testing.md) | Feature ownership, colocated tests, and verification boundaries |
 | [ADR-005](decisions/005-color-schemes.md) | Shared light/dark themes, preference persistence, and in-place scene updates |
+| [ADR-006](decisions/006-native-export-backend.md) | Local Python export service, native geometry, validation, and worker isolation |
+| [ADR-007](decisions/007-bambu-3mf-compatibility.md) | Standard colors plus Bambu filament/plate metadata without printer presets |
+| [ADR-008](decisions/008-detachable-sockets-and-plates.md) | Blind sockets, diametral fit clearance, and multi-plate printing layouts |
+| [ADR-009](decisions/009-pnpm-turbo-uv-monorepo.md) | pnpm/Turborepo app orchestration with an independently uv-managed Python service |
 
 These records were written on September 30, 2026, from the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

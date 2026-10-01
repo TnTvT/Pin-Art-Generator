@@ -1,0 +1,17 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "build": {
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {},
+    "test": {},
+    "@pin-art/api#test": {
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,143 @@
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, ColorInput, Group, NumberInput, SegmentedControl } from '@mantine/core';
+import { type ModelColors, type Parameters } from '../pin-design/model';
+import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport, type ExportFormat, type ExportMode, type ExportOptions } from './export-request';
+import { fetchExport } from './export-client';
+
+interface ExportPanelProps {
+  parameters: Parameters;
+  heights?: Float32Array;
+  colors: ModelColors;
+  onColorsChange: (colors: ModelColors) => void;
+  blockedReason?: string | null;
+}
+
+type NumericSetting = 'insertionDepth' | 'clearance' | 'bedWidth' | 'bedDepth';
+
+export default function ExportPanel({ parameters, heights, colors, onColorsChange, blockedReason }: ExportPanelProps) {
+  const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_EXPORT_OPTIONS, socket: { ...DEFAULT_EXPORT_OPTIONS.socket }, plate: { ...DEFAULT_EXPORT_OPTIONS.plate } }));
+  const [draft, setDraft] = useState<Record<NumericSetting, number | string>>({ insertionDepth: 2, clearance: 0.2, bedWidth: 256, bedDepth: 256 });
+  const [colorDraft, setColorDraft] = useState<ModelColors>({ ...colors });
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [failedFormat, setFailedFormat] = useState<ExportFormat>('3mf');
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
+  const downloadUrls = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const validation = blockedReason || validateExport(parameters, heights, options);
+
+  useEffect(() => {
+    mounted.current = true;
+    const urls = downloadUrls.current;
+    return () => {
+      mounted.current = false;
+      controller.current?.abort();
+      controller.current = null;
+      urls.forEach((timer, url) => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+      });
+      urls.clear();
+    };
+  }, []);
+
+  function changeNumeric(name: NumericSetting, value: number | string) {
+    setDraft((current) => ({ ...current, [name]: value }));
+    if (typeof value !== 'number' || !Number.isFinite(value) || (name === 'clearance' ? value < 0 : value <= 0)) return;
+    setOptions((current) => name === 'bedWidth' || name === 'bedDepth'
+      ? { ...current, plate: { ...current.plate, [name === 'bedWidth' ? 'width' : 'depth']: value } }
+      : { ...current, socket: { ...current.socket, [name]: value } });
+  }
+
+  function numericField(name: NumericSetting, label: string) {
+    const value = draft[name];
+    const valid = typeof value === 'number' && Number.isFinite(value) && (name === 'clearance' ? value >= 0 : value > 0);
+    const lastValid = name === 'bedWidth' ? options.plate.width : name === 'bedDepth' ? options.plate.depth : options.socket[name];
+    return <NumberInput label={label} value={value} onChange={(next) => changeNumeric(name, next)}
+      min={name === 'clearance' ? 0 : 0.01} suffix=" mm" step={0.1} decimalScale={2}
+      allowNegative={false} clampBehavior="none" size="sm" disabled={busy !== null}
+      error={valid ? undefined : `Using last valid value: ${lastValid} mm.`} />;
+  }
+
+  function colorField(name: keyof ModelColors, label: string) {
+    return <ColorInput label={label} format="hex" value={colorDraft[name]} onChange={(value) => {
+      setColorDraft((current) => ({ ...current, [name]: value }));
+      if (/^#[0-9a-f]{6}$/i.test(value)) onColorsChange({ ...colors, [name]: value.toLowerCase() });
+    }} size="sm" disabled={busy !== null} eyeDropperButtonProps={{ 'aria-label': `Pick ${label.toLowerCase()} from screen` }}
+      error={/^#[0-9a-f]{6}$/i.test(colorDraft[name]) ? undefined : `Using last valid color: ${colors[name]}.`} />;
+  }
+
+  async function exportModel(format: ExportFormat) {
+    if (controller.current || validation) return;
+    const requestController = new AbortController();
+    controller.current = requestController;
+    setBusy(format);
+    setError(null);
+    setFeedback(null);
+    setFailedFormat(format);
+    try {
+      const request = buildExportRequest(parameters, heights, colors, options, format);
+      const result = await fetchExport(request, requestController.signal);
+      if (!mounted.current || requestController.signal.aborted) return;
+      const url = URL.createObjectURL(result.blob);
+      const timer = setTimeout(() => {
+        URL.revokeObjectURL(url);
+        downloadUrls.current.delete(url);
+      }, 60_000);
+      downloadUrls.current.set(url, timer);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = result.filename;
+      document.body.appendChild(anchor);
+      try { anchor.click(); } finally { anchor.remove(); }
+      setFeedback(`Download ready: ${result.filename}${result.plateCount === null ? '' : ` · ${result.plateCount} ${result.plateCount === 1 ? 'plate' : 'plates'}`}.`);
+    } catch (failure) {
+      if (mounted.current && !requestController.signal.aborted) {
+        setError(failure instanceof Error ? failure.message : 'Export could not be completed. Please retry.');
+      }
+    } finally {
+      if (controller.current === requestController) controller.current = null;
+      if (mounted.current) setBusy(null);
+    }
+  }
+
+  return (
+    <section className="export-panel controls-panel" aria-label="Print export" aria-busy={busy !== null}>
+      <div className="controls-heading"><h2>Print export</h2><span>02 / MAKE</span></div>
+      <div className="export-settings">
+        <div className="field-pair">{colorField('base', 'Base color')}{colorField('pins', 'Pin color')}</div>
+        <fieldset className="export-mode">
+          <legend>Export mode</legend>
+          <SegmentedControl fullWidth value={options.mode} onChange={(value) => setOptions((current) => ({ ...current, mode: value as ExportMode }))}
+            data={[{ label: 'Fixed', value: 'fixed' }, { label: 'Detachable', value: 'detachable' }]} disabled={busy !== null} size="sm" />
+        </fieldset>
+        <p className="field-help">{options.mode === 'fixed' ? 'Pins joined to the base in one printable sculpture.' : 'Separate pins and a socketed base, automatically arranged on up to 36 plates.'}</p>
+        {options.mode === 'detachable' && <>
+          <div className="field-pair">{numericField('insertionDepth', 'Insertion depth')}{numericField('clearance', 'Socket clearance')}</div>
+          <p className="field-help">Clearance adds to the socket diameter. Minimum floor: 1 mm; walls and edges: 0.8 mm.</p>
+          <div className="field-pair">{numericField('bedWidth', 'Bed width')}{numericField('bedDepth', 'Bed depth')}</div>
+          <p className="field-help">5 mm bed margins, diameter + 4 mm pin separation. The server determines the actual plate count.</p>
+        </>}
+        <p className="field-help">STL contains geometry only. Bambu 3MF preserves your printable colors; verify filament assignments in Bambu Studio.</p>
+        {parameters.columns * parameters.rows >= 2500 && <p className="field-help">Dense exports can take a minute. STL may require several GB of memory; use fewer pins on memory-constrained computers.</p>}
+        {validation && <p id="export-block-reason" className="export-blocked" role="status">Export blocked: {validation}</p>}
+        <div className="export-actions">
+          <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!validation} aria-describedby={validation ? 'export-block-reason' : undefined}>Download STL</Button>
+          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!validation} aria-describedby={validation ? 'export-block-reason' : undefined}>Download Bambu 3MF</Button>
+        </div>
+        <div aria-live="polite" role="status">
+          {busy && <p className="field-help">Preparing {busy === '3mf' ? 'Bambu 3MF' : 'STL'}…</p>}
+          {feedback && <p className="export-feedback">{feedback}</p>}
+        </div>
+        {error && <Alert color="red" title="Export failed">
+          {error}
+          <Group gap="xs" mt="sm">
+            <Button variant="light" size="xs" onClick={() => void exportModel(failedFormat)} disabled={busy !== null || !!validation}>Retry export</Button>
+            <Button variant="subtle" size="xs" onClick={() => setError(null)}>Clear error</Button>
+          </Group>
+        </Alert>}
+      </div>
+    </section>
+  );
+}

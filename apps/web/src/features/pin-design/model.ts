@@ -9,6 +9,16 @@ export interface Parameters {
   extension: number;
 }
 
+export interface ModelColors {
+  base: string;
+  pins: string;
+}
+
+export const DEFAULT_MODEL_COLORS: ModelColors = {
+  base: '#5b6b78',
+  pins: '#2dada3',
+};
+
 export const DEFAULTS: Parameters = {
   width: 120,
   depth: 100,

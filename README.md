@@ -1,6 +1,6 @@
 # Pin Art Studio
 
-A React, TypeScript, Mantine, and Three.js demo for designing a rectangular base and a centered array of cylindrical pins. All dimensions are in millimeters.
+A React, TypeScript, Mantine, and Three.js demo with a Python export service for designing printable pin art. All dimensions are in millimeters. The monorepo uses pnpm and Turborepo for task orchestration, with uv managing Python independently.
 
 ## Documentation
 
@@ -12,75 +12,82 @@ The root-level `docs/` folder records agreed behavior, defaults, technical ratio
 ## Run
 
 ```sh
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+uv sync --project apps/api --locked
+pnpm dev
 ```
 
-Open http://127.0.0.1:4173. Change the parameters to update the model immediately. Drag to rotate, scroll to zoom, and right-drag to pan. Focus the canvas and use arrow keys to pan with the keyboard.
+Install Node.js **22.12 or newer**, **pnpm 11.19.0**, and **uv** (verified with 0.12.1). The root `packageManager` field pins pnpm. Python **3.14.6** is pinned in `apps/api/.python-version`; uv downloads that interpreter if it is not installed. The backend package supports Python 3.12 or newer. Native lib3mf wheels support macOS (including Apple Silicon), Linux x86-64, and Windows x86-64; Linux ARM needs a separately built native library.
+
+Commit both `pnpm-lock.yaml` and `apps/api/uv.lock`. Backend scripts use `uv run --locked`, which refuses an outdated lockfile rather than silently changing dependencies. Development/test dependencies are in the default uv `dev` group. After changing Python dependencies, run `uv lock --project apps/api` and sync again; after changing JavaScript dependencies, run `pnpm install`.
+
+Alternatively, start the frontend and backend in separate terminals:
+
+```sh
+pnpm dev:web
+pnpm dev:api
+```
+
+Open http://127.0.0.1:4173. The backend listens only on http://127.0.0.1:8000; Vite proxies `/api` there. API documentation is at http://127.0.0.1:8000/docs. Both servers reload on source changes; stop them together with Ctrl+C. Change the parameters to update the model immediately. Drag to rotate, scroll to zoom, and right-drag to pan. Focus the canvas and use arrow keys to pan with the keyboard.
 
 ## Build
 
 ```sh
-npm run build
+pnpm build
+pnpm typecheck
 ```
 
-The build includes TypeScript checking.
+The build includes TypeScript checking and writes `apps/web/dist/`. Only the frontend has build/typecheck tasks; the Python service runs directly and does not have a fabricated JavaScript build. Turbo caches frontend build, typecheck, and test tasks. Native backend tests always run uncached because their results depend on the local Python/native runtime. Development tasks are persistent and uncached.
 
 ## Appearance
 
-Use **Dark mode** or **Light mode** in the header to switch the entire workspace, including the 3D preview. Light is the default and your choice is saved locally. Switching themes preserves the design, image mapping, and camera; reloading still resets the design.
+Use **Dark mode** or **Light mode** in the header to switch the workspace and preview surroundings. Printable base/pin colors are independent of the theme. Light is the default and your appearance choice is saved locally. Switching themes preserves the design, image mapping, colors, and camera; reloading still resets the design.
 
 ## Project structure
 
 ```text
-src/
-├── main.tsx
-├── app/
-│   ├── App.tsx
-│   ├── App.test.tsx
-│   ├── ThemeToggle.tsx
-│   ├── ThemeToggle.test.tsx
-│   └── styles.css
-├── features/
-│   ├── pin-design/
-│   │   ├── model.ts
-│   │   ├── model.test.ts
-│   │   ├── ParameterField.tsx
-│   │   └── ParameterField.test.tsx
-│   ├── image-mapping/
-│   │   ├── image-mapping.ts
-│   │   ├── image-mapping.test.ts
-│   │   ├── sampling.ts
-│   │   ├── sampling.test.ts
-│   │   ├── sample-image.ts
-│   │   ├── useSourceImage.ts
-│   │   ├── useSourceImage.test.ts
-│   │   ├── ImageMappingPanel.tsx
-│   │   └── ImageMappingPanel.test.tsx
-│   └── preview/
-│       ├── preview.ts
-│       ├── preview.test.ts
-│       ├── appearance.ts
-│       ├── orientation-helper.ts
-│       ├── orientation-helper.test.ts
-│       ├── camera-fit.ts
-│       ├── camera-fit.test.ts
-│       ├── pin-grid.ts
-│       ├── pin-grid.test.ts
-│       ├── ModelPreview.tsx
-│       └── ModelPreview.test.tsx
-└── test/
-    ├── setup.ts
-    └── render.tsx
+apps/
+├── web/                         # @pin-art/web
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── app/                 # Composition, theme, styling
+│   │   ├── features/
+│   │   │   ├── pin-design/
+│   │   │   ├── image-mapping/
+│   │   │   ├── preview/
+│   │   │   └── export/
+│   │   └── test/                # Shared test setup/render wrapper
+│   ├── public/
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── vitest.config.ts
+└── api/                         # @pin-art/api
+    ├── pin_art/                 # API, geometry, layout, writers, tests
+    ├── pyproject.toml
+    ├── uv.lock
+    ├── .python-version
+    └── package.json             # Turbo adapter calling uv, no JS dependencies
+docs/
+├── PRD.md
+└── decisions/
+package.json                    # Root commands and Turbo dependency
+pnpm-workspace.yaml
+pnpm-lock.yaml
+turbo.json
 ```
 
-The app composes the feature modules. Pin design owns geometry parameters and layout validation; image mapping owns decoding, sampling, and upload controls; preview owns Three.js rendering and its React integration. Tests live beside the code they verify. Shared test setup and the Mantine render wrapper live in `src/test/`.
+The app composes the feature modules. Pin design owns geometry parameters and layout validation; image mapping owns decoding, sampling, and upload controls; preview owns Three.js rendering and its React integration. Tests live beside the code they verify. Shared test setup and the Mantine render wrapper live in `apps/web/src/test/`.
+
+`apps/web/src/features/export/` owns export controls, request snapshots, validation, and the download client. `apps/api/pin_art/` owns API validation, process isolation, geometry, plate layout, STL/3MF generation, and colocated Python tests. pnpm manages JavaScript packages; uv manages the API's Python environment. The API's private `package.json` only exposes commands to Turbo. Shared packages and a Python workspace will be added only when there is an actual second consumer.
 
 ## Tests
 
 ```sh
-npm test
-npm run test:watch
+pnpm test
+pnpm test:web
+pnpm test:api
+pnpm --filter @pin-art/web test:watch
 ```
 
 Vitest and React Testing Library cover grid dimensions and warnings, image aspect fitting and grayscale mapping, file selection, image decode failures and upload races, bitmap/URL cleanup, input validation, slider keyboard interaction, workspace updates, and preview lifecycle and view buttons.
@@ -105,4 +112,23 @@ The image is centered over the pin grid with its aspect ratio preserved. Transpa
 
 **Min extension** sets the shortest configured height; **Max extension** in the Pin array panel sets the tallest. Actual mapped heights are displayed alongside the source preview. Reducing the maximum below the minimum also reduces the minimum. Invalid inputs keep the last valid mapping. Removing the image returns to uniform heights; resetting parameters keeps the image while restoring the default dimensions, range, and inversion.
 
-Printable mesh export and moving-pin hardware are planned for later versions.
+## Model downloads
+
+Choose **Base color** and **Pin color** in Export. These colors appear in the assembled preview and are retained in 3MF. Image processing stays in the browser; downloads send only the resolved heights, parameters, and material indices to the local backend.
+
+- **Fixed:** STL is a watertight union of the solid base and all pins. 3MF is an assembled sculpture with separate material regions.
+- **Detachable:** the base has blind sockets; straight pins include insertion length and are printed upright, separate from the base. Pins fill remaining plate space, then additional plates, up to 36.
+- **3MF:** one Bambu-compatible project with standard color properties, logical filament assignments, and plate ownership. Identical colors share one filament slot. Printer, nozzle, temperatures, slicing presets, and physical AMS assignments are not embedded.
+- **Detachable STL:** ZIP with one STL per plate and `manifest.json` containing indexed pin names, heights, colors, placement transforms, and socket settings. STL itself cannot preserve colors or multiple plates.
+
+Socket defaults are **2 mm insertion depth** and **0.2 mm diametral clearance** (`socket diameter = pin diameter + clearance`). Require a 1 mm floor and 0.8 mm socket walls/edge material. Test-print a fit sample: these defaults do not guarantee fit for every printer/material. This is not a sliding/captive-pin mechanism.
+
+Detachable plate defaults are a 256 × 256 mm usable area, 5 mm edge margins, and 4 mm part separation. Oversized bases/pins, invalid sockets, overflowing grids, and overlapping fixed pins block export; invalid numeric drafts use the last valid design. Plates use a deterministic shelf layout, not an optimal packing solver. Preview shows the assembled design, not socket cutaways or print-plate layouts.
+
+Open 3MF as a project in Bambu Studio, select suitable printer/material/process presets, and check colors, plate assignments, height limits, exclusion zones, brims, and purge structures before slicing. Files contain nominal colors, not calibrated physical color reproduction. Bambu GUI verification is left to the user; strict lib3mf read-back and automated geometry/package checks do not replace slicer or physical-print validation.
+
+Requests are capped at 2 MB and 10,000 pins. One isolated export worker runs at a time, with a 120-second timeout; a busy or failed export can be retried. Temporary artifacts are deleted after delivery or failure. No images, design database, public deployment, or production job queue are introduced.
+
+Measured locally on Apple Silicon with 64-segment pins: the 320-pin examples export in roughly a second; 10,000-pin fixed 3MF takes under a second, while socketed 3MF and unioned STL take roughly 40–60 seconds. Dense STL outputs can exceed 120 MB and require multiple GB of worker memory. These are measurements, not guaranteed performance limits; reduce the pin count if exports time out or memory is constrained. Fixed STL requires a positive gap between adjacent pins because exact point-tangent cylinders cannot form a strictly manifold union without changing the geometry.
+
+`pnpm --filter @pin-art/web preview` serves the built frontend without an API proxy. To use exports locally, run `pnpm dev`; a deployed build needs a same-origin `/api` reverse proxy. The old root `npm` commands and manual `backend/.venv` setup have been replaced by the commands above.
