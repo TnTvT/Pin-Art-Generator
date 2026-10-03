@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
+import { DEFAULTS } from '../pin-design/model';
+import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
+import { FILAMENT_CATALOG } from '../filaments/catalog';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport } from './export-request';
 
 describe('export request mapping', () => {
   it('resolves uniform heights and material indices without sending images', () => {
-    const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_COLORS, DEFAULT_EXPORT_OPTIONS, 'stl');
+    const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, 'stl');
     expect(request).toEqual({
       format: 'stl', mode: 'fixed', parameters: DEFAULTS,
       heights: Array(320).fill(20), materials: ['#5b6b78', '#2dada3'],
+      filamentProfiles: ['generic-pla', 'generic-pla'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),
       socket: { insertionDepth: 2, clearance: 0.2 }, plate: { width: 256, depth: 256 },
     });
@@ -16,13 +19,30 @@ describe('export request mapping', () => {
   it('copies row-major heights and parameters and deduplicates hex colors case-insensitively', () => {
     const parameters = { ...DEFAULTS, columns: 2, rows: 2 };
     const heights = new Float32Array([2, 8, 4, 20]);
-    const request = buildExportRequest(parameters, heights, { base: '#ABCDEF', pins: '#abcdef' }, DEFAULT_EXPORT_OPTIONS, '3mf');
+    const request = buildExportRequest(parameters, heights, { base: { color: '#ABCDEF', filamentId: null }, pins: { color: '#abcdef', filamentId: null } }, DEFAULT_EXPORT_OPTIONS, '3mf');
     parameters.width = 5;
     heights[0] = 9;
     expect(request.parameters.width).toBe(120);
     expect(request.heights).toEqual([2, 8, 4, 20]);
     expect(request.materials).toEqual(['#abcdef']);
+    expect(request.filamentProfiles).toEqual(['generic-pla']);
     expect(request.pinMaterials).toEqual([0, 0, 0, 0]);
+  });
+
+  it('deduplicates the same profile and RGB even when catalog product IDs differ', () => {
+    const blueColors = FILAMENT_CATALOG.filter((filament) => filament.color === 'Blue' && filament.type === 'Basic');
+    expect(blueColors).toHaveLength(2);
+    const selections = blueColors.map((filament) => ({ color: filament.hex, filamentId: filament.id }));
+    const request = buildExportRequest(DEFAULTS, undefined, { base: selections[0], pins: selections[1] }, DEFAULT_EXPORT_OPTIONS, '3mf');
+    expect(request.materials).toEqual(['#0a2989']);
+    expect(request.filamentProfiles).toEqual(['bambu-pla-basic']);
+    expect(request.pinMaterials).toEqual(Array(320).fill(0));
+  });
+
+  it('rejects unknown catalog IDs and mismatched preset colors instead of substituting', () => {
+    for (const filamentId of ['missing', FILAMENT_CATALOG[0].id]) {
+      expect(() => buildExportRequest(DEFAULTS, undefined, { ...DEFAULT_MODEL_MATERIALS, base: { color: '#123456', filamentId } }, DEFAULT_EXPORT_OPTIONS, '3mf')).toThrow(/do not match/);
+    }
   });
 });
 
@@ -36,7 +56,7 @@ describe('print validation', () => {
     expect(validateExport(tall, new Float32Array(320).fill(20), DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
     const customBed = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const, plate: { width: 300, depth: 256 } };
     expect(validateExport(DEFAULTS, undefined, customBed, '3mf')).toMatch(/256/);
-    expect(() => buildExportRequest(large, undefined, DEFAULT_MODEL_COLORS, DEFAULT_EXPORT_OPTIONS, '3mf')).toThrow(/X1C/);
+    expect(() => buildExportRequest(large, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf')).toThrow(/X1C/);
   });
   it('blocks overlap and a grid outside the base', () => {
     expect(validateExport({ ...DEFAULTS, spacing: 1 }, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/overlap/i);

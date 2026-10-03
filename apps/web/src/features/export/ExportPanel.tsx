@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, ColorInput, Group, NumberInput, SegmentedControl } from '@mantine/core';
-import { type ModelColors, type Parameters } from '../pin-design/model';
+import { Alert, Button, Group, NumberInput, SegmentedControl } from '@mantine/core';
+import { type Parameters } from '../pin-design/model';
+import { type ModelMaterials } from '../filaments/materials';
+import FilamentColorField from '../filaments/FilamentColorField';
 import { BAMBU_PROFILE, buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport, type ExportFormat, type ExportMode, type ExportOptions } from './export-request';
 import { fetchExport } from './export-client';
 
 interface ExportPanelProps {
   parameters: Parameters;
   heights?: Float32Array;
-  colors: ModelColors;
-  onColorsChange: (colors: ModelColors) => void;
+  materials: ModelMaterials;
+  onMaterialsChange: (materials: ModelMaterials) => void;
   blockedReason?: string | null;
 }
 
 type NumericSetting = 'insertionDepth' | 'clearance' | 'bedWidth' | 'bedDepth';
 
-export default function ExportPanel({ parameters, heights, colors, onColorsChange, blockedReason }: ExportPanelProps) {
+export default function ExportPanel({ parameters, heights, materials, onMaterialsChange, blockedReason }: ExportPanelProps) {
   const [options, setOptions] = useState<ExportOptions>(() => ({ ...DEFAULT_EXPORT_OPTIONS, socket: { ...DEFAULT_EXPORT_OPTIONS.socket }, plate: { ...DEFAULT_EXPORT_OPTIONS.plate } }));
   const [draft, setDraft] = useState<Record<NumericSetting, number | string>>({ insertionDepth: 2, clearance: 0.2, bedWidth: 256, bedDepth: 256 });
-  const [colorDraft, setColorDraft] = useState<ModelColors>({ ...colors });
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failedFormat, setFailedFormat] = useState<ExportFormat>('3mf');
@@ -61,12 +62,8 @@ export default function ExportPanel({ parameters, heights, colors, onColorsChang
       error={valid ? undefined : `Using last valid value: ${lastValid} mm.`} />;
   }
 
-  function colorField(name: keyof ModelColors, label: string) {
-    return <ColorInput label={label} format="hex" value={colorDraft[name]} onChange={(value) => {
-      setColorDraft((current) => ({ ...current, [name]: value }));
-      if (/^#[0-9a-f]{6}$/i.test(value)) onColorsChange({ ...colors, [name]: value.toLowerCase() });
-    }} size="sm" disabled={busy !== null} eyeDropperButtonProps={{ 'aria-label': `Pick ${label.toLowerCase()} from screen` }}
-      error={/^#[0-9a-f]{6}$/i.test(colorDraft[name]) ? undefined : `Using last valid color: ${colors[name]}.`} />;
+  function colorField(name: keyof ModelMaterials, label: string) {
+    return <FilamentColorField label={label} value={materials[name]} onChange={(value) => onMaterialsChange({ ...materials, [name]: value })} disabled={busy !== null} />;
   }
 
   async function exportModel(format: ExportFormat) {
@@ -78,7 +75,7 @@ export default function ExportPanel({ parameters, heights, colors, onColorsChang
     setFeedback(null);
     setFailedFormat(format);
     try {
-      const request = buildExportRequest(parameters, heights, colors, options, format);
+      const request = buildExportRequest(parameters, heights, materials, options, format);
       const result = await fetchExport(request, requestController.signal);
       if (!mounted.current || requestController.signal.aborted) return;
       const url = URL.createObjectURL(result.blob);
@@ -107,7 +104,8 @@ export default function ExportPanel({ parameters, heights, colors, onColorsChang
     <section className="export-panel controls-panel" aria-label="Print export" aria-busy={busy !== null}>
       <div className="controls-heading"><h2>Print export</h2><span>02 / MAKE</span></div>
       <div className="export-settings">
-        <div className="field-pair">{colorField('base', 'Base color')}{colorField('pins', 'Pin color')}</div>
+        <p className="field-help">Bambu PLA Basic and Matte selections set both color and the X1C filament preset in 3MF. Custom colors use Generic PLA; check its suitability before printing.</p>
+        <div className="filament-color-fields">{colorField('base', 'Base color')}{colorField('pins', 'Pin color')}</div>
         <fieldset className="export-mode">
           <legend>Export mode</legend>
           <SegmentedControl fullWidth value={options.mode} onChange={(value) => setOptions((current) => ({ ...current, mode: value as ExportMode }))}

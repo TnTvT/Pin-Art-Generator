@@ -37,7 +37,21 @@ def test_aliases_round_trip_frontend_payload():
     assert request.base_material == 0
     assert request.pin_materials == [1, 0, 1, 0]
     assert request.socket.insertion_depth == 2
+    assert request.model_dump(by_alias=True, exclude_none=True) == payload
+
+
+def test_filament_profiles_are_optional_and_round_trip_when_supplied():
+    assert ExportRequest.model_validate(request_payload()).filament_profiles is None
+    payload = request_payload(filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
+    request = ExportRequest.model_validate(payload)
+    assert request.filament_profiles == payload["filamentProfiles"]
     assert request.model_dump(by_alias=True) == payload
+
+
+@pytest.mark.parametrize("profiles", [[], ["generic-pla"], ["generic-pla"] * 3, ["bambu-pla-basic", "unknown"], ["generic-pla", 1]])
+def test_filament_profiles_must_be_allowlisted_and_match_palette(profiles):
+    with pytest.raises(ValidationError):
+        ExportRequest.model_validate(request_payload(filamentProfiles=profiles))
 
 
 @pytest.mark.parametrize("field", ["width", "depth", "thickness", "spacing", "diameter", "extension"])

@@ -55,6 +55,7 @@ apps/
 │   │   │   ├── pin-design/
 │   │   │   ├── image-mapping/
 │   │   │   ├── preview/
+│   │   │   ├── filaments/        # Bundled color catalog and selection UI
 │   │   │   └── export/
 │   │   └── test/                # Shared test setup/render wrapper
 │   ├── public/
@@ -114,11 +115,15 @@ The image is centered over the pin grid with its aspect ratio preserved. Transpa
 
 ## Model downloads
 
-Choose **Base color** and **Pin color** in Export. These colors appear in the assembled preview and are retained in 3MF. Image processing stays in the browser; downloads send only the resolved heights, parameters, and material indices to the local backend.
+Choose **Base filament** and **Pin filament** in Export. Search the bundled Bambu Lab PLA Basic/Matte catalog by color name, product code, family, or hex, or choose **Custom color** for swatches, the color picker, or hex entry. Existing model colors remain unchanged until you make a selection. The selected colors appear in the assembled preview and are retained in 3MF alongside the selected material family. Image processing stays in the browser; downloads send only resolved heights, parameters, colors, material-profile keys, and material indices to the local backend.
+
+The offline catalog in `apps/web/src/features/filaments/data/bambu-pla.ts` stores brand, material, type, color, product code, hex, RGB, and source record IDs. Its September 30, 2026 snapshot contains 32 [PLA Basic](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/basic) and 25 [PLA Matte](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/matte) entries from 3D Filament Profiles, including distinct records sharing an RGB value. These are reference colors, not calibrated printed-color measurements or an availability guarantee. Basic selections reference **Bambu PLA Basic @BBL X1C**; Matte selections reference **Bambu PLA Matte @BBL X1C**. Custom colors reference **Generic PLA**, which users must verify is suitable for their actual material. Choosing Custom color clears the previous family even when RGB stays unchanged. No network request is needed to browse the presets. Update the data, capture date, and catalog tests together when refreshing the snapshot.
+
+Selected colors live in the project's filament palette, not in modified system-preset default colors. The export includes single-nozzle logical filament routing arrays checked against Bambu Studio 2.7.1 source. Open the 3MF as a **project**, not geometry only, to load its printer/material settings. Automated package checks do not certify Bambu GUI import or slicing; please verify both in your installed version.
 
 - **Fixed:** STL is a watertight union of the solid base and all pins. 3MF is an assembled sculpture with separate material regions.
 - **Detachable:** plate 1 contains only the centered socket base. Straight pins include insertion length and are printed upright on separate pin-only plates, starting with plate 2. Each group is centered; at most 36 total plates are generated.
-- **3MF:** one Bambu-compatible project with standard colors, logical filament assignments, and plate ownership. Identical colors share one filament slot. The project selects **Bambu Lab X1 Carbon 0.4 nozzle** and references **0.20mm Standard @BBL X1C** through Bambu system-preset inheritance. The physical bed is 256 × 256 mm; the referenced profile's printable height is 250 mm. Material profiles and physical AMS assignments remain user choices; no third-party printer template or temperature overrides are copied.
+- **3MF:** one Bambu-compatible project with standard colors, selected filament presets, logical filament assignments, and plate ownership. Only identical **color + material profile** pairs share a filament slot; Basic and Matte with matching RGB remain separate. The project selects **Bambu Lab X1 Carbon 0.4 nozzle** and references **0.20mm Standard @BBL X1C** through Bambu system-preset inheritance. The physical bed is 256 × 256 mm; the referenced profile's printable height is 250 mm. Filament temperatures/flow inherit from Bambu Studio's installed system profiles; no third-party printer template, hardcoded temperature overrides, or physical AMS assignments are copied. Verify profiles and assign real spools before slicing. Other slicers may ignore Bambu profile metadata.
 - **Detachable STL:** ZIP with one STL per plate and `manifest.json` containing indexed pin names, heights, colors, placement transforms, and socket settings. STL itself cannot preserve colors or multiple plates.
 
 Socket defaults are **2 mm insertion depth** and **0.2 mm diametral clearance** (`socket diameter = pin diameter + clearance`). Require a 1 mm floor and 0.8 mm socket walls/edge material. Test-print a fit sample: these defaults do not guarantee fit for every printer/material. This is not a sliding/captive-pin mechanism.

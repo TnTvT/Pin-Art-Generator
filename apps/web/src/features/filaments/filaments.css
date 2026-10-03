@@ -1,0 +1,12 @@
+.filament-color-fields, .filament-color-field { display: grid; gap: 12px; min-width: 0; }
+.filament-color-field { gap: 8px; }
+.filament-color-field .mantine-Select-label { font-size: 11px; font-weight: 500; color: var(--muted); }
+.filament-color-field .mantine-Select-input { border-color: var(--border); background: var(--input); font-size: 12px; }
+.filament-option { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; font-size: 12px; }
+.filament-swatch { width: 18px; height: 18px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 50%; }
+.filament-check { margin-left: auto; color: var(--accent); }
+.filament-details { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input); }
+.filament-details > div { min-width: 0; display: grid; gap: 3px; }
+.filament-details span, .filament-details a { font-size: 10px; color: var(--muted); }
+.filament-details strong { font-size: 11px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.filament-details a { margin-left: auto; white-space: nowrap; color: var(--accent); }

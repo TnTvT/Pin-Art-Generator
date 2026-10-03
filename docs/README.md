@@ -20,6 +20,8 @@ Pin Art Studio's product requirements and significant decisions live here.
 | [ADR-008](decisions/008-detachable-sockets-and-plates.md) | Blind sockets, diametral fit clearance, and multi-plate printing layouts |
 | [ADR-009](decisions/009-pnpm-turbo-uv-monorepo.md) | pnpm/Turborepo app orchestration with an independently uv-managed Python service |
 | [ADR-010](decisions/010-x1c-profile-and-centered-export-plates.md) | X1C preset identity, centered reusable meshes, and dedicated base/pin plates |
+| [ADR-011](decisions/011-bundled-filament-color-catalog.md) | Offline Bambu PLA catalog, source provenance, and preset-first color selection |
+| [ADR-012](decisions/012-selected-filament-profiles-in-3mf.md) | Preserve material identity and reference X1C filament presets in 3MF |
 
 These records were written on September 30, 2026, from the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

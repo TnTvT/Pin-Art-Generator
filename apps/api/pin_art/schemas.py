@@ -11,6 +11,7 @@ NonnegativeNumber = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 GridCount = Annotated[int, Field(ge=1, le=100, strict=True)]
 MaterialIndex = Annotated[int, Field(ge=0, strict=True)]
 HexRGB = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+FilamentProfile = Literal["bambu-pla-basic", "bambu-pla-matte", "generic-pla"]
 
 
 class DomainModel(BaseModel):
@@ -44,6 +45,7 @@ class ExportRequest(DomainModel):
     parameters: Parameters
     heights: list[PositiveNumber] = Field(max_length=10000)
     materials: list[HexRGB] = Field(min_length=1, max_length=16)
+    filament_profiles: list[FilamentProfile] | None = Field(default=None, alias="filamentProfiles", min_length=1, max_length=16)
     base_material: MaterialIndex = Field(alias="baseMaterial")
     pin_materials: list[MaterialIndex] = Field(alias="pinMaterials", max_length=10000)
     socket: SocketParameters = Field(default_factory=SocketParameters)
@@ -53,6 +55,8 @@ class ExportRequest(DomainModel):
     def validate_design(self) -> Self:
         parameters = self.parameters
         count = parameters.columns * parameters.rows
+        if self.filament_profiles is not None and len(self.filament_profiles) != len(self.materials):
+            raise ValueError("filamentProfiles length must match the material palette")
         if len(self.heights) != count or len(self.pin_materials) != count:
             raise ValueError("heights and pinMaterials lengths must match the grid count")
         if self.base_material >= len(self.materials) or any(index >= len(self.materials) for index in self.pin_materials):

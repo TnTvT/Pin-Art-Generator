@@ -7,14 +7,16 @@ import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
 import useSourceImage from '../features/image-mapping/useSourceImage';
 import { mapImageToPins } from '../features/image-mapping/image-mapping';
 import ExportPanel from '../features/export/ExportPanel';
-import { DEFAULTS, DEFAULT_MODEL_COLORS, formatDimension, getMetrics, getWarnings, type ModelColors, type Parameters } from '../features/pin-design/model';
+import { DEFAULTS, formatDimension, getMetrics, getWarnings, type Parameters } from '../features/pin-design/model';
+import { DEFAULT_MODEL_MATERIALS, type ModelMaterials } from '../features/filaments/materials';
 
 type Draft = Record<keyof Parameters, number | string>;
 
 export default function App() {
   const [parameters, setParameters] = useState<Parameters>({ ...DEFAULTS });
   const [draft, setDraft] = useState<Draft>({ ...DEFAULTS });
-  const [modelColors, setModelColors] = useState<ModelColors>({ ...DEFAULT_MODEL_COLORS });
+  const [modelMaterials, setModelMaterials] = useState<ModelMaterials>(() => ({ base: { ...DEFAULT_MODEL_MATERIALS.base }, pins: { ...DEFAULT_MODEL_MATERIALS.pins } }));
+  const modelColors = useMemo(() => ({ base: modelMaterials.base.color, pins: modelMaterials.pins.color }), [modelMaterials.base.color, modelMaterials.pins.color]);
   const image = useSourceImage();
   const [minimum, setMinimum] = useState(2);
   const [inverted, setInverted] = useState(false);
@@ -111,7 +113,7 @@ export default function App() {
               </Accordion>
               <div className="controls-bottom"><Button variant="default" fullWidth onClick={resetParameters}>Reset parameters</Button></div>
             </section>
-            <ExportPanel parameters={parameters} heights={mapping.heightMap?.heights} colors={modelColors} onColorsChange={setModelColors} blockedReason={exportBlockedReason} />
+            <ExportPanel parameters={parameters} heights={mapping.heightMap?.heights} materials={modelMaterials} onMaterialsChange={setModelMaterials} blockedReason={exportBlockedReason} />
           </aside>
           <div className="preview-column">
             <ModelPreview parameters={parameters} heights={mapping.heightMap?.heights} colors={modelColors} />

@@ -49,7 +49,9 @@ def test_colored_multiplate_package_reads_strictly(tmp_path):
         assert settings["printable_area"] == ["0x0", "256x0", "256x256", "0x256"]
         assert settings["printable_height"] == "250"
         assert settings["print_settings_id"] == "0.20mm Standard @BBL X1C"
-        assert settings["inherits_group"] == ["0.20mm Standard @BBL X1C", "", "", "Bambu Lab X1 Carbon 0.4 nozzle"]
+        assert settings["inherits_group"] == ["0.20mm Standard @BBL X1C", "Generic PLA", "Generic PLA", "Bambu Lab X1 Carbon 0.4 nozzle"]
+        assert settings["filament_settings_id"] == ["Generic PLA", "Generic PLA"]
+        assert settings["filament_ids"] == ["GFL99", "GFL99"]
         assert "nozzle_temperature" not in settings
         root = ET.fromstring(archive.read("3D/3dmodel.model"))
         namespace = {"m": "http://schemas.microsoft.com/3dmanufacturing/material/2015/02"}
@@ -70,6 +72,93 @@ def test_identical_materials_are_compacted(tmp_path):
         assert settings["filament_colour"] == ["#FF0000"]
         config = ET.fromstring(archive.read("Metadata/model_settings.config"))
         assert {entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")} == {"1"}
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("colors", [["#FFFFFF", "#FFFFFF"], ["#112233", "#E8AFCF"]])
+def test_selected_basic_and_matte_profiles_survive_with_matching_part_indices(mode, colors, tmp_path):
+    payload = small_request(mode).model_dump(by_alias=True)
+    payload.update(materials=colors, filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
+    request = ExportRequest.model_validate(payload)
+    data = export_3mf(request, build_plates(request))
+    output = tmp_path / "filament-profiles.3mf"
+    output.write_bytes(data)
+    model = lib3mf.get_wrapper().CreateModel()
+    reader = model.QueryReader("3mf")
+    reader.SetStrictModeActive(True)
+    reader.ReadFromFile(str(output))
+    assert reader.GetWarningCount() == 0
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+        names = ["Bambu PLA Basic @BBL X1C", "Bambu PLA Matte @BBL X1C"]
+        assert settings["filament_settings_id"] == names
+        assert settings["filament_ids"] == ["GFA00", "GFA01"]
+        assert settings["filament_type"] == ["PLA", "PLA"]
+        assert settings["filament_vendor"] == ["Bambu Lab", "Bambu Lab"]
+        assert settings["inherits_group"] == ["0.20mm Standard @BBL X1C", *names, "Bambu Lab X1 Carbon 0.4 nozzle"]
+        assert settings["different_settings_to_system"] == ["", "", "", ""]
+        assert settings["filament_colour"] == settings["filament_multi_colour"] == colors
+        assert "default_filament_colour" not in settings
+        assert "nozzle_temperature" not in settings
+        assert "filament_ams_mapping" not in settings
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2", "2"]
+        assert len(config.findall("plate")) == (1 if mode == "fixed" else 2)
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("material_count", [1, 2, 16])
+def test_final_package_has_aligned_bambu_27_filament_routing(mode, material_count):
+    payload = small_request(mode).model_dump(by_alias=True)
+    payload.update(
+        materials=[f"#{index:06X}" for index in range(material_count)],
+        filamentProfiles=["bambu-pla-basic"] * material_count,
+        baseMaterial=0,
+        pinMaterials=[min(1, material_count - 1)] * 2,
+    )
+    request = ExportRequest.model_validate(payload)
+    parts = [
+        Part(f"Material {index}", manifold3d.Manifold.cube((1, 1, 1)), index, np.eye(4), "cube")
+        for index in range(material_count)
+    ]
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, [Plate(0, parts)]))) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+    variants = settings.get("filament_extruder_variant", ["Direct Drive Standard"])
+    indices = settings.get("filament_self_index", ["1"])
+    assert len(variants) == len(indices) == len(settings["filament_colour"])
+    assert variants == ["Direct Drive Standard"] * material_count
+    assert indices == [str(index + 1) for index in range(material_count)]
+    assert settings["extruder_variant_list"] == ["Direct Drive Standard"]
+    assert settings["nozzle_diameter"] == ["0.4"]
+    assert settings["different_settings_to_system"] == [""] * (material_count + 2)
+    assert "default_filament_colour" not in settings
+
+
+def test_material_compaction_uses_color_and_profile_and_drops_unused_materials():
+    payload = small_request().model_dump(by_alias=True)
+    payload.update(materials=["#FFFFFF", "#ffffff", "#000000"], filamentProfiles=["bambu-pla-basic", "bambu-pla-basic", "bambu-pla-matte"])
+    request = ExportRequest.model_validate(payload)
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plates(request)))) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+        assert settings["filament_settings_id"] == ["Bambu PLA Basic @BBL X1C"]
+        assert settings["filament_self_index"] == ["1"]
+        assert settings["filament_extruder_variant"] == ["Direct Drive Standard"]
+        assert settings["filament_colour"] == ["#FFFFFF"]
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert {entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")} == {"1"}
+
+
+def test_profiles_follow_used_palette_order_including_generic_color_fallback():
+    payload = small_request("fixed").model_dump(by_alias=True)
+    payload.update(materials=["#FFFFFF", "#ffffff"], filamentProfiles=["bambu-pla-basic", "generic-pla"], baseMaterial=1, pinMaterials=[0, 0])
+    request = ExportRequest.model_validate(payload)
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plates(request)))) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+        assert settings["filament_settings_id"] == ["Generic PLA", "Bambu PLA Basic @BBL X1C"]
+        assert settings["filament_ids"] == ["GFL99", "GFA00"]
+        assert settings["filament_colour"] == ["#FFFFFF", "#FFFFFF"]
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2", "2"]
 
 
 def test_actual_parts_preserve_names_geometry_properties_and_plate_membership():

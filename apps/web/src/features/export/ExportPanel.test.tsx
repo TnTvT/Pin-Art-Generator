@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render';
 import ThemeToggle from '../../app/ThemeToggle';
-import { DEFAULTS, DEFAULT_MODEL_COLORS, type Parameters } from '../pin-design/model';
+import { DEFAULTS, type Parameters } from '../pin-design/model';
+import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
 import ExportPanel from './ExportPanel';
 
 const fetchMock = vi.fn();
@@ -13,8 +14,8 @@ const revokeObjectURL = vi.fn();
 let clickDownload: ReturnType<typeof vi.spyOn>;
 
 function Panel({ parameters = DEFAULTS, heights, blockedReason = null }: { parameters?: Parameters; heights?: Float32Array; blockedReason?: string | null }) {
-  const [colors, setColors] = useState({ ...DEFAULT_MODEL_COLORS });
-  return <><ThemeToggle /><ExportPanel parameters={parameters} heights={heights} colors={colors} onColorsChange={setColors} blockedReason={blockedReason} /></>;
+  const [materials, setMaterials] = useState({ ...DEFAULT_MODEL_MATERIALS });
+  return <><ThemeToggle /><ExportPanel parameters={parameters} heights={heights} materials={materials} onMaterialsChange={setMaterials} blockedReason={blockedReason} /></>;
 }
 
 function response(plateCount = 2) {
@@ -29,6 +30,15 @@ beforeEach(() => {
 });
 
 describe('export panel', () => {
+  it('keeps filament selectors without the catalog reference footer', () => {
+    renderWithProviders(<ExportPanel parameters={DEFAULTS} materials={DEFAULT_MODEL_MATERIALS} onMaterialsChange={vi.fn()} />);
+    expect(screen.getByRole('combobox', { name: 'Base filament' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Pin filament' })).toBeInTheDocument();
+    expect(screen.queryByText(/Color reference:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /PLA Basic source/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /PLA Matte source/ })).not.toBeInTheDocument();
+  });
+
   it('defaults to printable colors and fixed mode, hiding detachable fields', () => {
     renderWithProviders(<Panel />);
     expect(screen.getByLabelText('Base color')).toHaveValue('#5b6b78');

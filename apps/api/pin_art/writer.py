@@ -87,10 +87,13 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
     group = model.GetMetaDataGroup()
     group.AddMetaData("", "Application", "BambuStudio-02.04.00.70", "xs:string", False)
     group.AddMetaData("", "Title", "Pin Art Studio", "xs:string", False)
-    palette = list(dict.fromkeys(request.materials[part.material].upper() for plate in plates for part in plate.parts))
+    profiles = request.filament_profiles or ["generic-pla"] * len(request.materials)
+    materials = [(color.upper(), profile) for color, profile in zip(request.materials, profiles, strict=True)]
+    palette = list(dict.fromkeys(materials[part.material] for plate in plates for part in plate.parts))
+    palette_colors = [material[0] for material in palette]
     color_group = model.AddColorGroup()
     color_indices = {}
-    for color in palette:
+    for color in dict.fromkeys(palette_colors):
         channels = [int(color[offset:offset + 2], 16) for offset in (1, 3, 5)]
         color_indices[color] = color_group.AddColor(wrapper.RGBAToColor(*channels, 255))
     settings = ET.Element("config")
@@ -99,12 +102,13 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
     build_transforms = {}
 
     def resource(part: Part):
-        color = request.materials[part.material].upper()
-        key = (part.cache_key, color)
+        material = materials[part.material]
+        color = material[0]
+        key = (part.cache_key, material)
         if key not in mesh_cache:
             mesh_cache[key] = add_mesh(model, wrapper, part, color_group, color_indices[color])
         mesh, recenter = mesh_cache[key]
-        return mesh, part.transform @ recenter, palette.index(color) + 1
+        return mesh, part.transform @ recenter, palette.index(material) + 1
 
     def assembly(parts: list[Part], name: str, build_matrix: np.ndarray):
         root = model.AddComponentsObject()
@@ -147,11 +151,9 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
             metadata(instance, "identify_id", object_id)
 
     project_settings = {
-        **project_profile(len(palette)),
-        "filament_colour": palette,
-        "filament_multi_colour": palette,
-        "default_filament_colour": palette,
-        "filament_settings_id": [""] * len(palette),
+        **project_profile([material[1] for material in palette]),
+        "filament_colour": palette_colors,
+        "filament_multi_colour": palette_colors,
     }
     model.AddCustomContentType("config", "application/octet-stream")
     documents = {

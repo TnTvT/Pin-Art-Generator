@@ -1,5 +1,8 @@
 import asyncio
+import io
+import json
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -43,6 +46,30 @@ def test_api_downloads_fixed_and_detachable_models():
             assert response.headers["X-Plate-Count"] == ("2" if mode == "detachable" else "1")
             assert "attachment" in response.headers["Content-Disposition"]
             assert len(response.content) > 84
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_api_worker_preserves_selected_filament_profiles(mode):
+    payload = request_payload(mode=mode, materials=["#FFFFFF", "#FFFFFF"], filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=payload)
+        assert response.status_code == 200, response.text[:200]
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            settings = json.loads(archive.read("Metadata/project_settings.config"))
+            assert settings["filament_settings_id"] == ["Bambu PLA Basic @BBL X1C", "Bambu PLA Matte @BBL X1C"]
+            assert settings["filament_colour"] == ["#FFFFFF", "#FFFFFF"]
+            assert settings["filament_extruder_variant"] == ["Direct Drive Standard", "Direct Drive Standard"]
+            assert settings["filament_self_index"] == ["1", "2"]
+            assert settings["different_settings_to_system"] == ["", "", "", ""]
+            assert "default_filament_colour" not in settings
+
+
+def test_api_rejects_unknown_filament_profiles_with_readable_error():
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload(filamentProfiles=["generic-pla", "injected-preset"]))
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_DESIGN"
+        assert "filamentProfiles" in response.json()["error"]["message"]
 
 
 def test_busy_requests_do_not_spawn_more_workers():

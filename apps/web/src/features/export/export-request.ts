@@ -1,4 +1,5 @@
-import { getMetrics, getWarnings, type ModelColors, type Parameters } from '../pin-design/model';
+import { getMetrics, getWarnings, type Parameters } from '../pin-design/model';
+import { resolveFilamentProfile, type FilamentProfile, type ModelMaterials } from '../filaments/materials';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = 'fixed' | 'detachable';
@@ -14,6 +15,7 @@ export interface ExportRequest extends ExportOptions {
   parameters: Parameters;
   heights: number[];
   materials: string[];
+  filamentProfiles: FilamentProfile[];
   baseMaterial: number;
   pinMaterials: number[];
 }
@@ -73,18 +75,22 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   return null;
 }
 
-export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, colors: ModelColors, options: ExportOptions, format: ExportFormat): ExportRequest {
+export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, selections: ModelMaterials, options: ExportOptions, format: ExportFormat): ExportRequest {
   const error = validateExport(parameters, heights, options, format);
   if (error) throw new Error(error);
-  const colorValues = [colors.base, colors.pins].map((color) => color.toLowerCase());
+  const selected = [selections.base, selections.pins];
+  const colorValues = selected.map((selection) => selection.color.toLowerCase());
   if (colorValues.some((color) => !/^#[0-9a-f]{6}$/.test(color))) throw new Error('Choose base and pin colors in #RRGGBB format.');
-  const materials = [...new Set(colorValues)];
+  const profiles = selected.map(resolveFilamentProfile);
+  const sameMaterial = colorValues[0] === colorValues[1] && profiles[0] === profiles[1];
+  const materials = sameMaterial ? [colorValues[0]] : colorValues;
+  const filamentProfiles = sameMaterial ? [profiles[0]] : profiles;
   const count = getMetrics(parameters).count;
   return {
     format, mode: options.mode, parameters: { ...parameters },
     heights: heights ? Array.from(heights) : Array<number>(count).fill(parameters.extension),
-    materials, baseMaterial: materials.indexOf(colorValues[0]),
-    pinMaterials: Array<number>(count).fill(materials.indexOf(colorValues[1])),
+    materials, filamentProfiles, baseMaterial: 0,
+    pinMaterials: Array<number>(count).fill(sameMaterial ? 0 : 1),
     socket: { ...options.socket }, plate: { ...options.plate },
   };
 }

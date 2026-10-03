@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
+import { DEFAULTS } from '../pin-design/model';
+import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS } from './export-request';
 import { fetchExport } from './export-client';
 
-const request = () => buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_COLORS, DEFAULT_EXPORT_OPTIONS, '3mf');
+const request = () => buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf');
 
 describe('export fetch', () => {
   it('posts JSON with an abort signal and reads binary, filename and plate count', async () => {
