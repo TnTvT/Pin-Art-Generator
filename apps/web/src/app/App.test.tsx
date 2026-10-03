@@ -41,6 +41,7 @@ describe('workspace parameter flow', () => {
     const parameters = within(sidebar).getByRole('heading', { name: 'Parameters' });
     expect(imageMapping.compareDocumentPosition(parameters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(screen.getByRole('banner')).getByText(/All dimensions in/).parentElement).toHaveTextContent('All dimensions in mm');
+    expect(within(screen.getByRole('banner')).queryByText('MVP')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument();
   });
 

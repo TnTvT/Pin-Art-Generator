@@ -63,7 +63,6 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</div>
           <h1>Pin Art<span className="brand-secondary"> Studio</span></h1>
-          <Badge variant="light" color="gray" size="sm">MVP</Badge>
         </div>
         <div className="header-actions">
           <span className="unit-label"><span className="unit-description">All dimensions in </span><strong>mm</strong></span>
