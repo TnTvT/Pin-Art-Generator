@@ -9,6 +9,8 @@ interface FilamentColorFieldProps {
   value: MaterialSelection;
   onChange: (value: MaterialSelection) => void;
   disabled?: boolean;
+  mixed?: boolean;
+  withinPortal?: boolean;
 }
 
 const options = [
@@ -21,7 +23,7 @@ const options = [
   { group: 'Other colors', items: [{ value: 'custom', label: 'Custom color' }] },
 ];
 
-export default function FilamentColorField({ label, value, onChange, disabled = false }: FilamentColorFieldProps) {
+export default function FilamentColorField({ label, value, onChange, disabled = false, mixed = false, withinPortal = true }: FilamentColorFieldProps) {
   const [draft, setDraft] = useState(value.color);
   const filament = value.filamentId ? getFilament(value.filamentId) : undefined;
 
@@ -44,8 +46,8 @@ export default function FilamentColorField({ label, value, onChange, disabled = 
 
   return (
     <div className="filament-color-field">
-      <Select label={label.replace('color', 'filament')} value={value.filamentId || 'custom'} onChange={choose} data={options}
-        searchable allowDeselect={false} disabled={disabled} size="sm" maxDropdownHeight={240}
+      <Select label={label.replace('color', 'filament')} value={mixed ? null : value.filamentId || 'custom'} placeholder={mixed ? 'Mixed' : undefined} onChange={choose} data={options}
+        searchable allowDeselect={false} disabled={disabled} size="sm" maxDropdownHeight={240} comboboxProps={{ withinPortal }}
         filter={({ search }) => options.map((group) => ({
           ...group,
           items: group.items.filter((option) => option.value === 'custom'
@@ -59,7 +61,7 @@ export default function FilamentColorField({ label, value, onChange, disabled = 
             {checked && <span className="filament-check" aria-hidden="true">✓</span>}
           </div>;
         }} />
-      {filament ? <div className="filament-details">
+      {filament && !mixed ? <div className="filament-details">
         <span className="filament-swatch" style={{ background: filament.hex }} aria-hidden="true" />
         <div>
           <span>{filament.brand} · {filament.material} {filament.type}</span>
@@ -67,10 +69,10 @@ export default function FilamentColorField({ label, value, onChange, disabled = 
           <span>RGB {filament.rgb.join(', ')}</span>
         </div>
         <a href={filament.sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={`Source for ${filament.color}`}>Source ↗</a>
-      </div> : <ColorInput label={label} format="hex" value={draft} onChange={changeCustom}
-        swatches={CUSTOM_COLOR_SWATCHES} swatchesPerRow={8} size="sm" disabled={disabled}
+      </div> : <ColorInput label={label} format="hex" value={mixed ? '' : draft} placeholder={mixed ? 'Mixed' : undefined} onChange={changeCustom}
+        swatches={CUSTOM_COLOR_SWATCHES} swatchesPerRow={8} size="sm" disabled={disabled} popoverProps={{ withinPortal }}
         eyeDropperButtonProps={{ 'aria-label': `Pick ${label.toLowerCase()} from screen` }}
-        error={/^#[0-9a-f]{6}$/i.test(draft) ? undefined : `Using last valid color: ${value.color}.`} />}
+        error={mixed || /^#[0-9a-f]{6}$/i.test(draft) ? undefined : `Using last valid color: ${value.color}.`} />}
     </div>
   );
 }

@@ -16,10 +16,39 @@ const setModelColors = vi.fn();
 const dispose = vi.fn();
 
 beforeEach(() => {
-  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, setModelColors, dispose });
+  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, setModelColors, setPinColors: vi.fn(), setEditing: vi.fn(), dispose });
 });
 
 describe('preview integration', () => {
+  it('counts complete design RGB colors including the base and updates after edits', () => {
+    const { rerender } = renderWithProviders(<ModelPreview parameters={DEFAULTS} colors={{ base: '#FFFFFF', pins: '#ffffff' }} pinColors={['#FFFFFF', '#ffffff']} />);
+    expect(screen.getByLabelText('Design colors')).toHaveTextContent('1 color');
+    rerender(<ModelPreview parameters={DEFAULTS} pinColors={['#00b1b7', '#e8afcf', '#00B1B7']} />);
+    expect(screen.getByLabelText('Design colors')).toHaveTextContent('3 colors');
+  });
+  it('floats editing tools inside the viewport and reveals help only on demand', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<ModelPreview parameters={DEFAULTS} toolbar={<button>Edit tools</button>} />);
+    expect(container.querySelector('.preview-tools')).toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
+    expect(container.querySelector('.viewport')).toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
+    expect(container.querySelector('.canvas-container')).not.toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
+    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Preview help' }));
+    expect(screen.getByText(/sockets.*not rendered/i)).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
+  });
+  it('retains the canvas and camera when the floating editor opens or closes', () => {
+    const { container, rerender } = renderWithProviders(<ModelPreview parameters={DEFAULTS} toolbar={<div data-expanded="false">Tools</div>} />);
+    const canvasContainer = container.querySelector('.canvas-container');
+    rerender(<ModelPreview parameters={DEFAULTS} toolbar={<div data-expanded="true">Tools<input aria-label="Height editor" /></div>} />);
+    expect(container.querySelector('.canvas-container')).toBe(canvasContainer);
+    expect(container.querySelector('.viewport')).toContainElement(screen.getByLabelText('Height editor'));
+    rerender(<ModelPreview parameters={DEFAULTS} toolbar={<div data-expanded="false">Tools</div>} />);
+    expect(container.querySelector('.canvas-container')).toBe(canvasContainer);
+    expect(createPreview).toHaveBeenCalledOnce();
+    expect(setView).not.toHaveBeenCalled();
+  });
   it('sets default or supplied printable colors without recreating the scene', () => {
     const { rerender } = renderWithProviders(<ModelPreview parameters={DEFAULTS} />);
     expect(setModelColors).toHaveBeenLastCalledWith(DEFAULT_MODEL_COLORS);
@@ -27,7 +56,7 @@ describe('preview integration', () => {
     rerender(<ModelPreview parameters={DEFAULTS} colors={colors} />);
     expect(setModelColors).toHaveBeenLastCalledWith(colors);
     expect(createPreview).toHaveBeenCalledOnce();
-    expect(screen.getByText(/sockets.*not rendered/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
   });
 
   it('updates the scene theme without recreating the preview or resetting the view', async () => {

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,8 +13,7 @@ const revokeObjectURL = vi.fn();
 let clickDownload: ReturnType<typeof vi.spyOn>;
 
 function Panel({ parameters = DEFAULTS, heights, blockedReason = null }: { parameters?: Parameters; heights?: Float32Array; blockedReason?: string | null }) {
-  const [materials, setMaterials] = useState({ ...DEFAULT_MODEL_MATERIALS });
-  return <><ThemeToggle /><ExportPanel parameters={parameters} heights={heights} materials={materials} onMaterialsChange={setMaterials} blockedReason={blockedReason} /></>;
+  return <><ThemeToggle /><ExportPanel parameters={parameters} heights={heights} materials={DEFAULT_MODEL_MATERIALS} blockedReason={blockedReason} /></>;
 }
 
 function response(plateCount = 2) {
@@ -30,10 +28,10 @@ beforeEach(() => {
 });
 
 describe('export panel', () => {
-  it('keeps filament selectors without the catalog reference footer', () => {
-    renderWithProviders(<ExportPanel parameters={DEFAULTS} materials={DEFAULT_MODEL_MATERIALS} onMaterialsChange={vi.fn()} />);
-    expect(screen.getByRole('combobox', { name: 'Base filament' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Pin filament' })).toBeInTheDocument();
+  it('leaves material editing to the dedicated editor panel', () => {
+    renderWithProviders(<ExportPanel parameters={DEFAULTS} materials={DEFAULT_MODEL_MATERIALS} />);
+    expect(screen.queryByRole('combobox', { name: 'Base filament' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Pin filament' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Color reference:/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /PLA Basic source/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /PLA Matte source/ })).not.toBeInTheDocument();
@@ -41,15 +39,13 @@ describe('export panel', () => {
 
   it('defaults to printable colors and fixed mode, hiding detachable fields', () => {
     renderWithProviders(<Panel />);
-    expect(screen.getByLabelText('Base color')).toHaveValue('#5b6b78');
-    expect(screen.getByLabelText('Pin color')).toHaveValue('#2dada3');
     expect(screen.getByRole('radio', { name: 'Fixed' })).toBeChecked();
     expect(screen.queryByLabelText('Insertion depth')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Bed width')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
   });
 
-  it('uses last-valid numeric and color drafts and keeps colors through theme changes', async () => {
+  it('uses last-valid numeric drafts and keeps supplied colors through theme changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<Panel />);
     await user.click(screen.getByRole('radio', { name: 'Detachable' }));
@@ -57,16 +53,13 @@ describe('export panel', () => {
     fireEvent.change(screen.getByLabelText('Insertion depth'), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '240' } });
     fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Base color'), { target: { value: '#abcdef' } });
-    fireEvent.change(screen.getByLabelText('Base color'), { target: { value: '#ab' } });
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
-    expect(screen.getByLabelText('Pin color')).toHaveValue('#2dada3');
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.mode).toBe('detachable');
     expect(payload.socket).toEqual({ insertionDepth: 1.5, clearance: 0.2 });
     expect(payload.plate).toEqual({ width: 240, depth: 256 });
-    expect(payload.materials).toEqual(['#abcdef', '#2dada3']);
+    expect(payload.materials).toEqual(['#8e9089', '#00b1b7']);
   });
 
   it('blocks invalid sockets and beds while keeping oversized fixed STL available', async () => {

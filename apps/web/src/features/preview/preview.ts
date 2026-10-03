@@ -5,6 +5,9 @@ import { updatePinInstances } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
 import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
 import { createOrientationHelper } from './orientation-helper';
+import { createPinInteraction, type PreviewEditing } from './pin-interaction';
+import { createSelectionOutline } from './selection-outline';
+export type { PreviewEditing } from './pin-interaction';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
 
@@ -13,6 +16,8 @@ export interface Preview {
   setView: (action: ViewAction) => void;
   setColorScheme: (colorScheme: PreviewColorScheme) => void;
   setModelColors: (colors: ModelColors) => void;
+  setPinColors: (colors: readonly string[]) => void;
+  setEditing: (editing: PreviewEditing) => void;
   dispose: () => void;
 }
 
@@ -56,6 +61,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   pins.count = 0;
   pins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(pins);
+  const selectionOutline = createSelectionOutline(renderer, pinGeometry);
   const grid = new THREE.GridHelper(400, 40, '#cbd4d8', '#dfe5e7');
   grid.material.color.set(colors.gridTint);
   grid.rotation.x = Math.PI / 2;
@@ -70,7 +76,14 @@ export function createPreview(container: HTMLDivElement): Preview {
   let orthographicHalfHeight = 1;
   const center = new THREE.Vector3();
   const bounds = new THREE.Box3();
+  let editing: PreviewEditing | undefined;
+  let hasInstanceColors = false;
   let controls = createControls();
+  const interaction = createPinInteraction(container, renderer.domElement, pins, base, () => camera, enabled => { controls.enabled = enabled; });
+
+  function updateHighlights() {
+    selectionOutline.update(pins, editing?.selection ?? new Set());
+  }
 
   function createControls() {
     const nextControls = new OrbitControls(camera, renderer.domElement);
@@ -100,12 +113,16 @@ export function createPreview(container: HTMLDivElement): Preview {
     frame = window.requestAnimationFrame(() => {
       frame = null;
       controls.update();
+      camera.updateMatrixWorld();
       orientationHelper.update(camera);
+      interaction.render();
       renderer.render(scene, camera);
+      selectionOutline.render(camera);
     });
   }
 
   function setView(action: ViewAction) {
+    interaction.cancel();
     controls.update();
     const direction = action === 'top'
       ? new THREE.Vector3(0, 0, 1)
@@ -136,6 +153,8 @@ export function createPreview(container: HTMLDivElement): Preview {
     base.scale.set(parameters.width, parameters.depth, parameters.thickness);
     base.position.z = parameters.thickness / 2;
     updatePinInstances(pins, parameters, heights);
+    interaction.update(parameters, heights);
+    updateHighlights();
     bounds.set(
       new THREE.Vector3(-parameters.width / 2, -parameters.depth / 2, 0),
       new THREE.Vector3(parameters.width / 2, parameters.depth / 2, parameters.thickness),
@@ -160,6 +179,7 @@ export function createPreview(container: HTMLDivElement): Preview {
     aspect = width / height;
     updateProjection();
     renderer.setSize(width, height);
+    selectionOutline.resize(width, height);
     requestRender();
   }
 
@@ -180,11 +200,27 @@ export function createPreview(container: HTMLDivElement): Preview {
     },
     setModelColors(modelColors) {
       baseMaterial.color.set(modelColors.base);
-      pinMaterial.color.set(modelColors.pins);
+      pinMaterial.color.set(hasInstanceColors ? '#ffffff' : modelColors.pins);
+      requestRender();
+    },
+    setPinColors(pinColors) {
+      const color = new THREE.Color();
+      pinColors.forEach((value, index) => pins.setColorAt(index, color.set(value)));
+      hasInstanceColors = true;
+      pinMaterial.color.set('#ffffff');
+      if (pins.instanceColor) { pins.instanceColor.setUsage(THREE.DynamicDrawUsage); pins.instanceColor.needsUpdate = true; }
+      requestRender();
+    },
+    setEditing(next) {
+      const selectionChanged = editing?.selection !== next.selection;
+      editing = next;
+      interaction.setEditing(next);
+      if (selectionChanged) updateHighlights();
       requestRender();
     },
     dispose() {
       disposed = true;
+      interaction.dispose();
       if (frame !== null) cancelAnimationFrame(frame);
       resizeObserver.disconnect();
       controls.removeEventListener('change', requestRender);
@@ -197,6 +233,7 @@ export function createPreview(container: HTMLDivElement): Preview {
       edgesMaterial.dispose();
       pinGeometry.dispose();
       pinMaterial.dispose();
+      selectionOutline.dispose();
       grid.geometry.dispose();
       const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
       gridMaterials.forEach((material) => material.dispose());

@@ -1,5 +1,5 @@
 import { getMetrics, getWarnings, type Parameters } from '../pin-design/model';
-import { resolveFilamentProfile, type FilamentProfile, type ModelMaterials } from '../filaments/materials';
+import { resolveFilamentProfile, type FilamentProfile, type MaterialSelection, type ModelMaterials } from '../filaments/materials';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = 'fixed' | 'detachable';
@@ -35,8 +35,8 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   const warning = getWarnings(parameters)[0];
   if (warning) return warning;
   const metrics = getMetrics(parameters);
-  if (heights && (heights.length !== metrics.count || heights.some((height) => !Number.isFinite(height) || height <= 0 || height > parameters.extension + 0.00001))) {
-    return 'Resolved image heights are invalid or incomplete. Reprocess or remove the image before exporting.';
+  if (heights && (heights.length !== metrics.count || heights.some((height) => !Number.isFinite(height) || height <= 0))) {
+    return 'Resolved pin heights are invalid or incomplete. Every pin must have a finite height greater than 0 mm.';
   }
   if (options.mode === 'detachable') {
     if (!Number.isFinite(options.plate.width) || !Number.isFinite(options.plate.depth) || options.plate.width <= 0 || options.plate.depth <= 0) {
@@ -75,22 +75,35 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   return null;
 }
 
-export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, selections: ModelMaterials, options: ExportOptions, format: ExportFormat): ExportRequest {
+export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, selections: ModelMaterials, options: ExportOptions, format: ExportFormat, pinSelections?: readonly MaterialSelection[]): ExportRequest {
   const error = validateExport(parameters, heights, options, format);
   if (error) throw new Error(error);
-  const selected = [selections.base, selections.pins];
+  const count = getMetrics(parameters).count;
+  if (pinSelections && pinSelections.length !== count) throw new Error('Pin materials must match the grid count.');
+  const selected = [selections.base, ...(pinSelections ?? Array<MaterialSelection>(count).fill(selections.pins))];
   const colorValues = selected.map((selection) => selection.color.toLowerCase());
   if (colorValues.some((color) => !/^#[0-9a-f]{6}$/.test(color))) throw new Error('Choose base and pin colors in #RRGGBB format.');
   const profiles = selected.map(resolveFilamentProfile);
-  const sameMaterial = colorValues[0] === colorValues[1] && profiles[0] === profiles[1];
-  const materials = sameMaterial ? [colorValues[0]] : colorValues;
-  const filamentProfiles = sameMaterial ? [profiles[0]] : profiles;
-  const count = getMetrics(parameters).count;
+  const materials: string[] = [];
+  const filamentProfiles: FilamentProfile[] = [];
+  const palette = new Map<string, number>();
+  const indices = selected.map((selection, index) => {
+    const key = `${colorValues[index]}:${profiles[index]}`;
+    let materialIndex = palette.get(key);
+    if (materialIndex === undefined) {
+      materialIndex = materials.length;
+      palette.set(key, materialIndex);
+      materials.push(selection.color.toLowerCase());
+      filamentProfiles.push(profiles[index]);
+    }
+    return materialIndex;
+  });
+  if (materials.length > 16) throw new Error('Use at most 16 materials including the base.');
   return {
     format, mode: options.mode, parameters: { ...parameters },
     heights: heights ? Array.from(heights) : Array<number>(count).fill(parameters.extension),
-    materials, filamentProfiles, baseMaterial: 0,
-    pinMaterials: Array<number>(count).fill(sameMaterial ? 0 : 1),
+    materials, filamentProfiles, baseMaterial: indices[0],
+    pinMaterials: indices.slice(1),
     socket: { ...options.socket }, plate: { ...options.plate },
   };
 }

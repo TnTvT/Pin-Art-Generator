@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,12 +7,28 @@ import App from '../../app/App';
 import useSourceImage from '../image-mapping/useSourceImage';
 import { mapImageToPins, type SourceImage } from '../image-mapping/image-mapping';
 import { type ModelColors } from '../pin-design/model';
+import type { PreviewEditing } from '../preview/pin-interaction';
 
 vi.mock('../image-mapping/useSourceImage', () => ({ default: vi.fn() }));
 vi.mock('../image-mapping/image-mapping', () => ({ mapImageToPins: vi.fn() }));
 vi.mock('../preview/ModelPreview', () => ({
-  default: ({ colors }: { colors: ModelColors }) => <div data-testid="preview-colors">{colors?.base} {colors?.pins}</div>,
+  default: ({ colors, pinColors, heights, editing, toolbar }: { toolbar?: ReactNode; colors: ModelColors; pinColors?: string[]; heights: Float32Array; editing: PreviewEditing }) => <div>
+    {toolbar}
+    <div data-testid="preview-colors">{colors?.base} {pinColors?.[0] ?? colors?.pins}</div>
+    <div data-testid="preview-heights">{[...heights].slice(0, 2).join(',')}</div>
+    <button onClick={() => editing.onSelect([0], 'replace')}>Pick first pin</button>
+    <button onClick={() => editing.onSelect([1], 'toggle')}>Toggle second pin</button>
+    <button onClick={editing.onDragStart}>Start height drag</button>
+    <button onClick={() => editing.onDragDelta(2)}>Move height drag</button>
+    <button onClick={editing.onDragEnd}>Finish height drag</button>
+    <button onClick={editing.onDragCancel}>Cancel height drag</button>
+  </div>,
 }));
+
+async function openEditor(user: ReturnType<typeof userEvent.setup>, name: 'Height' | 'Material') {
+  const button = screen.getByRole('button', { name });
+  if (button.getAttribute('aria-expanded') !== 'true') await user.click(button);
+}
 
 const source = { name: 'test.png', url: 'blob:image', bitmap: {} } as SourceImage;
 const imageState = (overrides = {}) => ({ source: null, loading: false, error: null, upload: vi.fn(), remove: vi.fn(), useSample: vi.fn(), ...overrides });
@@ -25,17 +42,195 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it('starts with PLA catalog defaults and exports their official filament identities', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    expect(screen.getByRole('combobox', { name: 'Base filament' })).toHaveValue('Gray (10103)');
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await openEditor(user, 'Material');
+    expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Turquoise (10605)');
+    expect(screen.queryByLabelText('Selection color')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(payload.materials).toEqual(['#8e9089', '#00b1b7']);
+    expect(payload.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-basic']);
+  });
+  it('restores generator defaults when a parameter reset requires grid confirmation', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockImplementation((_source, parameters) => ({ heights: new Float32Array(parameters.columns * parameters.rows).fill(5), minimum: 5, maximum: 5 }));
+    renderWithProviders(<App />);
+    fireEvent.change(screen.getByLabelText('Columns'), { target: { value: '10' } });
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '30' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    fireEvent.change(screen.getByLabelText('Min extension'), { target: { value: '8' } });
+    await user.click(screen.getByRole('switch', { name: 'Invert mapping' }));
+    await user.click(screen.getByRole('button', { name: 'Reset parameters' }));
+    await user.click(screen.getByRole('button', { name: 'Change grid' }));
+    expect(screen.getByLabelText('Columns')).toHaveValue('20');
+    expect(screen.getByLabelText('Min extension')).toHaveValue('2 mm');
+    expect(screen.getByRole('switch', { name: 'Invert mapping' })).not.toBeChecked();
+  });
+  it('shows Mixed fields instead of the first pin value for differing materials and heights', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '30' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    await user.click(screen.getByRole('button', { name: 'Toggle second pin' }));
+    await openEditor(user, 'Height');
+    expect(screen.getByLabelText('Selected height')).toHaveValue('');
+    expect(screen.getByLabelText('Selected height')).toHaveAttribute('placeholder', 'Mixed');
+    await openEditor(user, 'Material');
+    expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveAttribute('placeholder', 'Mixed');
+    expect(screen.getByLabelText('Selection color')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Apply material' })).toBeDisabled();
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#00ff00' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    expect(screen.getByText(/Material: #00FF00/)).toBeInTheDocument();
+  });
+  it('preserves manual heights and colors on image regeneration, restoring the latest mapped value', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(320).fill(4), minimum: 4, maximum: 4 });
+    const { rerender } = renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source: { ...source, name: 'replacement.png' } }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(320).fill(6), minimum: 6, maximum: 6 });
+    rerender(<App />);
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,6');
+    expect(screen.getByTestId('preview-colors')).toHaveTextContent('#ff0000');
+    await user.click(screen.getByRole('button', { name: 'More pin actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Restore generated heights' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('6,6');
+    expect(screen.getByTestId('preview-colors')).toHaveTextContent('#ff0000');
+  });
+
+  it('confirms resetting all edits and makes the reset undoable', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '30' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await user.click(screen.getByRole('button', { name: 'More pin actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Reset all edits' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('30,20');
+    await user.click(screen.getByRole('button', { name: 'More pin actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Reset all edits' }));
+    await user.click(screen.getByRole('button', { name: 'Reset edits' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('30,20');
+  });
+  it('edits one and multiple pins, reports Mixed, and exports resolved heights and materials', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    expect(screen.getByText(/Row 1, column 1/)).toBeInTheDocument();
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '30' } });
+    fireEvent.keyDown(screen.getByLabelText('Selected height'), { key: 'Enter' });
+    await user.click(screen.getByRole('button', { name: 'Toggle second pin' }));
+    expect(screen.getByText(/Height: Mixed/)).toBeInTheDocument();
+    await openEditor(user, 'Height');
+    await user.click(screen.getByText('Offset height', { exact: true }));
+    fireEvent.change(screen.getByLabelText('Height offset'), { target: { value: '2' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('32,22');
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.heights.slice(0, 3)).toEqual([32, 22, 20]);
+    expect(request.materials).toEqual(['#8e9089', '#ff0000', '#00b1b7']);
+    expect(request.pinMaterials.slice(0, 3)).toEqual([1, 1, 2]);
+    await user.click(screen.getByRole('button', { name: 'More pin actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Restore generated heights' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('32,22');
+  });
+
+  it('keeps edits when spacing changes and confirms topology changes before clearing them', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '5.5' } });
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    fireEvent.change(screen.getByLabelText('Columns'), { target: { value: '21' } });
+    fireEvent.blur(screen.getByLabelText('Columns'));
+    expect(screen.getByRole('dialog', { name: 'Change pin grid?' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Keep grid' }));
+    expect(screen.getByLabelText('Columns')).toHaveValue('20');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    fireEvent.change(screen.getByLabelText('Columns'), { target: { value: '21' } });
+    fireEvent.keyDown(screen.getByLabelText('Columns'), { key: 'Enter' });
+    await user.click(screen.getByRole('button', { name: 'Change grid' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+    expect(screen.getByText(/0 selected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
+
+  it('blocks downloads during transient drags, cancels cleanly, and commits one undo operation', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await user.click(screen.getByRole('button', { name: 'Start height drag' }));
+    await user.click(screen.getByRole('button', { name: 'Move height drag' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('22,20');
+    expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Cancel height drag' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Start height drag' }));
+    await user.click(screen.getByRole('button', { name: 'Move height drag' }));
+    await user.click(screen.getByRole('button', { name: 'Finish height drag' }));
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+  });
   it('uses catalog colors and material profiles in the preview and 3MF snapshot', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
     await user.click(screen.getByRole('combobox', { name: 'Base filament' }));
     await user.click(screen.getByRole('option', { name: 'Jade White (10100)' }));
-    await user.click(screen.getByRole('combobox', { name: 'Pin filament' }));
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
     await user.click(screen.getByRole('option', { name: 'Sakura Pink (11201)' }));
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
     expect(screen.getByTestId('preview-colors')).toHaveTextContent('#ffffff #e8afcf');
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
     expect(screen.getByRole('combobox', { name: 'Base filament' })).toHaveValue('Jade White (10100)');
-    expect(screen.getByRole('combobox', { name: 'Pin filament' })).toHaveValue('Sakura Pink (11201)');
+    await openEditor(user, 'Material');
+    expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Sakura Pink (11201)');
     expect(screen.getByTestId('preview-colors')).toHaveTextContent('#ffffff #e8afcf');
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
@@ -50,16 +245,21 @@ describe('app export integration', () => {
     renderWithProviders(<App />);
     await user.click(screen.getByRole('combobox', { name: 'Base filament' }));
     await user.click(screen.getByRole('option', { name: 'Jade White (10100)' }));
-    await user.click(screen.getByRole('combobox', { name: 'Pin filament' }));
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
     await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const first = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(first.materials).toEqual(['#ffffff', '#ffffff']);
     expect(first.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-matte']);
     expect(first.baseMaterial).toBe(0);
     expect(first.pinMaterials).toEqual(Array(320).fill(1));
-    await user.click(screen.getByRole('combobox', { name: 'Pin filament' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
     await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const second = JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string);
     expect(second.materials).toEqual(['#ffffff', '#ffffff']);
@@ -69,15 +269,17 @@ describe('app export integration', () => {
   it('shares printable colors with the preview and exports last-valid numeric parameters', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
+    await user.click(screen.getByRole('combobox', { name: 'Base filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
     fireEvent.change(screen.getByLabelText('Base color'), { target: { value: '#abcdef' } });
-    expect(screen.getByTestId('preview-colors')).toHaveTextContent('#abcdef #2dada3');
+    expect(screen.getByTestId('preview-colors')).toHaveTextContent('#abcdef #00b1b7');
     await user.clear(screen.getByLabelText('Base width'));
     await user.type(screen.getByLabelText('Base width'), '150');
     await user.clear(screen.getByLabelText('Base width'));
     await user.click(screen.getByRole('button', { name: 'Download STL' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.parameters.width).toBe(150);
-    expect(payload.materials).toEqual(['#abcdef', '#2dada3']);
+    expect(payload.materials).toEqual(['#abcdef', '#00b1b7']);
     expect(payload.heights).toEqual(Array(320).fill(20));
   });
 

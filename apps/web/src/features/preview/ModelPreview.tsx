@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Group, useComputedColorScheme } from '@mantine/core';
-import { createPreview, type Preview, type ViewAction } from './preview';
+import { createPreview, type Preview, type PreviewEditing, type ViewAction } from './preview';
 import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
+import InfoPopover from '../../components/InfoPopover/InfoPopover';
 
-export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS }: { parameters: Parameters; heights?: Float32Array; colors?: ModelColors }) {
+export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS, pinColors, editing, heightLabel, toolbar }: { parameters: Parameters; heights?: Float32Array; colors?: ModelColors; pinColors?: readonly string[]; editing?: PreviewEditing; heightLabel?: string; toolbar?: ReactNode }) {
   const container = useRef<HTMLDivElement>(null);
   const preview = useRef<Preview | null>(null);
   const [error, setError] = useState(false);
@@ -34,14 +35,21 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
     preview.current?.setModelColors(colors);
   }, [colors]);
 
+  useEffect(() => { if (pinColors) preview.current?.setPinColors(pinColors); }, [pinColors]);
+  useEffect(() => { if (editing) preview.current?.setEditing(editing); }, [editing]);
+
   const setView = (action: ViewAction) => preview.current?.setView(action);
+  const designColors = [...new Set([colors.base, ...(pinColors ?? [colors.pins])].map(color => color.toLowerCase()))];
 
   return (
     <section className="preview-panel" aria-label="Model preview">
       <div className="preview-heading">
-        <div>
+        <div className="preview-title">
           <h2>3D preview</h2>
-          <span className="preview-subtitle">Your design, from every angle.</span>
+          <InfoPopover label="Preview help">
+            <p>Click a pin to select. Drag to rotate. Shift-click toggles pins; Shift-drag adds pins in a box. Scroll to zoom; right-drag to pan.</p>
+            <p>Assembled conceptual preview. Detachable sockets and print-plate layout are not rendered.</p>
+          </InfoPopover>
         </div>
         <Group gap="xs" className="view-actions">
           <Button variant="default" size="xs" onClick={() => setView('top')} disabled={error}>Top view</Button>
@@ -50,6 +58,7 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
         </Group>
       </div>
       <div className="viewport">
+        {!error && toolbar && <div className="preview-tools">{toolbar}</div>}
         <div className="canvas-container" ref={container} />
         {error && (
           <Alert color="red" title="3D preview unavailable" className="preview-error">
@@ -60,10 +69,9 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
         <div className="viewport-dimensions">{parameters.width} × {parameters.depth} mm<span>Base dimensions</span></div>
       </div>
       <div className="preview-footer">
-        <span><strong>Drag</strong> to rotate <span className="instruction-separator">·</span> <strong>Scroll</strong> to zoom <span className="instruction-separator">·</span> <strong>Right-drag</strong> to pan</span>
-        <span className="material-key"><i style={{ background: colors.pins }} /> {heights ? 'Image-mapped heights' : 'Uniform pin height'}</span>
+        <div className="design-color-summary" aria-label="Design colors"><span>Design:</span><strong>{designColors.length} {designColors.length === 1 ? 'color' : 'colors'}</strong><div className="color-swatches">{designColors.map(color => <i key={color} title={color.toUpperCase()} style={{ backgroundColor: color }} />)}</div></div>
+        <span className="material-key"><i style={{ background: colors.pins }} /> {heightLabel ?? (heights ? 'Image-mapped heights' : 'Uniform pin height')}</span>
       </div>
-      <p className="preview-concept-note">Assembled conceptual preview. Detachable sockets and print-plate layout are not rendered.</p>
     </section>
   );
 }

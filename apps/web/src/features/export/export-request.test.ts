@@ -9,8 +9,8 @@ describe('export request mapping', () => {
     const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, 'stl');
     expect(request).toEqual({
       format: 'stl', mode: 'fixed', parameters: DEFAULTS,
-      heights: Array(320).fill(20), materials: ['#5b6b78', '#2dada3'],
-      filamentProfiles: ['generic-pla', 'generic-pla'],
+      heights: Array(320).fill(20), materials: ['#8e9089', '#00b1b7'],
+      filamentProfiles: ['bambu-pla-basic', 'bambu-pla-basic'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),
       socket: { insertionDepth: 2, clearance: 0.2 }, plate: { width: 256, depth: 256 },
     });
@@ -63,8 +63,18 @@ describe('print validation', () => {
     expect(validateExport({ ...DEFAULTS, width: 50 }, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/beyond the base/i);
   });
 
-  it('rejects missing, non-finite, nonpositive or out-of-range resolved heights', () => {
-    for (const heights of [new Float32Array(1), new Float32Array(320), new Float32Array(320).fill(NaN), new Float32Array(320).fill(21)]) {
+  it('allows manual heights above generation and exports per-pin materials', () => {
+    const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
+    const pins = [{ color: '#ff0000', filamentId: null }, { color: '#ffffff', filamentId: 'matte-321' }];
+    const request = buildExportRequest(parameters, new Float32Array([30, 40]), DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf', pins);
+    expect(request.heights).toEqual([30, 40]);
+    expect(request.materials).toEqual(['#8e9089', '#ff0000', '#ffffff']);
+    expect(request.pinMaterials).toEqual([1, 2]);
+    expect(request.filamentProfiles).toEqual(['bambu-pla-basic', 'generic-pla', 'bambu-pla-matte']);
+  });
+
+  it('rejects missing, non-finite or nonpositive resolved heights', () => {
+    for (const heights of [new Float32Array(1), new Float32Array(320), new Float32Array(320).fill(NaN)]) {
       expect(validateExport(DEFAULTS, heights, DEFAULT_EXPORT_OPTIONS)).toMatch(/heights/i);
     }
   });

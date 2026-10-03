@@ -3,6 +3,7 @@ import { Alert, Button, FileButton, Group, NumberInput, Switch } from '@mantine/
 import { formatDimension } from '../pin-design/model';
 import { type SourceImage } from './image-mapping';
 import { type HeightMap } from './sampling';
+import InfoPopover from '../../components/InfoPopover/InfoPopover';
 
 interface ImageMappingPanelProps {
   source: SourceImage | null;
@@ -33,7 +34,7 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
   return (
     <section className="image-panel" aria-label="Image mapping">
       <div className="image-heading">
-        <div><h2>Image mapping</h2><p>Turn brightness into height. Your image stays on your device.</p></div>
+        <div className="section-title"><h2>Image mapping</h2><InfoPopover label="Image mapping help"><p>Turn brightness into height. Your image stays on your device. Upload PNG, JPG, or WebP up to 20 MB. Without an image, pins use a uniform generated height.</p></InfoPopover></div>
         <Group gap="xs">
           {!props.source && <Button variant="subtle" size="xs" onClick={() => void props.onSample()} disabled={props.loading}>Try sample</Button>}
           <FileButton resetRef={resetFile} accept="image/png,image/jpeg,image/webp" onChange={(file) => {
@@ -74,7 +75,7 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
             {props.heightMap && <p className="height-range">Mapped heights: {formatDimension(props.heightMap.minimum)}–{formatDimension(props.heightMap.maximum)} mm</p>}
           </div>
         </div>
-      ) : <p className="upload-hint">PNG, JPG, or WebP · Up to 20 MB · No image selected: uniform pin height</p>}
+      ) : null}
       {props.error && <Alert color="red" title="Image could not be loaded" mt="sm">{props.error}</Alert>}
     </section>
   );

@@ -7,11 +7,12 @@ interface ParameterFieldProps {
   value: number | string;
   validValue: number;
   onChange: (name: keyof Parameters, value: number | string) => void;
+  onCommit?: (name: keyof Parameters) => void;
   integer?: boolean;
   sliderMax?: number;
 }
 
-export default function ParameterField({ name, label, value, validValue, onChange, integer, sliderMax }: ParameterFieldProps) {
+export default function ParameterField({ name, label, value, validValue, onChange, onCommit, integer, sliderMax }: ParameterFieldProps) {
   const valid = typeof value === 'number' && Number.isFinite(value) && value > 0
     && (!integer || (Number.isInteger(value) && value <= 100));
 
@@ -21,6 +22,8 @@ export default function ParameterField({ name, label, value, validValue, onChang
         label={label}
         value={value}
         onChange={(nextValue) => onChange(name, nextValue)}
+        onBlur={() => onCommit?.(name)}
+        onKeyDown={event => { if (event.key === 'Enter') onCommit?.(name); }}
         min={integer ? 1 : 0.01}
         max={integer ? 100 : undefined}
         allowDecimal={!integer}

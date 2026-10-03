@@ -14,6 +14,13 @@ vi.mock('three', async (importOriginal) => {
     WebGLRenderer: class {
       domElement = document.createElement('canvas');
       setPixelRatio() {}
+      getPixelRatio() { return 1; }
+      getClearColor() { return new Color('#f1f4f5'); }
+      getClearAlpha() { return 1; }
+      getRenderTarget() { return null; }
+      setRenderTarget() {}
+      clear() {}
+      autoClear = true;
       setClearColor() {}
       setSize() {}
       render = renderer.render;
@@ -30,11 +37,15 @@ let pendingFrames: Map<number, FrameRequestCallback>;
 let frameId: number;
 let canvas: HTMLCanvasElement;
 
+function renderedScene() {
+  return renderer.render.mock.calls.slice().reverse().find(([scene]) => (scene as Scene).children?.some(child => child instanceof GridHelper))![0] as Scene;
+}
+
 function renderedCamera() {
   const callbacks = [...pendingFrames.values()];
   pendingFrames.clear();
   callbacks.forEach((callback) => callback(0));
-  const camera = renderer.render.mock.lastCall![1] as Camera;
+  const camera = renderer.render.mock.calls.slice().reverse().find(([scene]) => scene === renderedScene())![1] as Camera;
   camera.updateMatrixWorld();
   return camera;
 }
@@ -69,9 +80,29 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('renders per-instance printable colors with separate selection overlays', () => {
+    preview.setPinColors(Array.from({ length: 320 }, (_, index) => index === 1 ? '#ff0000' : '#2dada3'));
+    preview.setEditing({ heightMode: 'set', selection: new Set([0, 1]), active: 1,
+      onSelect: vi.fn(), onDragStart: () => true, onDragDelta: vi.fn(), onDragEnd: vi.fn(), onDragCancel: vi.fn() });
+    renderedCamera();
+    const scene = renderedScene();
+    const pins = scene.children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+    const highlights = (renderer.render.mock.calls.slice().reverse().find(([candidate]) => (candidate as Scene).children?.some(child => child.name === 'Selected pin outline mask'))![0] as Scene).children[0] as InstancedMesh;
+    const color = new Color(); pins.getColorAt(1, color);
+    expect(color.getHexString()).toBe('ff0000');
+    expect((pins.material as MeshStandardMaterial).color.getHexString()).toBe('ffffff');
+    expect(highlights.count).toBe(2);
+    expect(scene.children).not.toContain(highlights);
+    expect(highlights.instanceColor).toBeNull();
+    const printableColors = pins.instanceColor!.array.slice();
+    preview.setView('top'); preview.setColorScheme('dark'); renderedCamera();
+    expect(pins.instanceColor!.array).toEqual(printableColors);
+    expect(highlights.count).toBe(2);
+    expect(canvas.parentElement!.querySelector('[aria-label="Drag selected pin height"]')).not.toHaveAttribute('hidden');
+  });
   it('preserves printable material colors through theme, height and camera updates', () => {
     renderedCamera();
-    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const scene = renderedScene();
     const base = scene.children.find((child) => child instanceof Mesh && !(child instanceof InstancedMesh)) as Mesh;
     const pins = scene.children.find((child) => child instanceof InstancedMesh) as InstancedMesh;
     const baseMaterial = base.material as MeshStandardMaterial;
@@ -144,7 +175,7 @@ describe('preview camera projection', () => {
     const camera = renderedCamera() as OrthographicCamera;
     camera.zoom = 2;
     const position = camera.position.clone();
-    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const scene = renderedScene();
     const grid = scene.children.find((child) => child instanceof GridHelper) as GridHelper;
     const pins = scene.children.find((child) => child instanceof InstancedMesh) as InstancedMesh;
     const matrices = pins.instanceMatrix.array.slice();
@@ -163,7 +194,7 @@ describe('preview camera projection', () => {
 
   it('keeps light-mode grid lines distinct from the background initially and after theme changes', () => {
     renderedCamera();
-    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const scene = renderedScene();
     const grid = scene.children.find((child) => child instanceof GridHelper) as GridHelper;
     const luminance = (color: Color) => 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     const expectVisibleGrid = () => {
