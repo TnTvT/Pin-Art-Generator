@@ -48,6 +48,11 @@ def test_filament_profiles_are_optional_and_round_trip_when_supplied():
     assert request.model_dump(by_alias=True) == payload
 
 
+def test_manual_heights_can_exceed_generator_extension():
+    request = ExportRequest.model_validate(request_payload(heights=[25, 30, 40, 50]))
+    assert request.heights == [25, 30, 40, 50]
+
+
 @pytest.mark.parametrize("profiles", [[], ["generic-pla"], ["generic-pla"] * 3, ["bambu-pla-basic", "unknown"], ["generic-pla", 1]])
 def test_filament_profiles_must_be_allowlisted_and_match_palette(profiles):
     with pytest.raises(ValidationError):
@@ -220,14 +225,13 @@ def test_clearance_is_a_finite_nonnegative_number(clearance):
         ExportRequest.model_validate(payload)
 
 
-def test_height_float32_tolerance_preserves_supplied_value():
+def test_manual_height_preserves_supplied_value():
     payload = request_payload()
     payload["heights"][0] = 10.000009
     request = ExportRequest.model_validate(payload)
     assert request.heights[0] == 10.000009
     payload["heights"][0] = 10.00002
-    with pytest.raises(ValidationError, match="extension"):
-        ExportRequest.model_validate(payload)
+    assert ExportRequest.model_validate(payload).heights[0] == 10.00002
 
 
 def test_fixed_stl_rejects_tangent_pins_before_boolean_export():

@@ -61,8 +61,6 @@ class ExportRequest(DomainModel):
             raise ValueError("heights and pinMaterials lengths must match the grid count")
         if self.base_material >= len(self.materials) or any(index >= len(self.materials) for index in self.pin_materials):
             raise ValueError("material indices must reference the palette")
-        if any(height > parameters.extension and (height - parameters.extension) / parameters.extension > 1e-6 for height in self.heights):
-            raise ValueError("heights must not exceed extension (relative tolerance 1e-6)")
         diameter = parameters.diameter
         if self.mode == "detachable":
             diameter += self.socket.clearance

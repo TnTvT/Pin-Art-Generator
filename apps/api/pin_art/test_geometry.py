@@ -58,6 +58,23 @@ def test_fixed_parts_are_actual_base_and_shared_native_unit_cylinders():
         assert pin.transform[2, 3] == 3
 
 
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_manual_pin_heights_and_materials_drive_exact_geometry(mode):
+    payload = request_payload(mode=mode)
+    payload.update(heights=[30, 5, 40, 12], materials=["#FFFFFF", "#FF0000", "#0000FF"], pinMaterials=[1, 2, 0, 1])
+    request = ExportRequest.model_validate(payload)
+    plates = build_plates(request)
+    pins = [part for plate in plates for part in plate.parts if part.name != "base"]
+    assert [pin.material for pin in pins] == [1, 2, 0, 1]
+    for index, pin in enumerate(pins):
+        bounds = placed_solid(pin).bounding_box()
+        bottom = request.parameters.thickness if mode == "fixed" else 0
+        length = request.heights[index] + (request.socket.insertion_depth if mode == "detachable" else 0)
+        assert bounds[2] == pytest.approx(bottom)
+        assert bounds[5] == pytest.approx(bottom + length)
+        assert pin.solid.status() == manifold3d.Error.NoError
+
+
 def test_fixed_colored_parts_touch_without_intersecting():
     plate = build_plates(ExportRequest.model_validate(request_payload()))[0]
     base = placed_solid(plate.parts[0])

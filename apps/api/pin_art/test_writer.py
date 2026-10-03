@@ -24,6 +24,44 @@ def small_request(mode="detachable"):
     })
 
 
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_edited_pin_package_keeps_heights_color_profiles_and_part_ownership(mode, tmp_path):
+    payload = small_request(mode).model_dump(by_alias=True)
+    payload.update(heights=[30, 40], materials=["#FFFFFF", "#FFFFFF", "#FF0000"],
+                   filamentProfiles=["bambu-pla-basic", "bambu-pla-matte", "generic-pla"], pinMaterials=[1, 2])
+    request = ExportRequest.model_validate(payload)
+    plates = build_plates(request)
+    output = tmp_path / "edited.3mf"
+    output.write_bytes(export_3mf(request, plates))
+    model = lib3mf.get_wrapper().CreateModel()
+    reader = model.QueryReader("3mf")
+    reader.SetStrictModeActive(True)
+    reader.ReadFromFile(str(output))
+    assert reader.GetWarningCount() == 0
+    with zipfile.ZipFile(output) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+        assert settings["filament_colour"] == ["#FFFFFF", "#FFFFFF", "#FF0000"]
+        assert settings["filament_ids"] == ["GFA00", "GFA01", "GFL99"]
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2", "3"]
+        assert len(config.findall("plate")) == (1 if mode == "fixed" else 2)
+        names = [part.name for plate in plates for part in plate.parts][1:]
+        assert f"{32 if mode == 'detachable' else 30:.3f} mm" in names[0]
+        assert f"{42 if mode == 'detachable' else 40:.3f} mm" in names[1]
+    namespace, root, objects, _ = read_model(output.read_bytes())
+    lengths = []
+    for item in root.findall(f"{namespace}build/{namespace}item"):
+        for component in objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component"):
+            mesh = objects[component.attrib["objectid"]]
+            if mesh.attrib["name"] == "base":
+                continue
+            vertices = np.array([[float(vertex.attrib[axis]) for axis in ["x", "y", "z"]] for vertex in mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")])
+            world = np.c_[vertices, np.ones(len(vertices))] @ (read_transform(item) @ read_transform(component)).T
+            assert world[:, 2].min() == pytest.approx(3 if mode == "fixed" else 0)
+            lengths.append(world[:, 2].max() - world[:, 2].min())
+    np.testing.assert_allclose(lengths, np.array([30, 40]) + (2 if mode == "detachable" else 0))
+
+
 def test_colored_multiplate_package_reads_strictly(tmp_path):
     base = Part("Socket base", manifold3d.Manifold.cube((12, 12, 3)), 0, np.eye(4), "base")
     pin = Part("Pin R1 C1 · 7 mm", manifold3d.Manifold.cylinder(1, .5, .5, 64), 1, np.eye(4), "pin")
