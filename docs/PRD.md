@@ -2,7 +2,7 @@
 
 **Status:** Current demo baseline
 
-**Last updated:** September 30, 2026
+**Last updated:** October 2, 2026
 
 ## 1. Purpose
 
@@ -20,6 +20,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
 | Model downloads | STL, Bambu-compatible colored 3MF, detachable socket pins, multi-plate layout | Implemented; Bambu GUI/physical fit verification is user-owned |
+| Per-pin editing | Selection, Set/Offset heights, per-pin materials, transactional drag and undo/redo | Implemented |
 | Moving-pin hardware | Captive sliding pins, stops, and retainers | Deferred |
 
 The initial request prioritized a quick demo without tests. A later explicit request added automated testing. That later requirement governs the current project.
@@ -47,7 +48,7 @@ All dimensions use millimeters. Columns run along X, rows along Y, and pin exten
 | Rows | 16 | Integer from 1 to 100 |
 | Pin spacing | 5 mm | Center-to-center distance, equal in both grid directions |
 | Pin diameter | 2 mm | Positive cylindrical diameter |
-| Pin extension | 20 mm | Uniform height above the base top; becomes **Max extension** when an image is loaded |
+| Generated pin height | 20 mm | Generated uniform height above the base top; becomes **Mapping max height** with an image; manual heights may exceed it |
 | Min extension | 2 mm | Image-mode minimum; must be positive and no greater than the maximum |
 | Invert mapping | Off | In image mode, switches from dark-tall to light-tall |
 
@@ -79,7 +80,7 @@ All dimensions use millimeters. Columns run along X, rows along Y, and pin exten
 - Display the actual sampled minimum and maximum heights; these may not reach the configured endpoints.
 - Lowering the maximum below the current minimum also lowers the minimum. Equal endpoints produce a flat array.
 - Inversion also affects white margins and transparent areas, making them tall in light-tall mode.
-- Removing an image restores uniform heights using the current extension value.
+- Removing an image restores uniform generated heights using the current extension value, retaining manual height/material overrides.
 - **Reset parameters** restores geometry defaults, minimum 2 mm, and inversion off while retaining the source image. Camera changes remain separate from parameter resets.
 
 This is brightness mapping, not inference of an object's physical depth from a photograph.
@@ -89,7 +90,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Use English throughout the product, including labels, instructions, errors, and buttons.
 - Use a viewport-height workspace with 16px page padding and a 48px header without an MVP badge. Image mapping stays above parameters in the independently scrollable, keyboard-accessible left sidebar; the prominent right-side preview and measurements stay visible without scrolling the whole page. On narrow screens, show the preview above separately scrollable controls, with 12px outer padding.
 - Default to light mode. Provide a keyboard-accessible header button to switch between light and dark mode, and remember the selection locally across reloads.
-- Apply the selected theme to panels, controls, text, preview overlays, and the 3D background, grid, and materials. Keep source image colors unchanged.
+- Apply the selected theme to panels, controls, text, preview overlays, and the 3D background and grid, not printable model colors. Keep source image colors unchanged.
 - Switching themes preserves parameters, partial input drafts, image mapping, accordion state, and the current camera, including projection and zoom. Do not recreate the renderer.
 - Base plate and Pin array are independently collapsible accordion groups, initially expanded. Collapsing a group preserves its values and does not alter the preview.
 - Show **All dimensions in mm** in the top header; do not add a separate Workspace subheader.
@@ -124,13 +125,13 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - A local Python backend handles model downloads; there is no authentication, design database, or public hosting.
 - The main preview represents the assembled design. Detachable downloads include blind sockets, insertion length, and separate printable parts; socket cutaways and print layouts are not rendered in the main canvas. Captive sliding pins and retainers remain deferred.
 - Offer Bambu Lab PLA Basic and Matte presets before a Custom color fallback for both the base and pins. Bundle the catalog locally with brand, material, type, color name, product code, hex, RGB, source links, and snapshot date. Retain provenance in the catalog and documentation, without a catalog reference/date disclaimer or family source links in the export panel footer. Preserve distinct records with identical RGB values, and let users search names, codes, families, and hex values. Keep Custom color available for an unmatched search.
-- Preset selection updates printable preview/export colors immediately and displays material/type and RGB. Retain catalog identity in application state and export Basic/Matte as the corresponding X1C system filament preset. Custom color offers swatches, a color picker, and hex entry, preserving the last valid color for incomplete drafts; it explicitly clears catalog identity and uses Generic PLA for 3MF, even when RGB is unchanged. Keep existing default colors, preserve selections through theme changes, and disable color changes during export. Do not assign physical AMS slots; reference RGB values are not calibrated printed-color promises.
-- Image RGB/per-pin color editing, image cropping, contrast controls, and calibrated manufacturing guarantees require separate product decisions.
+- The editor displays preset material/type and RGB. Apply material commits selected-pin colors; base selection commits independently. Retain catalog identity in application state and export Basic/Matte as the corresponding X1C system filament preset. Custom color offers swatches, a color picker, and hex entry, preserving the last valid color for incomplete drafts; it explicitly clears catalog identity and uses Generic PLA for 3MF, even when RGB is unchanged. Preserve selections through theme changes. Submitted exports are immutable snapshots; downloads are disabled during transient height drags. Do not assign physical AMS slots; reference RGB values are not calibrated printed-color promises.
+- Image RGB mapping, image cropping, contrast controls, and calibrated manufacturing guarantees require separate product decisions.
 - No deployment provider, rollout process, or physical-printing guarantees have been selected.
 
 ## 9. Printable models and colors
 
-- Provide English Base color and Pin color controls, default #5b6b78 and #2dada3. Preview and export use the same selected colors; theme changes affect surrounding presentation only.
+- Provide independent base and selected-pin material controls. Default the base to Bambu Lab PLA Basic Gray (10103, #8E9089) and pins to PLA Basic Turquoise (10605, #00B1B7), preserving catalog and official filament-profile identity. Preview and export use the same committed selected colors; theme changes affect surrounding presentation only.
 - Offer Fixed and Detachable modes with Download STL and Download 3MF. Snapshot the last valid parameters and resolved row-major image heights; never upload source images or silently alter geometry.
 - Fixed STL must be a watertight union. Fixed 3MF retains separate material regions within one assembled sculpture.
 - Fixed STL rejects zero-clearance tangent neighbors with an explanation; the model is not silently reshaped to repair point-contact geometry. Dense STL exports are memory-intensive and may take around a minute.
@@ -139,7 +140,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Deliver one Bambu-compatible multi-plate 3MF with standard colors and matching logical filament/part/plate assignments. Deduplicate color + material-profile pairs and reusable geometry; matching RGB must not merge Basic with Matte or Generic PLA. Embed Bambu Lab X1 Carbon 0.4 nozzle identity and reference its 0.20mm Standard process and selected filament presets through system-preset inheritance. Preserve selected colors in the project palette, not by modifying system filament preset defaults; inherit temperature/flow settings without hardcoded overrides or physical AMS assignments. Align Bambu filament variant and one-based self-index arrays with the compacted used palette.
 - Extend the export snapshot with optional `filamentProfiles`, parallel to `materials`, accepting only `bambu-pla-basic`, `bambu-pla-matte`, and `generic-pla`. Validate palette alignment and reject unknown keys. Legacy omitted/null profiles resolve to Generic PLA, not an inferred Bambu product. Write aligned preset names, family IDs, vendors, PLA type, inheritance/difference groups, colors, and part extruder indices for the compacted used-material palette.
 - Use the physical X1C 256 × 256 mm bed and 1.2-bed-size multi-plate strides independently of a smaller custom packing area. Center each plate's contents, keep detached parts at Z=0, and keep fixed pins starting at the base top. Center reusable meshes in all axes and compensate component transforms so Bambu's shared-mesh recentering cannot displace repeated pins.
-- Block 3MF outside the X1C bed or its referenced profile's 250 mm printable height. Apply height limits to resolved image heights, not the configured maximum. Keep STL available for valid designs intended for other printers.
+- Block 3MF outside the X1C bed or its referenced profile's 250 mm printable height. Apply height limits to resolved edited heights, not the configured generator maximum. Manual heights must be finite and positive but may exceed generated heights. Keep STL available for valid designs intended for other printers.
 - Detachable STL downloads are ZIP archives containing numbered plate STLs and an indexed height/material/placement manifest. STL itself carries no colors.
 - Show pending/error/retry/download plate-count feedback and prevent duplicate exports. Limit requests to 2 MB/10,000 pins, isolate one worker at a time, terminate after 120 seconds, and clean temporary output.
 - Automated checks cover geometry, dimensions, winding, sockets, layout, metadata, strict lib3mf read-back, API errors/cleanup, and UI request snapshots. Benchmark 10,000-pin cases; retain frontend tests/build checks.
@@ -152,3 +153,19 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Keep product requirements and architecture decisions in root-level `docs/`.
 - Preserve the same-origin `/api` contract and local ports during the migration; do not change geometry, preview, or download behavior merely to reorganize files.
 - Avoid speculative shared packages or a Python workspace until multiple real consumers require them.
+
+## 11. Per-pin editing
+
+- Keep generation and export in the independently scrollable sidebar. Float a fixed-width editing toolbar over the upper-left of the preview, with Height and Material panels beside it. The canvas occupies the full viewport; opening, switching or closing editing panels must not resize it, change projection, or refit the camera. Floating panels may overlap geometry. Keep the base material under Base plate. At 900px and narrower, float a compact tool row at the canvas bottom and use a bottom editing sheet over generation; small screens move history and Clear selection into the more menu.
+- Maximize canvas space with compact preview headings, status and measurement strips, without decorative footer copy. Put explanatory preview, image, grid, height, material and export guidance behind labeled info icons with keyboard-accessible popups. Keep errors, export blockers and memory warnings directly visible. Escape dismisses nested controls before the editor and closing fields restores trigger focus.
+- Display distinct selected-pin RGB color counts and swatches, plus design-wide color counts including the base. Normalize hex case; identical RGB from different filament profiles counts as one displayed color, not one export material.
+- Both views support direct click selection, Shift-click toggling, Shift-drag additive projected-tip marquee, all and clear selection, without Navigate/Select modes. An ordinary drag anywhere on the model or background rotates the camera and never changes selection, even if the pointer returns to its starting position. Empty clicks clear selection unless Shift is held. Scroll zooms; right-drag pans; height handles exclusively own height drags. Marquees include occluded pins but exclude tips outside the viewport or behind the camera.
+- Preserve selection across view/theme changes. Show selected count, single-pin one-based row/column, and Mixed heights/materials. Highlight only exterior contours in yellow (#FFD43B) using an isolated instanced selection mask and a screen-space edge overlay. Do not fill/tint pin surfaces, change printable instance colors, or switch the main scene's color-processing pipeline when selecting pins. Outline rendering supports both projections and theme changes; selected silhouettes can be visible through occluding geometry.
+- Set height assigns one absolute value; Offset adds a signed amount while preserving differences. Apply/Enter commits a numeric batch; reject any nonpositive, nonfinite or unrepresentable result without changing any pins.
+- Perspective height dragging uses a camera-facing plane containing the active pin's world-Z line. Top view uses vertical screen displacement scaled to orthographic mm. Show live mm; compute against starting heights; release commits once. Escape, pointer cancellation, blur or view changes restore the original committed heights. Invalid drag updates retain the last valid transient batch. Block export until release/cancellation.
+- Keep generated heights separate from sparse row-major pin overrides. Image regeneration/removal and changes to dimensions, spacing or diameter preserve overrides. Restore selected heights removes overrides and resolves the latest generator. Restore colors returns selected pins to the default pin material.
+- Rows/columns changes with pin edits require confirmation. Acceptance clears pin edits, selection and history but retains base material; cancellation restores count drafts. Reset all edits is confirmed and undoable.
+- History covers heights, materials and resets, not selection/navigation/generation. Keep at most 50 transactions and 16 MiB of encoded sparse deltas; discard the oldest records first. New edits clear redo. Ignore undo shortcuts in text fields/dialogs.
+- Preserve color and catalog identity per pin. Compact the actually used RGB + filament-profile pairs for export, including the base, with at most 16 slots. Reject a seventeenth material even if introduced by restoring selected colors. Same RGB with different profiles remains distinct.
+- Fill existing API heights and pinMaterials from the shared committed design. No new endpoints, raw image transfers, physical AMS assignments, brush tools, image-RGB mapping, project save/load or pin repositioning are introduced.
+- Verify both projections, cancellation and history, regeneration and topology confirmations, 10,000-pin editing, fixed/detachable actual heights, profile/color indices, strict lib3mf read-back, backend/frontend tests, typecheck and build. Bambu import/slicing remains user-owned.

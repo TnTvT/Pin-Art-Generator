@@ -51,9 +51,11 @@ apps/
 │   ├── src/
 │   │   ├── main.tsx
 │   │   ├── app/                 # Composition, theme, styling
+│   │   ├── components/          # Shared accessible help UI, colocated tests
 │   │   ├── features/
 │   │   │   ├── pin-design/
 │   │   │   ├── image-mapping/
+│   │   │   ├── pin-editing/      # Selection, overrides, transactions, editor UI
 │   │   │   ├── preview/
 │   │   │   ├── filaments/        # Bundled color catalog and selection UI
 │   │   │   └── export/
@@ -111,11 +113,23 @@ Upload a PNG, JPG, or WebP (up to 20 MB), or select **Try sample**. Images are d
 
 The image is centered over the pin grid with its aspect ratio preserved. Transparent pixels and unused margins are white. RGB values are converted to weighted grayscale: dark pixels produce taller pins by default. **Invert mapping** reverses this relationship, including the white margins. Image top maps to positive Y so it reads upright in Top view.
 
-**Min extension** sets the shortest configured height; **Max extension** in the Pin array panel sets the tallest. Actual mapped heights are displayed alongside the source preview. Reducing the maximum below the minimum also reduces the minimum. Invalid inputs keep the last valid mapping. Removing the image returns to uniform heights; resetting parameters keeps the image while restoring the default dimensions, range, and inversion.
+**Min extension** sets the shortest configured height; **Mapping max height** in the Pin array panel sets the tallest generated height. Actual mapped heights are displayed alongside the source preview. Reducing the maximum below the minimum also reduces the minimum. Invalid inputs keep the last valid mapping. Removing the image returns unedited pins to uniform heights; resetting parameters keeps the image while restoring the default dimensions, range, and inversion. Manual height/color overrides survive regeneration.
+
+## Edit pins
+
+Generate in the sidebar, edit with the floating **Edit pins** toolbar over the preview's upper-left, then export from the sidebar. Height and Material open beside it without resizing the canvas or changing camera framing; panels can overlap the model. At tablet/mobile widths, tools float along the canvas bottom and editing fields open in a bottom sheet over generation. Click a pin to select it; Shift-click toggles additional pins. An ordinary drag rotates the camera, even when it starts on a pin; Shift-drag adds a selection box over projected pin tips, including hidden pins. Clicking empty space clears selection without Shift. Scroll zooms and right-drag pans. Both perspective and orthographic Top view support these gestures without switching modes. Yellow exterior outlines indicate selection without tinting pin surfaces, changing printable colors, or changing the scene's exposure.
+
+The dock counts selected RGB colors; the compact preview status strip counts all design colors including the base. Different filament profiles sharing RGB count as one displayed color but retain distinct export slots. Info icons open on-demand guidance; errors and export blockers remain visible. Default/reset materials are **PLA Basic Gray (10103)** for the base and **PLA Basic Turquoise (10605)** for pins, not Custom color.
+
+Open **Height** in the toolbar. **Set height** assigns a uniform height; **Offset height** adds or subtracts mm while retaining height differences. Enter a value and press **Apply height** or Enter. Mixed selections display **Mixed**. Drag the active pin's ↑ handle along world Z in perspective, or vertically on screen in Top view; its tooltip shows the live height. A drag uses its starting heights and creates one undo record on release. Escape, pointer cancellation, loss of focus, or a view change restores the committed design. Downloads are disabled during a drag. Invalid batches are rejected together, never clamped.
+
+Open **Material**, choose **Selection filament / color**, then **Apply material** to paint one, several, or all selected pins. Close the custom color picker before applying. **Base filament / color** is independent and lives under **Base plate**. The toolbar's **⋯** menu offers **Select all**, **Restore generated heights**, **Restore pin colors**, and **Reset all edits**. Restore height uses the latest image/uniform generator; reset all confirms before restoring pins and base. Undo/Redo (Ctrl/Cmd-Z, Shift-Z or Ctrl/Cmd-Y outside text fields) covers heights, materials and resets, retaining at most 50 transactions and 16 MiB of encoded sparse deltas. On small screens, Undo/Redo move into the menu to keep the viewer unobstructed.
+
+Changing base dimensions, pin spacing or diameter preserves edits and selection. Rows/columns are pin identity: changing them with pin edits requires confirmation, then clears pin edits, selection and history while retaining the base material. **Generated pin height** is not a ceiling on manual heights. 3MF validates the actual fixed/detachable printable height against the X1C profile; STL remains printer-independent. The resolved committed heights and per-pin material identities are shared by preview and export. Up to 16 used **RGB + filament profile** pairs are allowed, including the base; introducing a seventeenth is rejected. Projects remain in memory and reset on reload.
 
 ## Model downloads
 
-Choose **Base filament** and **Pin filament** in Export. Search the bundled Bambu Lab PLA Basic/Matte catalog by color name, product code, family, or hex, or choose **Custom color** for swatches, the color picker, or hex entry. Existing model colors remain unchanged until you make a selection. The selected colors appear in the assembled preview and are retained in 3MF alongside the selected material family. Image processing stays in the browser; downloads send only resolved heights, parameters, colors, material-profile keys, and material indices to the local backend.
+Choose the base material under **Base plate** and selected-pin materials in the preview toolbar, then download from **Print export**. Search the bundled Bambu Lab PLA Basic/Matte catalog by color name, product code, family, or hex, or choose **Custom color** for swatches, the color picker, or hex entry. The selected colors appear in the assembled preview and are retained in 3MF alongside the selected material family. Image processing stays in the browser; downloads send only committed resolved heights, parameters, colors, material-profile keys, and per-pin material indices to the local backend. Edits made after submitting a download do not alter that request snapshot.
 
 The offline catalog in `apps/web/src/features/filaments/data/bambu-pla.ts` stores brand, material, type, color, product code, hex, RGB, and source record IDs. Its September 30, 2026 snapshot contains 32 [PLA Basic](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/basic) and 25 [PLA Matte](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/matte) entries from 3D Filament Profiles, including distinct records sharing an RGB value. These are reference colors, not calibrated printed-color measurements or an availability guarantee. Basic selections reference **Bambu PLA Basic @BBL X1C**; Matte selections reference **Bambu PLA Matte @BBL X1C**. Custom colors reference **Generic PLA**, which users must verify is suitable for their actual material. Choosing Custom color clears the previous family even when RGB stays unchanged. No network request is needed to browse the presets. Update the data, capture date, and catalog tests together when refreshing the snapshot.
 
