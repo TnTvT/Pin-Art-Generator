@@ -1,0 +1,100 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BoxGeometry, CylinderGeometry, InstancedMesh, Mesh, MeshBasicMaterial, OrthographicCamera, PerspectiveCamera } from 'three';
+import { DEFAULTS } from '../pin-design/model';
+import { updatePinInstances } from './pin-grid';
+import { createPinInteraction, type PreviewEditing } from './pin-interaction';
+import { pinTip, projectTip } from './pin-selection';
+
+const cleanups: (() => void)[] = [];
+afterEach(() => cleanups.splice(0).forEach(cleanup => cleanup()));
+function fixture(perspective = false, dense = false) {
+  const parameters = { ...DEFAULTS, columns: dense ? 100 : 2, rows: dense ? 100 : 2, spacing: dense ? 0.3 : 10, diameter: dense ? 0.1 : 2 };
+  const heights = dense ? new Float32Array(10000).fill(10) : new Float32Array([5, 10, 15, 20]);
+  const container = document.createElement('div');
+  const canvas = document.createElement('canvas'); container.append(canvas); document.body.append(container);
+  const rectangle = { left: 0, top: 0, width: 400, height: 400 } as DOMRect;
+  vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(rectangle);
+  let captured = false;
+  for (const owner of [canvas as HTMLElement, container as HTMLElement]) {
+    owner.setPointerCapture = () => { captured = true; };
+    owner.hasPointerCapture = () => captured;
+    owner.releasePointerCapture = () => { captured = false; };
+  }
+  const geometry = new CylinderGeometry(0.5, 0.5, 1, 16), material = new MeshBasicMaterial();
+  const pins = new InstancedMesh(geometry, material, parameters.columns * parameters.rows); updatePinInstances(pins, parameters, heights); pins.updateMatrixWorld();
+  const baseGeometry = new BoxGeometry(120, 100, 3), base = new Mesh(baseGeometry, material); base.position.z = 1.5; base.updateMatrixWorld();
+  const camera = perspective ? new PerspectiveCamera(36, 1, 0.1, 1000) : new OrthographicCamera(-20, 20, 20, -20, 0.1, 500);
+  camera.position.set(perspective ? 60 : 0, perspective ? 80 : 0, 100);
+  camera.up.set(0, perspective ? 0 : 1, perspective ? 1 : 0); camera.lookAt(0, 0, 10); camera.updateMatrixWorld();
+  const editing: PreviewEditing = { heightMode: 'offset', selection: new Set([0]), active: 0,
+    onSelect: vi.fn(), onDragStart: vi.fn(() => true), onDragDelta: vi.fn(), onDragEnd: vi.fn(), onDragCancel: vi.fn() };
+  const navigation = vi.fn();
+  const interaction = createPinInteraction(container, canvas, pins, base, () => camera, navigation);
+  interaction.update(parameters, heights); interaction.setEditing(editing); interaction.render();
+  const handle = container.querySelector('button')!;
+  handle.setPointerCapture = canvas.setPointerCapture; handle.hasPointerCapture = canvas.hasPointerCapture; handle.releasePointerCapture = canvas.releasePointerCapture;
+  cleanups.push(() => { interaction.dispose(); container.remove(); geometry.dispose(); baseGeometry.dispose(); material.dispose(); pins.dispose(); });
+  function pointer(owner: HTMLElement, type: string, x: number, y: number, shift = false) {
+    owner.dispatchEvent(new PointerEvent(type, { pointerId: 1, button: 0, clientX: x, clientY: y, shiftKey: shift, bubbles: true, cancelable: true }));
+  }
+  return { interaction, editing, pointer, canvas, handle, navigation, camera, parameters, heights };
+}
+describe('preview pointer interaction', () => {
+  it('picks the correct final instance in a 10,000-pin grid', () => {
+    const { editing, pointer, canvas, camera, parameters, heights } = fixture(false, true);
+    const point = projectTip(pinTip(9999, parameters, heights), camera, { width: 400, height: 400 })!;
+    pointer(canvas, 'pointerdown', point.x, point.y); pointer(canvas, 'pointerup', point.x, point.y);
+    expect(editing.onSelect).toHaveBeenLastCalledWith([9999], 'replace');
+  });
+  it.each([false, true])('picks instances in both projections and respects Shift toggles (perspective=%s)', perspective => {
+    const { editing, pointer, canvas, camera, parameters, heights } = fixture(perspective);
+    const point = projectTip(pinTip(3, parameters, heights), camera, { width: 400, height: 400 })!;
+    pointer(canvas, 'pointerdown', point.x, point.y); pointer(canvas, 'pointerup', point.x, point.y);
+    expect(editing.onSelect).toHaveBeenLastCalledWith([3], 'replace');
+    pointer(canvas, 'pointerdown', point.x, point.y, true); pointer(canvas, 'pointerup', point.x, point.y, true);
+    expect(editing.onSelect).toHaveBeenLastCalledWith([3], 'toggle');
+  });
+  it('box-selects projected tips only with Shift and adds to the selection', () => {
+    const { editing, pointer, canvas, navigation } = fixture();
+    pointer(canvas, 'pointerdown', 0, 0, true); pointer(canvas, 'pointermove', 399, 399, true); pointer(canvas, 'pointerup', 399, 399, true);
+    expect(editing.onSelect).toHaveBeenLastCalledWith([0, 1, 2, 3], 'add');
+    expect(navigation.mock.calls.map(([enabled]) => enabled)).toEqual([false, true]);
+  });
+  it('lets ordinary drags orbit without changing selection, even when returning to the starting point', () => {
+    const { editing, pointer, canvas, navigation, camera, parameters, heights } = fixture();
+    const point = projectTip(pinTip(3, parameters, heights), camera, { width: 400, height: 400 })!;
+    const cameraEvents = vi.fn();
+    canvas.addEventListener('pointerdown', cameraEvents);
+    canvas.addEventListener('pointermove', cameraEvents);
+    canvas.addEventListener('pointerup', cameraEvents);
+    pointer(canvas, 'pointerdown', point.x, point.y);
+    pointer(canvas, 'pointermove', point.x + 50, point.y);
+    pointer(canvas, 'pointermove', point.x, point.y);
+    pointer(canvas, 'pointerup', point.x, point.y);
+    expect(cameraEvents).toHaveBeenCalledTimes(4);
+    expect(navigation).not.toHaveBeenCalled();
+    expect(editing.onSelect).not.toHaveBeenCalled();
+    expect(document.querySelector('.pin-selection-box')).toHaveProperty('hidden', true);
+  });
+  it('does not select the base and right-drag remains navigation', () => {
+    const { editing, pointer, canvas } = fixture();
+    pointer(canvas, 'pointerdown', 20, 20); pointer(canvas, 'pointerup', 20, 20);
+    expect(editing.onSelect).toHaveBeenLastCalledWith([], 'replace');
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 2, pointerId: 1, bubbles: true }));
+    canvas.dispatchEvent(new PointerEvent('pointerup', { button: 2, pointerId: 1, bubbles: true }));
+    expect(editing.onSelect).toHaveBeenCalledOnce();
+  });
+  it('captures a height drag, commits once, and cancels on Escape or pointer cancellation', () => {
+    const { editing, pointer, handle, navigation } = fixture();
+    pointer(handle, 'pointerdown', 150, 250); pointer(handle, 'pointermove', 150, 200); pointer(handle, 'pointermove', 150, 150);
+    expect(editing.onDragDelta).toHaveBeenLastCalledWith(10);
+    pointer(handle, 'pointerup', 150, 150);
+    expect(editing.onDragEnd).toHaveBeenCalledOnce();
+    expect(navigation.mock.calls.map(([enabled]) => enabled)).toEqual([false, true]);
+    pointer(handle, 'pointerdown', 150, 250);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    pointer(handle, 'pointerdown', 150, 250); pointer(handle, 'pointercancel', 150, 200);
+    expect(editing.onDragCancel).toHaveBeenCalledTimes(2);
+    expect(editing.onDragEnd).toHaveBeenCalledOnce();
+  });
+});
