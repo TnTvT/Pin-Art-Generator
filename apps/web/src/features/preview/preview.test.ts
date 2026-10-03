@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Color, GridHelper, InstancedMesh, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
 import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
 import { createPreview, type Preview } from './preview';
+import { PREVIEW_COLORS } from './appearance';
 
 const renderer = vi.hoisted(() => ({ render: vi.fn(), dispose: vi.fn(), forceContextLoss: vi.fn() }));
 const OriginalResizeObserver = window.ResizeObserver;
@@ -157,7 +158,28 @@ describe('preview camera projection', () => {
     preview.setColorScheme('light');
     renderedCamera();
     expect((scene.background as Color).getHexString()).toBe('f1f4f5');
-    expect(grid.material.color.getHexString()).toBe('ffffff');
+    expect(grid.material.color.getHexString()).toBe(new Color(PREVIEW_COLORS.light.gridTint).getHexString());
+  });
+
+  it('keeps light-mode grid lines distinct from the background initially and after theme changes', () => {
+    renderedCamera();
+    const scene = renderer.render.mock.lastCall![0] as Scene;
+    const grid = scene.children.find((child) => child instanceof GridHelper) as GridHelper;
+    const luminance = (color: Color) => 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+    const expectVisibleGrid = () => {
+      const backgroundLuminance = luminance(scene.background as Color);
+      const vertexColors = grid.geometry.getAttribute('color');
+      for (let index = 0; index < vertexColors.count; index++) {
+        const lineColor = new Color().fromBufferAttribute(vertexColors, index).multiply(grid.material.color);
+        expect((backgroundLuminance + 0.05) / (luminance(lineColor) + 0.05)).toBeGreaterThanOrEqual(3);
+      }
+    };
+    expectVisibleGrid();
+    preview.setColorScheme('dark');
+    renderedCamera();
+    preview.setColorScheme('light');
+    renderedCamera();
+    expectVisibleGrid();
   });
 
   it('fits the top-view footprint tightly even when pins are very tall', () => {

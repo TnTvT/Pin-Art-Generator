@@ -4,7 +4,7 @@ export const PREVIEW_COLORS = {
   light: {
     background: '#f1f4f5',
     edges: '#354652',
-    gridTint: '#ffffff',
+    gridTint: '#8a9aa6',
   },
   dark: {
     background: '#171f27',

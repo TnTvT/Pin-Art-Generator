@@ -57,6 +57,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   pins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(pins);
   const grid = new THREE.GridHelper(400, 40, '#cbd4d8', '#dfe5e7');
+  grid.material.color.set(colors.gridTint);
   grid.rotation.x = Math.PI / 2;
   grid.position.z = -0.04;
   scene.add(grid);

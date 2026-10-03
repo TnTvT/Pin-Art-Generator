@@ -114,7 +114,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - File-input controls allow reselecting the same image.
 - Camera controls, preview updates, and cleanup are covered by integration tests.
 - Verify orientation-helper alignment in Top view, rotation tracking, pan/zoom independence, and cleanup with the preview.
-- Theme switching and persistence are covered by tests, including camera and design preservation. Check both themes and narrow-screen layouts in the browser.
+- Theme switching and persistence are covered by tests, including camera and design preservation. Keep light-mode grid lines visibly distinct from the canvas background on first render and after switching back from dark mode. Check both themes and narrow-screen layouts in the browser.
 - `pnpm test`, `pnpm typecheck`, and `pnpm build` pass for behavior changes. The root test task runs both frontend and backend suites.
 - Use browser smoke checks for actual image decoding, WebGL rendering, the 10,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.
 
