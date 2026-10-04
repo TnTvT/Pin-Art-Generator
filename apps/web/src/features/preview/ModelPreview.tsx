@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Group, useComputedColorScheme } from '@mantine/core';
 import { createPreview, type Preview, type PreviewEditing, type ViewAction } from './preview';
 import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
+import DesignColorSummary from '../filaments/DesignColorSummary';
+import type { MaterialSelection } from '../filaments/materials';
 
-export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS, pinColors, editing, heightLabel, toolbar }: { parameters: Parameters; heights?: Float32Array; colors?: ModelColors; pinColors?: readonly string[]; editing?: PreviewEditing; heightLabel?: string; toolbar?: ReactNode }) {
+interface ModelPreviewProps {
+  parameters: Parameters;
+  heights?: Float32Array;
+  colors?: ModelColors;
+  pinColors?: readonly string[];
+  materialSelections?: readonly MaterialSelection[];
+  editing?: PreviewEditing;
+  heightLabel?: string;
+  toolbar?: ReactNode;
+}
+
+export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS, pinColors, materialSelections, editing, heightLabel, toolbar }: ModelPreviewProps) {
   const container = useRef<HTMLDivElement>(null);
   const preview = useRef<Preview | null>(null);
   const [error, setError] = useState(false);
@@ -39,7 +52,10 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
   useEffect(() => { if (editing) preview.current?.setEditing(editing); }, [editing]);
 
   const setView = (action: ViewAction) => preview.current?.setView(action);
-  const designColors = [...new Set([colors.base, ...(pinColors ?? [colors.pins])].map(color => color.toLowerCase()))];
+  const designSelections = useMemo(() => materialSelections ?? [
+    { color: colors.base, filamentId: null },
+    ...(pinColors ?? Array<string>(parameters.columns * parameters.rows).fill(colors.pins)).map(color => ({ color, filamentId: null })),
+  ], [materialSelections, colors, pinColors, parameters.columns, parameters.rows]);
 
   return (
     <section className="preview-panel" aria-label="Model preview">
@@ -69,7 +85,7 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
         <div className="viewport-dimensions">{parameters.width} × {parameters.depth} mm<span>Base dimensions</span></div>
       </div>
       <div className="preview-footer">
-        <div className="design-color-summary" aria-label="Design colors"><span>Design:</span><strong>{designColors.length} {designColors.length === 1 ? 'color' : 'colors'}</strong><div className="color-swatches">{designColors.map(color => <i key={color} title={color.toUpperCase()} style={{ backgroundColor: color }} />)}</div></div>
+        <DesignColorSummary selections={designSelections} />
         <span className="material-key"><i style={{ background: colors.pins }} /> {heightLabel ?? (heights ? 'Image-mapped heights' : 'Uniform pin height')}</span>
       </div>
     </section>

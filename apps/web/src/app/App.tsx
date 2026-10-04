@@ -36,6 +36,7 @@ export default function App() {
   const modelMaterials = useMemo(() => ({ base: editor.state.base, pins: DEFAULT_MODEL_MATERIALS.pins }), [editor.state.base]);
   const modelColors = useMemo(() => ({ base: modelMaterials.base.color, pins: modelMaterials.pins.color }), [modelMaterials]);
   const pinColors = useMemo(() => editor.committed.pinSelections.map(material => material.color), [editor.committed.pinSelections]);
+  const materialSelections = useMemo(() => [editor.state.base, ...editor.committed.pinSelections], [editor.state.base, editor.committed.pinSelections]);
   const metrics = getMetrics(parameters);
   const warnings = getWarnings(parameters);
   const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : image.loading
@@ -158,7 +159,7 @@ export default function App() {
             <ExportPanel parameters={parameters} heights={editor.committed.heights} materials={modelMaterials} pinSelections={editor.committed.pinSelections} blockedReason={exportBlockedReason} />
           </aside>
           <div className="preview-column">
-            <ModelPreview parameters={parameters} heights={editor.heights} colors={modelColors} pinColors={pinColors}
+            <ModelPreview parameters={parameters} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
               heightLabel={editor.state.overrides.size ? 'Edited pin design' : image.source ? 'Image-mapped heights' : 'Uniform pin height'}
               toolbar={<PinEditorToolbar editor={editor} columns={parameters.columns} />}
               editing={{ heightMode: editor.heightMode, selection: editor.state.selection, active: editor.state.active,
