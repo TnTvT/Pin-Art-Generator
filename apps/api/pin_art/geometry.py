@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import lru_cache
+import hashlib
 import struct
 
 import manifold3d
@@ -51,19 +52,30 @@ def _check_solid(solid: manifold3d.Manifold) -> None:
 def build_plates(request: ExportRequest) -> list[Plate]:
     layouts = plan_layout(request)
     parameters = request.parameters
-    base = manifold3d.Manifold.cube((parameters.width, parameters.depth, parameters.thickness)).translate(
-        (-parameters.width / 2, -parameters.depth / 2, 0)
-    )
+    if request.layout:
+        contours = [ring for region in request.layout.regions for ring in [region.outer, *region.holes]]
+        base = manifold3d.CrossSection(contours, manifold3d.FillRule.EvenOdd).extrude(parameters.thickness)
+    else:
+        base = manifold3d.Manifold.cube((parameters.width, parameters.depth, parameters.thickness)).translate(
+            (-parameters.width / 2, -parameters.depth / 2, 0)
+        )
     base_key = f"base:{parameters.width!r}:{parameters.depth!r}:{parameters.thickness!r}"
+    if request.layout:
+        base_key += hashlib.sha256(request.layout.model_dump_json().encode()).hexdigest()
     if request.mode == "detachable":
         socket_diameter = parameters.diameter + request.socket.clearance
         floor = parameters.thickness - request.socket.insertion_depth
         cutters = []
-        for pin_index in range(parameters.columns * parameters.rows):
-            row, column = divmod(pin_index, parameters.columns)
+        count = len(request.layout.pins) if request.layout else parameters.columns * parameters.rows
+        for pin_index in range(count):
+            if request.layout:
+                horizontal, vertical = request.layout.pins[pin_index].x, request.layout.pins[pin_index].y
+            else:
+                row, column = divmod(pin_index, parameters.columns)
+                horizontal = (column - (parameters.columns - 1) / 2) * parameters.spacing
+                vertical = (row - (parameters.rows - 1) / 2) * parameters.spacing
             transform = _transform(
-                (column - (parameters.columns - 1) / 2) * parameters.spacing,
-                (row - (parameters.rows - 1) / 2) * parameters.spacing,
+                horizontal, vertical,
                 floor, socket_diameter, request.socket.insertion_depth + 1,
             )
             cutters.append(_unit_cylinder().transform(transform[:3]))

@@ -23,6 +23,10 @@ class LayoutPlate:
 
 
 def _pin_name(request: ExportRequest, pin_index: int) -> str:
+    if request.layout:
+        pin = request.layout.pins[pin_index]
+        length = request.heights[pin_index] + (request.socket.insertion_depth if request.mode == "detachable" else 0)
+        return f"Pin {pin.id} X{pin.x:.3f} Y{pin.y:.3f} {length:.3f} mm"
     row, column = divmod(pin_index, request.parameters.columns)
     length = request.heights[pin_index]
     if request.mode == "detachable":
@@ -32,15 +36,19 @@ def _pin_name(request: ExportRequest, pin_index: int) -> str:
 
 def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
     parameters = request.parameters
-    count = parameters.columns * parameters.rows
+    count = len(request.layout.pins) if request.layout else parameters.columns * parameters.rows
     if request.mode == "fixed":
         parts = [LayoutPart("base", None, 0.0, 0.0)]
         for pin_index in range(count):
-            row, column = divmod(pin_index, parameters.columns)
+            if request.layout:
+                horizontal, vertical = request.layout.pins[pin_index].x, request.layout.pins[pin_index].y
+            else:
+                row, column = divmod(pin_index, parameters.columns)
+                horizontal = (column - (parameters.columns - 1) / 2) * parameters.spacing
+                vertical = (row - (parameters.rows - 1) / 2) * parameters.spacing
             parts.append(LayoutPart(
                 _pin_name(request, pin_index), pin_index,
-                (column - (parameters.columns - 1) / 2) * parameters.spacing,
-                (row - (parameters.rows - 1) / 2) * parameters.spacing,
+                horizontal, vertical,
             ))
         return [LayoutPlate(0, parts)]
     usable_width = request.plate.width - 2 * MARGIN

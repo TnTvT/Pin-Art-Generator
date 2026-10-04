@@ -21,6 +21,9 @@ def generate_export(request: ExportRequest):
             archive.writestr(filename, plate_stl(plate))
             manifest["plates"].append({"file": filename, "parts": [{"name": part.name, "material": part.material, "transform": part.transform.tolist()} for part in plate.parts]})
         manifest["heights"] = request.heights
-        manifest["grid"] = {"columns": request.parameters.columns, "rows": request.parameters.rows}
+        if request.layout:
+            manifest["layout"] = request.layout.model_dump(by_alias=True)
+        else:
+            manifest["grid"] = {"columns": request.parameters.columns, "rows": request.parameters.rows}
         archive.writestr("manifest.json", json.dumps(manifest, indent=2))
     return buffer.getvalue(), "pin-art-detachable-plates.zip", "application/zip", len(plates)
