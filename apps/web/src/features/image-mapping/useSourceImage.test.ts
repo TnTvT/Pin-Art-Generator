@@ -125,4 +125,21 @@ describe('source image lifecycle', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:second');
     expect(second.close).toHaveBeenCalledOnce();
   });
+  it('retains the applied bitmap until a changed image is accepted or a layout confirmation is cancelled', async () => {
+    const first = bitmap(), second = bitmap(), third = bitmap();
+    decode.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockResolvedValueOnce(third);
+    const { result, unmount } = renderHook(() => useSourceImage(true));
+    await act(async () => { await result.current.upload(file()); });
+    act(() => result.current.accept());
+    await act(async () => { await result.current.upload(file()); });
+    expect(first.close).not.toHaveBeenCalled();
+    act(() => result.current.restore());
+    expect(result.current.source?.bitmap).toBe(first);
+    expect(second.close).toHaveBeenCalledOnce();
+    await act(async () => { await result.current.upload(file()); });
+    act(() => result.current.accept());
+    expect(first.close).toHaveBeenCalledOnce();
+    unmount();
+    expect(third.close).toHaveBeenCalledOnce();
+  });
 });

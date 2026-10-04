@@ -115,7 +115,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
           <div className="field-pair">{numericField('insertionDepth', 'Insertion depth')}{numericField('clearance', 'Socket clearance')}</div>
           <div className="field-pair">{numericField('bedWidth', 'Bed width')}{numericField('bedDepth', 'Bed depth')}</div>
         </>}
-        {parameters.columns * parameters.rows >= 2500 && <p className="field-help">Dense exports can take a minute. STL may require several GB of memory; use fewer pins on memory-constrained computers.</p>}
+        {(parameters.layout?.pins.length ?? parameters.columns * parameters.rows) >= 2500 && <p className="field-help">Dense exports can take a minute. STL may require several GB of memory; use fewer pins on memory-constrained computers.</p>}
         {validation && <p id="export-block-reason" className="export-blocked" role="status">Export blocked: {validation}</p>}
         {!validation && bambuValidation && <p id="bambu-block-reason" className="export-blocked" role="status">3MF blocked: {bambuValidation}</p>}
         <div className="export-actions">

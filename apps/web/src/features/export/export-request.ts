@@ -1,5 +1,6 @@
 import { getMetrics, getWarnings, type Parameters } from '../pin-design/model';
 import { resolveFilamentProfile, type FilamentProfile, type MaterialSelection, type ModelMaterials } from '../filaments/materials';
+import { pinsHaveSeparation, regionIndex, type Layout } from '../base-shape/layout';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = 'fixed' | 'detachable';
@@ -12,7 +13,8 @@ export interface ExportOptions {
 
 export interface ExportRequest extends ExportOptions {
   format: ExportFormat;
-  parameters: Parameters;
+  parameters: Omit<Parameters, 'layout' | 'rows' | 'columns'> & { rows?: number; columns?: number };
+  layout?: Omit<Layout, 'imageBounds'>;
   heights: number[];
   materials: string[];
   filamentProfiles: FilamentProfile[];
@@ -29,11 +31,17 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
 export const BAMBU_PROFILE = { name: 'Bambu Lab X1 Carbon 0.4 nozzle', width: 256, depth: 256, height: 250 } as const;
 
 export function validateExport(parameters: Parameters, heights: Float32Array | undefined, options: ExportOptions, format?: ExportFormat): string | null {
-  if (Object.values(parameters).some((value) => !Number.isFinite(value) || value <= 0)
+  const { layout, ...dimensions } = parameters;
+  if (Object.values(dimensions).some((value) => !Number.isFinite(value) || value <= 0)
     || !Number.isInteger(parameters.columns) || !Number.isInteger(parameters.rows)
     || parameters.columns > 100 || parameters.rows > 100) return 'Use valid positive parameters and grid counts from 1 to 100.';
   const warning = getWarnings(parameters)[0];
   if (warning) return warning;
+  if (layout) {
+    if (!layout.pins.length || layout.pins.length > 10000 || !Number.isFinite(layout.edgePadding) || layout.edgePadding < 0) return 'Use 1–10,000 pins and nonnegative edge padding.';
+    const fits = regionIndex(layout.regions);
+    if (layout.pins.some(pin => !Number.isFinite(pin.x) || !Number.isFinite(pin.y) || !fits(pin.x, pin.y, parameters.diameter / 2 + layout.edgePadding))) return 'Pin positions must respect every outer and hole boundary and Edge padding.';
+  }
   const metrics = getMetrics(parameters);
   if (heights && (heights.length !== metrics.count || heights.some((height) => !Number.isFinite(height) || height <= 0))) {
     return 'Resolved pin heights are invalid or incomplete. Every pin must have a finite height greater than 0 mm.';
@@ -51,14 +59,18 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
     }
     if (parameters.thickness - insertionDepth < 1 - 0.000001) return 'Socket floor must be at least 1 mm thick. Increase base thickness or reduce insertion depth.';
     const socketDiameter = parameters.diameter + clearance;
-    if (metrics.count > 1 && parameters.spacing - socketDiameter < 0.8 - 0.000001) return 'Socket walls between pins must be at least 0.8 mm. Increase spacing or reduce diameter or clearance.';
-    const socketWidth = (parameters.columns - 1) * parameters.spacing + socketDiameter;
-    const socketDepth = (parameters.rows - 1) * parameters.spacing + socketDiameter;
+    if (layout ? !pinsHaveSeparation(layout.pins, socketDiameter + 0.8) : metrics.count > 1 && parameters.spacing - socketDiameter < 0.8 - 0.000001) return 'Socket walls between pins must be at least 0.8 mm. Increase spacing or reduce diameter or clearance.';
+    const socketWidth = layout ? metrics.width + clearance : (parameters.columns - 1) * parameters.spacing + socketDiameter;
+    const socketDepth = layout ? metrics.depth + clearance : (parameters.rows - 1) * parameters.spacing + socketDiameter;
     if ((parameters.width - socketWidth) / 2 < 0.8 - 0.000001 || (parameters.depth - socketDepth) / 2 < 0.8 - 0.000001) {
       return 'Socket edges must be at least 0.8 mm from the base edge. Increase the base size or reduce the grid.';
     }
     if (parameters.diameter > options.plate.width - 10 || parameters.diameter > options.plate.depth - 10) {
       return 'Detached pins do not fit on the bed with 5 mm margins.';
+    }
+    const fits = layout ? regionIndex(layout.regions) : null;
+    if (layout && fits && layout.pins.some(pin => !fits(pin.x, pin.y, Math.max(parameters.diameter / 2 + layout.edgePadding, socketDiameter / 2 + 0.8)))) {
+      return 'Socket edges must be at least 0.8 mm from every outer or hole boundary. Increase padding or reduce socket clearance.';
     }
   }
   if (format === '3mf') {
@@ -100,7 +112,11 @@ export function buildExportRequest(parameters: Parameters, heights: Float32Array
   });
   if (materials.length > 16) throw new Error('Use at most 16 materials including the base.');
   return {
-    format, mode: options.mode, parameters: { ...parameters },
+    format, mode: options.mode,
+    parameters: parameters.layout
+      ? { width: parameters.width, depth: parameters.depth, thickness: parameters.thickness, spacing: parameters.spacing, diameter: parameters.diameter, extension: parameters.extension }
+      : { ...parameters },
+    ...(parameters.layout ? { layout: { regions: parameters.layout.regions, pins: parameters.layout.pins, edgePadding: parameters.layout.edgePadding } } : {}),
     heights: heights ? Array.from(heights) : Array<number>(count).fill(parameters.extension),
     materials, filamentProfiles, baseMaterial: indices[0],
     pinMaterials: indices.slice(1),

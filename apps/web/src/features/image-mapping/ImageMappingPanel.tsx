@@ -9,6 +9,8 @@ import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import HeightRangeControl from './HeightRangeControl';
 
 interface ImageMappingPanelProps {
+  enabled?: boolean;
+  onEnabledChange?: (value: boolean) => void;
   source: SourceImage | null;
   loading: boolean;
   error: string | null;
@@ -52,7 +54,7 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
   return (
     <section className="image-panel" aria-label="Image mapping">
       <div className="image-heading">
-        <div className="section-title"><h2>Image mapping</h2><InfoPopover label="Image mapping help"><p>Turn brightness into height, image colors into preset filaments, or both. Your image stays on your device. Upload PNG, JPG, or WebP up to 20 MB. Transparent areas and margins are white. Manual edits take priority.</p></InfoPopover></div>
+        <div className="section-title"><h2>Image mapping</h2><InfoPopover label="Image mapping help"><p>Turn brightness into height, image colors into preset filaments, or both. Your image stays on your device. Upload PNG, JPG, or WebP up to 20 MB. Mapping samples composite transparency and margins over white; contour detection uses original alpha. Manual edits take priority.</p></InfoPopover></div>
         <Group gap="xs">
           {!props.source && <Button variant="subtle" size="xs" onClick={() => void props.onSample()} disabled={props.loading}>Try sample</Button>}
           <FileButton resetRef={resetFile} accept="image/png,image/jpeg,image/webp" onChange={(file) => {
@@ -70,7 +72,8 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
             <span title={props.source.name}>{props.source.name}</span>
             <Button variant="subtle" color="gray" size="compact-xs" onClick={props.onRemove}>Remove image</Button>
           </div>
-          <div className="mapping-controls">
+          {props.onEnabledChange && <Switch label="Map image to pins" checked={props.enabled !== false} onChange={event => props.onEnabledChange?.(event.currentTarget.checked)} size="xs" />}
+          {props.enabled !== false && <div className="mapping-controls">
             <fieldset className="mapping-mode"><legend>Mapping mode</legend>
               <SegmentedControl fullWidth size="xs" value={props.mode} onChange={mode => props.onModeChange(mode as MappingMode)}
                 data={[{ label: 'Height', value: 'height' }, { label: 'Color', value: 'color' }, { label: 'Height + Color', value: 'height-color' }]} />
@@ -115,7 +118,7 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
               <p className="mapping-description">Final design: {props.resolvedMaterialsCount} {props.resolvedMaterialsCount === 1 ? 'material' : 'materials'} (including base)</p>
             </>}
             <p className="mapping-description" role="status">{props.processing ? 'Updating mapping…' : props.elapsedMs !== null ? `Mapping updated · ${Math.round(props.elapsedMs)} ms` : ''}</p>
-          </div>
+          </div>}
         </div>
       ) : null}
       {props.error && <Alert color="red" title="Image mapping needs attention" mt="sm">{props.error}<Button variant="subtle" size="xs" onClick={props.onRetry} disabled={props.processing}>Retry mapping</Button></Alert>}

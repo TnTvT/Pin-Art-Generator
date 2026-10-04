@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { Parameters } from '../pin-design/model';
+import { pinCount, type Parameters } from '../pin-design/model';
 import type { MaterialSelection } from '../filaments/materials';
 import { createEditorState, editorReducer, heightBatch, resolveDesign, type EditorAction, type HeightMode, type SelectionOperation } from './model';
 
 export default function usePinEditor(parameters: Parameters, generated?: Float32Array, blocked = false) {
-  const [state, rawDispatch] = useReducer(editorReducer, parameters.rows * parameters.columns, createEditorState);
+  const [state, rawDispatch] = useReducer(editorReducer, pinCount(parameters), createEditorState);
   blocked = blocked || state.mappingPending;
   const dispatch = useCallback((action: EditorAction) => {
     if (!blocked || action.type === 'select' || action.type === 'topology') rawDispatch(action);

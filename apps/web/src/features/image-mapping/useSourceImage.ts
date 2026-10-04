@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { type SourceImage } from './image-mapping';
 import { createSampleImage } from './sample-image';
 
@@ -8,16 +8,18 @@ function releaseImage(image: SourceImage | null) {
   image.bitmap.close();
 }
 
-export default function useSourceImage() {
+export default function useSourceImage(deferredRelease = false) {
   const [source, setSource] = useState<SourceImage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const current = useRef<SourceImage | null>(null);
+  const accepted = useRef<SourceImage | null>(null);
   const requestId = useRef(0);
 
   useEffect(() => () => {
     requestId.current += 1;
     releaseImage(current.current);
+    if (accepted.current !== current.current) releaseImage(accepted.current);
     current.current = null;
   }, []);
 
@@ -56,7 +58,7 @@ export default function useSourceImage() {
         return;
       }
       const nextImage = { name: file.name, url: URL.createObjectURL(file), bitmap };
-      releaseImage(current.current);
+      if (!deferredRelease || current.current !== accepted.current) releaseImage(current.current);
       current.current = nextImage;
       setSource(nextImage);
     } catch {
@@ -68,7 +70,7 @@ export default function useSourceImage() {
 
   function remove() {
     requestId.current += 1;
-    releaseImage(current.current);
+    if (!deferredRelease || current.current !== accepted.current) releaseImage(current.current);
     current.current = null;
     setSource(null);
     setError(null);
@@ -83,5 +85,17 @@ export default function useSourceImage() {
     }
   }
 
-  return { source, loading, error, upload, remove, useSample };
+  const accept = useCallback(() => {
+    if (accepted.current !== current.current) releaseImage(accepted.current);
+    accepted.current = current.current;
+  }, []);
+  const restore = useCallback(() => {
+    requestId.current += 1;
+    if (accepted.current !== current.current) releaseImage(current.current);
+    current.current = accepted.current;
+    setSource(accepted.current);
+    setLoading(false);
+    setError(null);
+  }, []);
+  return { source, loading, error, upload, remove, useSample, accept, restore };
 }

@@ -1,6 +1,6 @@
 import { DEFAULT_MODEL_MATERIALS, materialKey, type MaterialSelection } from '../filaments/materials';
 export { materialKey } from '../filaments/materials';
-import type { Parameters } from '../pin-design/model';
+import { pinCount, type Parameters } from '../pin-design/model';
 
 export type HeightMode = 'set' | 'offset';
 export type SelectionOperation = 'replace' | 'add' | 'toggle';
@@ -33,6 +33,10 @@ export type EditorAction =
 
 export function createEditorState(count: number): EditorState {
   return { count, base: { ...DEFAULT_MODEL_MATERIALS.base }, overrides: new Map(), selection: new Set(), active: null, past: [], future: [], historyBytes: 0, error: null, mappingPending: false };
+}
+
+export function hasPinEdits(state: EditorState) {
+  return state.overrides.size > 0 || [...state.past, ...state.future].some(transaction => transaction.deltas.length > 0);
 }
 
 function equalOverride(first?: PinOverride, second?: PinOverride) {
@@ -74,7 +78,7 @@ export function heightBatch(heights: Float32Array, selection: Iterable<number>, 
 }
 
 export function resolveDesign(state: EditorState, parameters: Parameters, generated?: Float32Array) {
-  const count = parameters.rows * parameters.columns;
+  const count = pinCount(parameters);
   const heights = (generated ?? state.generatedHeights)?.slice() ?? new Float32Array(count).fill(parameters.extension);
   const pinSelections = state.generatedMaterials ? [...state.generatedMaterials] : Array<MaterialSelection>(count).fill(DEFAULT_MODEL_MATERIALS.pins);
   for (const [index, override] of state.overrides) {

@@ -7,7 +7,7 @@ import type { HeightMode } from './model';
 import type { PinEditor } from './usePinEditor';
 import { summarizeColors } from './color-summary';
 
-export default function PinEditorToolbar({ editor, columns }: { editor: PinEditor; columns: number }) {
+export default function PinEditorToolbar({ editor, columns = 1, parameters }: { editor: PinEditor; columns?: number; parameters?: import('../pin-design/model').Parameters }) {
   const { state, committed, isDragging, blocked } = editor;
   const busy = isDragging || blocked;
   const [value, setValue] = useState<number | string>(20);
@@ -49,7 +49,7 @@ export default function PinEditorToolbar({ editor, columns }: { editor: PinEdito
         <strong>{selected.length.toLocaleString('en-US')} selected</strong>
         <span>{colorSummary.selected.length} {colorSummary.selected.length === 1 ? 'color' : 'colors'} selected</span>
         <div className="color-swatches" aria-label="Selected colors">{colorSummary.selected.map(color => <i key={color} title={color.toUpperCase()} style={{ backgroundColor: color }} />)}</div>
-        {selected.length === 1 && <small>Row {Math.floor(first / columns) + 1}, column {first % columns + 1}</small>}
+        {selected.length === 1 && <small>{parameters?.layout ? `Pin ${parameters.layout.pins[first].id} · X ${parameters.layout.pins[first].x.toFixed(2)}, Y ${parameters.layout.pins[first].y.toFixed(2)} mm` : `Row ${Math.floor(first / columns) + 1}, column ${first % columns + 1}`}</small>}
         {!!selected.length && <span>Height: {mixedHeight ? 'Mixed' : `${Number(selectedHeight!.toFixed(2))} mm`} · Material: {mixedMaterial ? 'Mixed' : committed.pinSelections[first].color.toUpperCase()}</span>}
       </div>
       {!selected.length && <Button variant="subtle" size="xs" disabled={busy} onClick={selectAll}>Select all</Button>}

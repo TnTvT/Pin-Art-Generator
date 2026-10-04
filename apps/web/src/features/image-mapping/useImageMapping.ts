@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Parameters } from '../pin-design/model';
+import { pinCount, type Parameters } from '../pin-design/model';
 import { validateMaterials } from '../pin-editing/model';
 import type { PinEditor } from '../pin-editing/usePinEditor';
-import { mapImageToPins, sampleImagePixels, type SourceImage } from './image-mapping';
+import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, sampleImagePixels, type SourceImage } from './image-mapping';
 import { pixelsToHeights, pixelsToPinRGB, type HeightMap } from './sampling';
 import { startColorMapping } from './color-worker';
 import type { ColorMappingOptions, ColorMappingResult, MappingMode } from './color-mapping';
@@ -47,7 +47,7 @@ export default function useImageMapping({ source, parameters, minimum, inverted,
     const complete = (heightMap: HeightMap | null, colors: ColorMappingResult | null, elapsedMs: number | null) => {
       if (!active) return;
       const overrides = new Map(input.overrides.map(override => [override.index, { material: override.material }]));
-      const count = input.parameters.rows * input.parameters.columns;
+      const count = pinCount(input.parameters);
       if (input.source && input.mode !== 'color' && !heightMap) throw new Error('Resolved image heights are missing. Retry or replace the image.');
       if (heightMap && (heightMap.heights.length !== count || heightMap.heights.some(height => !Number.isFinite(height) || height <= 0))) throw new Error('Resolved image heights must match the grid and be finite and positive.');
       validateMaterials(count, overrides, input.base, colors?.materials);
@@ -68,9 +68,9 @@ export default function useImageMapping({ source, parameters, minimum, inverted,
       else {
         const pixels = sampleImagePixels(input.source, input.parameters);
         const heightMap = input.mode === 'height-color'
-          ? pixelsToHeights(pixels, input.parameters.columns, input.parameters.rows, input.minimum, input.parameters.extension, input.inverted) : null;
+          ? input.parameters.layout ? layoutPixelsToHeights(pixels, input.minimum, input.parameters.extension, input.inverted) : pixelsToHeights(pixels, input.parameters.columns, input.parameters.rows, input.minimum, input.parameters.extension, input.inverted) : null;
         const task = startColorMapping({ ...input.options, base: input.base, overrides: input.overrides,
-          rgb: pixelsToPinRGB(pixels, input.parameters.columns, input.parameters.rows) });
+          rgb: input.parameters.layout ? layoutPixelsToRGB(pixels) : pixelsToPinRGB(pixels, input.parameters.columns, input.parameters.rows) });
         cancel = task.cancel;
         void task.promise.then(reply => complete(heightMap, reply.result, reply.elapsedMs)).catch(fail);
       }
