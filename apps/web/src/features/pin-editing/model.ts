@@ -1,4 +1,5 @@
-import { DEFAULT_MODEL_MATERIALS, resolveFilamentProfile, type MaterialSelection } from '../filaments/materials';
+import { DEFAULT_MODEL_MATERIALS, materialKey, type MaterialSelection } from '../filaments/materials';
+export { materialKey } from '../filaments/materials';
 import type { Parameters } from '../pin-design/model';
 
 export type HeightMode = 'set' | 'offset';
@@ -16,8 +17,13 @@ export interface EditorState {
   future: Transaction[];
   historyBytes: number;
   error: string | null;
+  generatedMaterials?: readonly MaterialSelection[];
+  generatedHeights?: Float32Array;
+  mappingPending: boolean;
 }
 export type EditorAction =
+  | { type: 'generation'; materials?: readonly MaterialSelection[]; heights?: Float32Array }
+  | { type: 'mapping-status'; pending: boolean }
   | { type: 'select'; ids: number[]; operation: SelectionOperation }
   | { type: 'height'; heights: Float32Array; value: number; mode: HeightMode }
   | { type: 'material'; material: MaterialSelection; target: 'base' | 'selection' }
@@ -26,21 +32,17 @@ export type EditorAction =
   | { type: 'topology'; count: number };
 
 export function createEditorState(count: number): EditorState {
-  return { count, base: { ...DEFAULT_MODEL_MATERIALS.base }, overrides: new Map(), selection: new Set(), active: null, past: [], future: [], historyBytes: 0, error: null };
-}
-
-export function materialKey(material: MaterialSelection) {
-  if (!/^#[0-9a-f]{6}$/i.test(material.color)) throw new Error('Choose a valid #RRGGBB color.');
-  return `${material.color.toLowerCase()}:${resolveFilamentProfile(material)}`;
+  return { count, base: { ...DEFAULT_MODEL_MATERIALS.base }, overrides: new Map(), selection: new Set(), active: null, past: [], future: [], historyBytes: 0, error: null, mappingPending: false };
 }
 
 function equalOverride(first?: PinOverride, second?: PinOverride) {
   return first?.height === second?.height && first?.material?.color === second?.material?.color && first?.material?.filamentId === second?.material?.filamentId;
 }
 
-function validateMaterials(count: number, overrides: Map<number, PinOverride>, base: MaterialSelection) {
+export function validateMaterials(count: number, overrides: Map<number, PinOverride>, base: MaterialSelection, generated?: readonly MaterialSelection[]) {
+  if (generated && generated.length !== count) throw new Error('Generated materials do not match the pin grid.');
   const used = new Set([materialKey(base)]);
-  for (let index = 0; index < count; index++) used.add(materialKey(overrides.get(index)?.material ?? DEFAULT_MODEL_MATERIALS.pins));
+  for (let index = 0; index < count; index++) used.add(materialKey(overrides.get(index)?.material ?? generated?.[index] ?? DEFAULT_MODEL_MATERIALS.pins));
   if (used.size > 16) throw new Error('Use at most 16 materials including the base. Replace an existing material or reset some pin colors first.');
 }
 
@@ -73,8 +75,8 @@ export function heightBatch(heights: Float32Array, selection: Iterable<number>, 
 
 export function resolveDesign(state: EditorState, parameters: Parameters, generated?: Float32Array) {
   const count = parameters.rows * parameters.columns;
-  const heights = generated?.slice() ?? new Float32Array(count).fill(parameters.extension);
-  const pinSelections = Array<MaterialSelection>(count).fill(DEFAULT_MODEL_MATERIALS.pins);
+  const heights = (generated ?? state.generatedHeights)?.slice() ?? new Float32Array(count).fill(parameters.extension);
+  const pinSelections = state.generatedMaterials ? [...state.generatedMaterials] : Array<MaterialSelection>(count).fill(DEFAULT_MODEL_MATERIALS.pins);
   for (const [index, override] of state.overrides) {
     if (index >= count) continue;
     if (override.height !== undefined) heights[index] = override.height;
@@ -85,6 +87,12 @@ export function resolveDesign(state: EditorState, parameters: Parameters, genera
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   try {
+    if (action.type === 'mapping-status') return { ...state, mappingPending: action.pending };
+    if (action.type === 'generation') {
+      validateMaterials(state.count, state.overrides, state.base, action.materials);
+      if (action.heights && (action.heights.length !== state.count || action.heights.some(height => !Number.isFinite(height) || height <= 0))) throw new Error('Generated heights must match the grid and be finite and positive.');
+      return { ...state, generatedMaterials: action.materials, generatedHeights: action.heights, mappingPending: false, error: null };
+    }
     if (action.type === 'topology') return { ...createEditorState(action.count), base: state.base };
     if (action.type === 'select') {
       const selection = action.operation === 'replace' ? new Set<number>() : new Set(state.selection);
@@ -105,7 +113,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if (value) overrides.set(delta.index, value);
         else overrides.delete(delta.index);
       }
-      return { ...state, overrides, base: isUndo ? transaction.beforeBase : transaction.afterBase,
+      const base = isUndo ? transaction.beforeBase : transaction.afterBase;
+      validateMaterials(state.count, overrides, base, state.generatedMaterials);
+      return { ...state, overrides, base,
         past: isUndo ? state.past.slice(0, -1) : [...state.past, transaction],
         future: isUndo ? [...state.future, transaction] : state.future.slice(0, -1), error: null };
     }
@@ -115,7 +125,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const material = { ...action.material, color: action.material.color.toLowerCase() };
       const base = action.target === 'base' ? material : state.base;
       if (action.target === 'selection') for (const index of state.selection) overrides.set(index, { ...overrides.get(index), material });
-      validateMaterials(state.count, overrides, base);
+      validateMaterials(state.count, overrides, base, state.generatedMaterials);
       return commit(state, overrides, base);
     }
     const overrides = new Map(state.overrides);
@@ -124,7 +134,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const heights = heightBatch(action.heights, state.selection, action.value, action.mode);
       for (const index of state.selection) overrides.set(index, { ...overrides.get(index), height: heights[index] });
     } else if (action.type === 'reset') {
-      if (action.target === 'all') return commit(state, new Map(), { ...DEFAULT_MODEL_MATERIALS.base });
+      if (action.target === 'all') {
+        validateMaterials(state.count, new Map(), DEFAULT_MODEL_MATERIALS.base, state.generatedMaterials);
+        return commit(state, new Map(), { ...DEFAULT_MODEL_MATERIALS.base });
+      }
       for (const index of state.selection) {
         const next = { ...overrides.get(index) };
         delete next[action.target];
@@ -132,7 +145,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         else overrides.set(index, next);
       }
     }
-    validateMaterials(state.count, overrides, state.base);
+    validateMaterials(state.count, overrides, state.base, state.generatedMaterials);
     return commit(state, overrides);
   } catch (error) {
     return { ...state, error: error instanceof Error ? error.message : 'The edit could not be applied.' };
