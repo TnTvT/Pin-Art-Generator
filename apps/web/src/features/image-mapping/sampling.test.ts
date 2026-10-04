@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { fitImage, pixelsToHeights } from './sampling';
+import { fitImage, pixelsToHeights, pixelsToPinRGB } from './sampling';
 
 const pixels = (...brightness: number[]) => new Uint8ClampedArray(brightness.flatMap((value) => [value, value, value, 255]));
 
 describe('grayscale height mapping', () => {
+  it('uses exactly the same row orientation for color and height samples', () => {
+    const rgba = new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
+    expect([...pixelsToPinRGB(rgba, 2, 2)]).toEqual([0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255, 0]);
+    expect(pixelsToHeights(rgba, 2, 2, 2, 20, false).heights[1]).toBe(2);
+    expect(() => pixelsToPinRGB(rgba, 3, 2)).toThrow(/grid/);
+  });
   it('maps black to the maximum and white to the minimum extension', () => {
     const result = pixelsToHeights(pixels(0, 255), 2, 1, 2, 20, false);
     expect(Array.from(result.heights)).toEqual([20, 2]);

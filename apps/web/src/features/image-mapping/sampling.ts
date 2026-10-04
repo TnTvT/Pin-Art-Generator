@@ -4,6 +4,18 @@ export interface HeightMap {
   maximum: number;
 }
 
+export function pixelsToPinRGB(pixels: Uint8ClampedArray, columns: number, rows: number) {
+  if (pixels.length !== columns * rows * 4) throw new Error('Sampled image pixels do not match the pin grid.');
+  const rgb = new Uint8Array(columns * rows * 3);
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const offset = ((rows - 1 - row) * columns + column) * 4;
+      rgb.set(pixels.subarray(offset, offset + 3), (row * columns + column) * 3);
+    }
+  }
+  return rgb;
+}
+
 export function fitImage(sourceWidth: number, sourceHeight: number, footprintWidth: number, footprintDepth: number, columns: number, rows: number) {
   const scale = Math.min(footprintWidth / sourceWidth, footprintDepth / sourceHeight);
   const width = sourceWidth * scale / footprintWidth * columns;

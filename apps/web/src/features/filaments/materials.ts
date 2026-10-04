@@ -26,3 +26,8 @@ export function resolveFilamentProfile(selection: MaterialSelection): FilamentPr
   }
   return filament.type === 'Basic' ? 'bambu-pla-basic' : 'bambu-pla-matte';
 }
+
+export function materialKey(material: MaterialSelection) {
+  if (!/^#[0-9a-f]{6}$/i.test(material.color)) throw new Error('Choose a valid #RRGGBB color.');
+  return `${material.color.toLowerCase()}:${resolveFilamentProfile(material)}`;
+}

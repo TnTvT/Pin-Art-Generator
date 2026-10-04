@@ -22,6 +22,9 @@ importers:
       '@mantine/hooks':
         specifier: ^9.0.0
         version: 9.6.3(react@19.3.0)
+      colorjs.io:
+        specifier: ^0.7.1
+        version: 0.7.1
       react:
         specifier: ^19.0.0
         version: 19.3.0
@@ -752,6 +755,9 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
+
+  colorjs.io@0.7.1:
+    resolution: {integrity: sha512-LY7OHnJZxHwT5UlzNa9bbhHHDbzB6yE5+3MIPwJEQKRvSCt/T4G7epsj+9j2BExUIIfXFIJGsIXUKdfrK9Q5tA==}
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
@@ -1782,6 +1788,8 @@ snapshots:
   chai@6.2.2: {}
 
   clsx@2.1.1: {}
+
+  colorjs.io@0.7.1: {}
 
   convert-source-map@2.0.0: {}
 
