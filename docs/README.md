@@ -31,6 +31,7 @@ Pin Art Studio's product requirements and significant decisions live here.
 | [ADR-015](decisions/015-preview-editing-dock-and-preset-defaults.md) | Reserved left preview dock, compact on-demand guidance, RGB counts, yellow contours, and PLA defaults |
 | [ADR-016](decisions/016-floating-editor-stable-viewport.md) | Floating editing controls with stable canvas bounds and camera framing |
 | [ADR-017](decisions/017-preset-image-color-mapping.md) | Local perceptual preset color matching, bounded palettes, workers and generated material baselines |
+| [ADR-018](decisions/018-base-shapes-and-position-layouts.md) | Preset/image contours, explicit XY layouts, atomic generation, socket validation and legacy export compatibility |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 
