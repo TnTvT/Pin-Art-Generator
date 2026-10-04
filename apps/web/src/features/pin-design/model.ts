@@ -1,3 +1,5 @@
+import type { Layout, PinPosition } from '../base-shape/layout';
+
 export interface Parameters {
   width: number;
   depth: number;
@@ -7,6 +9,20 @@ export interface Parameters {
   spacing: number;
   diameter: number;
   extension: number;
+  layout?: Layout;
+}
+export type ParameterName = keyof Omit<Parameters, 'layout'>;
+
+export function pinCount(parameters: Parameters) { return parameters.layout?.pins.length ?? parameters.columns * parameters.rows; }
+export function pinPosition(parameters: Parameters, index: number): PinPosition {
+  if (parameters.layout) {
+    const pin = parameters.layout.pins[index];
+    if (!pin) throw new Error('Pin index is outside the committed layout.');
+    return pin;
+  }
+  return { id: `R${Math.floor(index / parameters.columns) + 1}:C${index % parameters.columns + 1}`,
+    x: (index % parameters.columns - (parameters.columns - 1) / 2) * parameters.spacing,
+    y: (Math.floor(index / parameters.columns) - (parameters.rows - 1) / 2) * parameters.spacing };
 }
 
 export interface ModelColors {
@@ -32,9 +48,9 @@ export const DEFAULTS: Parameters = {
 
 export function getMetrics(parameters: Parameters) {
   return {
-    count: parameters.columns * parameters.rows,
-    width: (parameters.columns - 1) * parameters.spacing + parameters.diameter,
-    depth: (parameters.rows - 1) * parameters.spacing + parameters.diameter,
+    count: pinCount(parameters),
+    width: parameters.layout ? Math.max(...parameters.layout.pins.map(pin => pin.x)) - Math.min(...parameters.layout.pins.map(pin => pin.x)) + parameters.diameter : (parameters.columns - 1) * parameters.spacing + parameters.diameter,
+    depth: parameters.layout ? Math.max(...parameters.layout.pins.map(pin => pin.y)) - Math.min(...parameters.layout.pins.map(pin => pin.y)) + parameters.diameter : (parameters.rows - 1) * parameters.spacing + parameters.diameter,
     clearance: parameters.spacing - parameters.diameter,
   };
 }

@@ -39,4 +39,14 @@ describe('pin instance placement', () => {
     expect(mesh.boundingBox?.min.x).toBeCloseTo(-1);
     expect(mesh.boundingBox?.max.x).toBeCloseTo(1);
   });
+  it('renders explicit coordinates and heights rather than inferring rows and columns', () => {
+    const layout = { regions: [], edgePadding: 0, pins: [{ id: 'first', x: -18, y: 7 }, { id: 'second', x: 13, y: -9 }] };
+    updatePinInstances(mesh, { ...DEFAULTS, layout }, new Float32Array([6,11]));
+    expect(mesh.count).toBe(2);
+    const transform = new Matrix4();
+    mesh.getMatrixAt(1, transform);
+    expect(new Vector3().setFromMatrixPosition(transform).toArray()).toEqual([13,-9,8.5]);
+    expect(new Vector3(0,-.5,0).applyMatrix4(transform).z).toBeCloseTo(3);
+    expect(new Vector3(0,.5,0).applyMatrix4(transform).z).toBeCloseTo(14);
+  });
 });

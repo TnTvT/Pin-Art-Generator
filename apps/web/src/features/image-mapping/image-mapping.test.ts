@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULTS } from '../pin-design/model';
-import { mapImageToPins, type SourceImage } from './image-mapping';
+import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, sampleImagePixels, type SourceImage } from './image-mapping';
 
 describe('canvas image sampling', () => {
   it('samples a centered image at grid resolution and passes the pixels to height mapping', () => {
@@ -25,5 +25,16 @@ describe('canvas image sampling', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     const source: SourceImage = { name: 'photo.png', url: 'blob:photo', bitmap: {} as ImageBitmap };
     expect(() => mapImageToPins(source, DEFAULTS, 2, false)).toThrow('Image processing is unavailable');
+  });
+  it('samples actual XY positions with image top at positive Y for both presets and cropped contours', () => {
+    const rgba = new Uint8ClampedArray([0,0,0,255, 255,0,0,255, 255,255,255,255, 0,0,255,255]);
+    const context = { drawImage: vi.fn(), getImageData: vi.fn(() => ({ data: rgba })) };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const source = { name: 'asymmetric.png', url: 'blob:asymmetric', bitmap: { width: 2, height: 2 } as ImageBitmap };
+    const parameters = { ...DEFAULTS, width: 2, depth: 2, layout: { regions: [], edgePadding: 0, pins: [{ id: 'bottom', x: -.5, y: -.5 }, { id: 'top', x: -.5, y: .5 }, { id: 'blue', x: .5, y: -.5 }] } };
+    const pixels = sampleImagePixels(source, parameters);
+    expect([...layoutPixelsToRGB(pixels)]).toEqual([255,255,255, 0,0,0, 0,0,255]);
+    expect([...layoutPixelsToHeights(pixels, 2, 20, false).heights].slice(0, 2)).toEqual([2,20]);
+    expect([...sampleImagePixels(source, { ...parameters, layout: { ...parameters.layout, imageBounds: [0,0,2,2] } })]).toEqual([...pixels]);
   });
 });

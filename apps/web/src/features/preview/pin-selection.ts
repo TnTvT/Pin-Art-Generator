@@ -1,12 +1,12 @@
 import { Camera, OrthographicCamera, Plane, Raycaster, Vector2, Vector3 } from 'three';
-import type { Parameters } from '../pin-design/model';
+import { pinCount, pinPosition, type Parameters } from '../pin-design/model';
 
 export interface ScreenPoint { x: number; y: number }
 export interface ViewportSize { width: number; height: number }
 
 export function pinTip(index: number, parameters: Parameters, heights?: Float32Array) {
-  return new Vector3((index % parameters.columns - (parameters.columns - 1) / 2) * parameters.spacing,
-    (Math.floor(index / parameters.columns) - (parameters.rows - 1) / 2) * parameters.spacing,
+  const position = pinPosition(parameters, index);
+  return new Vector3(position.x, position.y,
     parameters.thickness + (heights?.[index] ?? parameters.extension));
 }
 
@@ -20,7 +20,7 @@ export function marqueeSelection(parameters: Parameters, heights: Float32Array |
   const result: number[] = [];
   const left = Math.min(start.x, end.x), right = Math.max(start.x, end.x);
   const top = Math.min(start.y, end.y), bottom = Math.max(start.y, end.y);
-  for (let index = 0; index < parameters.columns * parameters.rows; index++) {
+  for (let index = 0; index < pinCount(parameters); index++) {
     const point = projectTip(pinTip(index, parameters, heights), camera, size);
     if (point && point.x >= left && point.x <= right && point.y >= top && point.y <= bottom) result.push(index);
   }

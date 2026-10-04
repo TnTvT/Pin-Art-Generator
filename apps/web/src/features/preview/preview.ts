@@ -7,6 +7,8 @@ import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
 import { createOrientationHelper } from './orientation-helper';
 import { createPinInteraction, type PreviewEditing } from './pin-interaction';
 import { createSelectionOutline } from './selection-outline';
+import { createBaseGeometry } from '../base-shape/base-geometry';
+import type { Layout } from '../base-shape/layout';
 export type { PreviewEditing } from './pin-interaction';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
@@ -47,13 +49,16 @@ export function createPreview(container: HTMLDivElement): Preview {
   fillLight.position.set(-150, 100, 120);
   scene.add(fillLight);
 
-  const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
+  let baseGeometry: THREE.BufferGeometry = new THREE.BoxGeometry(1, 1, 1);
+  let lastLayout: Layout | undefined;
+  let lastThickness = 0;
   const baseMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.base, roughness: 0.7, metalness: 0.15 });
   const base = new THREE.Mesh(baseGeometry, baseMaterial);
   scene.add(base);
-  const edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
+  let edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
   const edgesMaterial = new THREE.LineBasicMaterial({ color: colors.edges, transparent: true, opacity: 0.45 });
-  base.add(new THREE.LineSegments(edgesGeometry, edgesMaterial));
+  const baseEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+  base.add(baseEdges);
 
   const pinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
   const pinMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.pins, roughness: 0.32, metalness: 0.28 });
@@ -150,8 +155,15 @@ export function createPreview(container: HTMLDivElement): Preview {
   }
 
   function update(parameters: Parameters, heights?: Float32Array) {
-    base.scale.set(parameters.width, parameters.depth, parameters.thickness);
-    base.position.z = parameters.thickness / 2;
+    if (parameters.layout !== lastLayout || parameters.layout && parameters.thickness !== lastThickness) {
+      baseGeometry.dispose(); edgesGeometry.dispose();
+      baseGeometry = parameters.layout ? createBaseGeometry(parameters.layout, parameters.thickness) : new THREE.BoxGeometry(1, 1, 1);
+      edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
+      base.geometry = baseGeometry; baseEdges.geometry = edgesGeometry;
+      lastLayout = parameters.layout; lastThickness = parameters.thickness;
+    }
+    base.scale.set(parameters.layout ? 1 : parameters.width, parameters.layout ? 1 : parameters.depth, parameters.layout ? 1 : parameters.thickness);
+    base.position.z = parameters.layout ? 0 : parameters.thickness / 2;
     updatePinInstances(pins, parameters, heights);
     interaction.update(parameters, heights);
     updateHighlights();

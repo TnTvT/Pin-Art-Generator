@@ -54,8 +54,8 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
   const setView = (action: ViewAction) => preview.current?.setView(action);
   const designSelections = useMemo(() => materialSelections ?? [
     { color: colors.base, filamentId: null },
-    ...(pinColors ?? Array<string>(parameters.columns * parameters.rows).fill(colors.pins)).map(color => ({ color, filamentId: null })),
-  ], [materialSelections, colors, pinColors, parameters.columns, parameters.rows]);
+    ...(pinColors ?? Array<string>(parameters.layout?.pins.length ?? parameters.columns * parameters.rows).fill(colors.pins)).map(color => ({ color, filamentId: null })),
+  ], [materialSelections, colors, pinColors, parameters]);
 
   return (
     <section className="preview-panel" aria-label="Model preview">

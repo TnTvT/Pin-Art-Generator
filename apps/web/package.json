@@ -15,6 +15,8 @@
     "@mantine/core": "^9.0.0",
     "@mantine/hooks": "^9.0.0",
     "colorjs.io": "^0.7.1",
+    "d3-contour": "^4.0.2",
+    "rbush": "^4.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.180.0"
@@ -24,6 +26,8 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/react": "^19.0.0",
+    "@types/d3-contour": "^3.0.6",
+    "@types/rbush": "^4.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.0.0",

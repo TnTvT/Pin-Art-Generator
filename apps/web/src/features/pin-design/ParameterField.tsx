@@ -1,13 +1,13 @@
 import { NumberInput, Slider } from '@mantine/core';
-import { type Parameters } from './model';
+import { type ParameterName } from './model';
 
 interface ParameterFieldProps {
-  name: keyof Parameters;
+  name: ParameterName;
   label: string;
   value: number | string;
   validValue: number;
-  onChange: (name: keyof Parameters, value: number | string) => void;
-  onCommit?: (name: keyof Parameters) => void;
+  onChange: (name: ParameterName, value: number | string) => void;
+  onCommit?: (name: ParameterName) => void;
   integer?: boolean;
   sliderMax?: number;
 }

@@ -20,6 +20,11 @@ describe('pin screen selection and height gestures', () => {
     expect(projectTip(new Vector3(500, 0, 0), topCamera(), size)).toBeNull();
     expect(projectTip(new Vector3(0, 0, 200), topCamera(), size)).toBeNull();
   });
+  it('uses actual pin coordinates for tips and orthographic marquee selection', () => {
+    const design = { ...parameters, layout: { regions: [], edgePadding: 0, pins: [{ id: 'low', x: -10, y: -10 }, { id: 'high', x: 10, y: 10 }] } };
+    expect(pinTip(1, design, new Float32Array([5,8])).toArray()).toEqual([10,10,11]);
+    expect(marqueeSelection(design, undefined, topCamera(), size, { x: 290, y: 90 }, { x: 310, y: 110 })).toEqual([1]);
+  });
   it('maps vertical screen motion to world mm in orthographic top view', () => {
     expect(heightDragDelta({ x: 200, y: 200 }, { x: 200, y: 100 }, new Vector3(), topCamera(), size)).toBe(10);
   });
