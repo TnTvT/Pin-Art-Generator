@@ -8,7 +8,8 @@ import type { PinEditor } from './usePinEditor';
 import { summarizeColors } from './color-summary';
 
 export default function PinEditorToolbar({ editor, columns }: { editor: PinEditor; columns: number }) {
-  const { state, committed, isDragging } = editor;
+  const { state, committed, isDragging, blocked } = editor;
+  const busy = isDragging || blocked;
   const [value, setValue] = useState<number | string>(20);
   const [material, setMaterial] = useState<MaterialSelection>(DEFAULT_MODEL_MATERIALS.pins);
   const [materialDirty, setMaterialDirty] = useState(false);
@@ -29,8 +30,8 @@ export default function PinEditorToolbar({ editor, columns }: { editor: PinEdito
     setMaterial(first === undefined ? DEFAULT_MODEL_MATERIALS.pins : committed.pinSelections[first]);
     setMaterialDirty(false);
   }, [state.selection, committed, editor.heightMode]);
-  useEffect(() => { if (!state.selection.size || isDragging) setPopover(null); }, [state.selection, isDragging]);
-  const disabled = isDragging || !selected.length;
+  useEffect(() => { if (!state.selection.size || busy) setPopover(null); }, [state.selection, busy]);
+  const disabled = busy || !selected.length;
 
   function applyHeight() {
     if (typeof value === 'number' && Number.isFinite(value) && !disabled) editor.dispatch({ type: 'height', heights: committed.heights, value, mode: editor.heightMode });
@@ -51,24 +52,24 @@ export default function PinEditorToolbar({ editor, columns }: { editor: PinEdito
         {selected.length === 1 && <small>Row {Math.floor(first / columns) + 1}, column {first % columns + 1}</small>}
         {!!selected.length && <span>Height: {mixedHeight ? 'Mixed' : `${Number(selectedHeight!.toFixed(2))} mm`} · Material: {mixedMaterial ? 'Mixed' : committed.pinSelections[first].color.toUpperCase()}</span>}
       </div>
-      {!selected.length && <Button variant="subtle" size="xs" disabled={isDragging} onClick={selectAll}>Select all</Button>}
+      {!selected.length && <Button variant="subtle" size="xs" disabled={busy} onClick={selectAll}>Select all</Button>}
       <Button ref={heightButton} variant="default" size="xs" disabled={disabled} aria-label="Height" aria-expanded={popover === 'height'} aria-controls={popover === 'height' ? panelId : undefined} onClick={() => setPopover(popover === 'height' ? null : 'height')}>Height <span aria-hidden="true">▾</span></Button>
       <Button ref={materialButton} variant="default" size="xs" disabled={disabled} aria-label="Material" aria-expanded={popover === 'material'} aria-controls={popover === 'material' ? panelId : undefined} onClick={() => setPopover(popover === 'material' ? null : 'material')}>Material <span aria-hidden="true">▾</span></Button>
       <div className="pin-editor-history">
-        <Tooltip label="Undo (⌘ / Ctrl Z)"><ActionIcon variant="subtle" color="gray" size={30} aria-label="Undo" disabled={isDragging || !state.past.length} onClick={() => editor.dispatch({ type: 'undo' })}>↶</ActionIcon></Tooltip>
-        <Tooltip label="Redo (⌘ / Ctrl Shift Z)"><ActionIcon variant="subtle" color="gray" size={30} aria-label="Redo" disabled={isDragging || !state.future.length} onClick={() => editor.dispatch({ type: 'redo' })}>↷</ActionIcon></Tooltip>
+        <Tooltip label="Undo (⌘ / Ctrl Z)"><ActionIcon variant="subtle" color="gray" size={30} aria-label="Undo" disabled={busy || !state.past.length} onClick={() => editor.dispatch({ type: 'undo' })}>↶</ActionIcon></Tooltip>
+        <Tooltip label="Redo (⌘ / Ctrl Shift Z)"><ActionIcon variant="subtle" color="gray" size={30} aria-label="Redo" disabled={busy || !state.future.length} onClick={() => editor.dispatch({ type: 'redo' })}>↷</ActionIcon></Tooltip>
       </div>
       <Menu position="bottom-start" shadow="md">
-        <Menu.Target><ActionIcon variant="subtle" color="gray" size={30} aria-label="More pin actions" disabled={isDragging}>⋯</ActionIcon></Menu.Target>
+        <Menu.Target><ActionIcon variant="subtle" color="gray" size={30} aria-label="More pin actions" disabled={busy}>⋯</ActionIcon></Menu.Target>
         <Menu.Dropdown>
-          <Menu.Item className="pin-editor-mobile-action" disabled={isDragging || !state.past.length} onClick={() => editor.dispatch({ type: 'undo' })}>Undo</Menu.Item>
-          <Menu.Item className="pin-editor-mobile-action" disabled={isDragging || !state.future.length} onClick={() => editor.dispatch({ type: 'redo' })}>Redo</Menu.Item>
+          <Menu.Item className="pin-editor-mobile-action" disabled={busy || !state.past.length} onClick={() => editor.dispatch({ type: 'undo' })}>Undo</Menu.Item>
+          <Menu.Item className="pin-editor-mobile-action" disabled={busy || !state.future.length} onClick={() => editor.dispatch({ type: 'redo' })}>Redo</Menu.Item>
           <Menu.Item onClick={selectAll}>Select all</Menu.Item>
           <Menu.Item className="pin-editor-mobile-action" disabled={disabled} onClick={() => editor.select([], 'replace')}>Clear selection</Menu.Item>
           <Menu.Item disabled={disabled} onClick={() => editor.dispatch({ type: 'reset', target: 'height' })}>Restore generated heights</Menu.Item>
-          <Menu.Item disabled={disabled} onClick={() => editor.dispatch({ type: 'reset', target: 'material' })}>Restore pin colors</Menu.Item>
+          <Menu.Item disabled={disabled} onClick={() => editor.dispatch({ type: 'reset', target: 'material' })}>Restore generated colors</Menu.Item>
           <Menu.Divider />
-          <Menu.Item disabled={!state.overrides.size && !state.past.length} onClick={() => setConfirmReset(true)}>Reset all edits</Menu.Item>
+          <Menu.Item disabled={busy || !state.overrides.size && !state.past.length} onClick={() => setConfirmReset(true)}>Reset all edits</Menu.Item>
         </Menu.Dropdown>
       </Menu>
       {!!selected.length && <Tooltip label="Clear selection"><ActionIcon className="pin-editor-clear" variant="subtle" color="gray" size={30} aria-label="Clear selection" disabled={isDragging} onClick={() => editor.select([], 'replace')}>×</ActionIcon></Tooltip>}
@@ -85,7 +86,7 @@ export default function PinEditorToolbar({ editor, columns }: { editor: PinEdito
       </div>
       {popover === 'height' ? <>
           <fieldset className="export-mode"><legend>Height operation</legend>
-            <SegmentedControl fullWidth value={editor.heightMode} onChange={next => editor.setHeightMode(next as HeightMode)} disabled={isDragging}
+            <SegmentedControl fullWidth value={editor.heightMode} onChange={next => editor.setHeightMode(next as HeightMode)} disabled={busy}
               data={[{ label: 'Set height', value: 'set' }, { label: 'Offset height', value: 'offset' }]} size="sm" />
           </fieldset>
           <NumberInput label={editor.heightMode === 'set' ? 'Selected height' : 'Height offset'} value={value} placeholder={mixedHeight && editor.heightMode === 'set' ? 'Mixed' : undefined}
@@ -99,9 +100,9 @@ export default function PinEditorToolbar({ editor, columns }: { editor: PinEdito
       </>}
     </section>}
     <Modal opened={confirmReset} onClose={() => setConfirmReset(false)} title="Reset all edits?" centered>
-      <p>Restore generated heights and default colors for every pin and the base. You can undo this change.</p>
+      <p>Restore generated heights and colors for every pin and the default base material. Your image and mapping settings are kept. You can undo this change.</p>
       <Group justify="flex-end"><Button variant="default" onClick={() => setConfirmReset(false)}>Cancel</Button>
-        <Button onClick={() => { editor.dispatch({ type: 'reset', target: 'all' }); setConfirmReset(false); }}>Reset edits</Button></Group>
+        <Button disabled={busy} onClick={() => { editor.dispatch({ type: 'reset', target: 'all' }); setConfirmReset(false); }}>Reset edits</Button></Group>
     </Modal>
   </div>;
 }

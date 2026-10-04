@@ -1,16 +1,19 @@
 import type { ReactNode } from 'react';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render';
 import App from '../../app/App';
 import useSourceImage from '../image-mapping/useSourceImage';
-import { mapImageToPins, type SourceImage } from '../image-mapping/image-mapping';
+import { mapImageToPins, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
+import { startColorMapping } from '../image-mapping/color-worker';
+import { mapPinColors } from '../image-mapping/color-mapping';
 import { type ModelColors } from '../pin-design/model';
 import type { PreviewEditing } from '../preview/pin-interaction';
 
 vi.mock('../image-mapping/useSourceImage', () => ({ default: vi.fn() }));
-vi.mock('../image-mapping/image-mapping', () => ({ mapImageToPins: vi.fn() }));
+vi.mock('../image-mapping/image-mapping', () => ({ mapImageToPins: vi.fn(), sampleImagePixels: vi.fn() }));
+vi.mock('../image-mapping/color-worker', () => ({ startColorMapping: vi.fn() }));
 vi.mock('../preview/ModelPreview', () => ({
   default: ({ colors, pinColors, heights, editing, toolbar }: { toolbar?: ReactNode; colors: ModelColors; pinColors?: string[]; heights: Float32Array; editing: PreviewEditing }) => <div>
     {toolbar}
@@ -36,12 +39,90 @@ const imageState = (overrides = {}) => ({ source: null, loading: false, error: n
 beforeEach(() => {
   vi.mocked(useSourceImage).mockReturnValue(imageState());
   vi.mocked(mapImageToPins).mockReset();
+  vi.mocked(sampleImagePixels).mockReturnValue(new Uint8ClampedArray(Array.from({ length: 320 }, (_, index) => index % 2 === 0 ? [255, 255, 255, 255] : [0, 177, 183, 255]).flat()));
+  vi.mocked(startColorMapping).mockImplementation(request => ({ promise: Promise.resolve({ result: mapPinColors(request), elapsedMs: 10 }), cancel: vi.fn() }));
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('binary', { headers: { 'X-Plate-Count': '1' } })));
   vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:download'), revokeObjectURL: vi.fn() }));
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 });
 
 describe('app export integration', () => {
+  it('maps and exports one height range while keeping manual heights and invalid drafts intact', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockImplementation((_source, parameters, minimum) => ({
+      heights: Float32Array.from({ length: parameters.columns * parameters.rows }, (_, index) => index % 2 === 0 ? minimum : parameters.extension),
+      minimum, maximum: parameters.extension,
+    }));
+    renderWithProviders(<App />);
+    expect(screen.queryByLabelText('Generated pin height')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Mapping max height')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Min height'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Max height'), { target: { value: '30' } });
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('5,30');
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '45' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    const lower = screen.getByRole('slider', { name: 'Minimum mapped height' });
+    fireEvent.focus(lower);
+    fireEvent.keyDown(lower, { key: 'ArrowLeft' });
+    expect(screen.getByLabelText('Min height')).toHaveValue('4.9 mm');
+    const upper = screen.getByRole('slider', { name: 'Maximum mapped height' });
+    fireEvent.focus(upper);
+    fireEvent.keyDown(upper, { key: 'ArrowRight' });
+    expect(screen.getByLabelText('Max height')).toHaveValue('30.1 mm');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('45,30.100');
+    fireEvent.change(screen.getByLabelText('Max height'), { target: { value: '' } });
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.parameters.extension).toBe(30.1);
+    expect(request.heights[0]).toBe(45);
+    expect(request.heights[1]).toBeCloseTo(30.1);
+    await user.click(screen.getByText('Color', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByLabelText('Generated pin height')).toHaveValue('30.1 mm');
+    expect(screen.queryByRole('slider', { name: 'Minimum mapped height' })).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole('region', { name: 'Image mapping' })).getByText('Height', { exact: true }));
+    expect(screen.getByLabelText('Min height')).toHaveValue('4.9 mm');
+    expect(screen.getByLabelText('Max height')).toHaveValue('30.1 mm');
+  });
+
+  it.each(['fixed', 'detachable'] as const)('exports image-mapped colors and original-image heights in %s mode', async mode => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(320).fill(4), minimum: 4, maximum: 4 });
+    renderWithProviders(<App />);
+    await user.click(screen.getByText('Height + Color', { exact: true }));
+    await waitFor(() => expect(screen.getByText(/Mapping updated · 10 ms/)).toBeInTheDocument());
+    expect(screen.getByTestId('preview-colors')).toHaveTextContent('#8e9089 #ffffff');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('2,10.131');
+    if (mode === 'detachable') await user.click(screen.getByText('Detachable', { exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.mode).toBe(mode);
+    expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
+    expect(request.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-basic', 'bambu-pla-basic']);
+    expect(request.pinMaterials).toEqual(Array.from({ length: 320 }, (_, index) => index % 2 + 1));
+    expect(request.heights[0]).toBe(2);
+    expect(request.heights[1]).toBeCloseTo(10.13155, 3);
+    expect(request).not.toHaveProperty('image');
+  });
+
+  it('blocks export on a worker failure and recovers with Retry mapping', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(320).fill(4), minimum: 4, maximum: 4 });
+    vi.mocked(startColorMapping).mockImplementationOnce(() => ({ promise: Promise.reject(new Error('No matching filament slots.')), cancel: vi.fn() }));
+    renderWithProviders(<App />);
+    await user.click(screen.getByText('Color', { exact: true }));
+    await waitFor(() => expect(screen.getByText(/Export blocked:.*No matching filament slots/)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('4,4');
+    await user.click(screen.getByRole('button', { name: 'Retry mapping' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+  });
   it('starts with PLA catalog defaults and exports their official filament identities', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
@@ -65,12 +146,12 @@ describe('app export integration', () => {
     await openEditor(user, 'Height');
     fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '30' } });
     await user.click(screen.getByRole('button', { name: 'Apply height' }));
-    fireEvent.change(screen.getByLabelText('Min extension'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Min height'), { target: { value: '8' } });
     await user.click(screen.getByRole('switch', { name: 'Invert mapping' }));
     await user.click(screen.getByRole('button', { name: 'Reset parameters' }));
     await user.click(screen.getByRole('button', { name: 'Change grid' }));
     expect(screen.getByLabelText('Columns')).toHaveValue('20');
-    expect(screen.getByLabelText('Min extension')).toHaveValue('2 mm');
+    expect(screen.getByLabelText('Min height')).toHaveValue('2 mm');
     expect(screen.getByRole('switch', { name: 'Invert mapping' })).not.toBeChecked();
   });
   it('shows Mixed fields instead of the first pin value for differing materials and heights', async () => {

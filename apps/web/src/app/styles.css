@@ -120,10 +120,23 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
 .mapping-controls .mantine-NumberInput-input { border-color: var(--border); background: var(--input); font-size: 12px; }
 .mapping-controls .mantine-Switch-root { grid-column: 1 / -1; }
 .mapping-controls .mantine-Switch-label { font-size: 11px; }
-.mapping-maximum { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
-.mapping-maximum strong { font-size: 14px; color: var(--ink); font-weight: 500; }
-.mapping-maximum small { font-size: 9px; }
+.mapping-height-range { grid-column: 1 / -1; margin: 0; padding: 0; border: 0; min-width: 0; }
+.mapping-height-range legend { width: 100%; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.mapping-height-range legend span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.mapping-height-slider { margin: 14px 8px; }
+.mapping-height-error { font-size: 10px; color: var(--mantine-color-error); margin: 6px 0 0; }
 .mapping-description, .height-range { grid-column: 1 / -1; font-size: 10px; color: var(--muted); margin: 0; }
+.mapping-mode { grid-column: 1 / -1; margin: 0; padding: 0; border: 0; min-width: 0; }
+.mapping-mode legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.mapping-filaments, .mapping-palette { grid-column: 1 / -1; min-width: 0; }
+.mapping-palette { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+.mapping-palette > strong { font-size: 11px; margin-bottom: 4px; }
+.mapping-palette > span { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.mapping-palette-item { display: flex; align-items: center; gap: 7px; padding: 4px; background: none; border: 0; border-radius: 4px; color: var(--ink); text-align: left; cursor: help; min-width: 0; }
+.mapping-palette-item i { width: 14px; height: 14px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 50%; }
+.mapping-palette-item span { font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-palette-item small { margin-left: auto; flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.mapping-palette-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .preview-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .preview-heading { flex-shrink: 0; padding: 8px 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
 .preview-title { display: flex; align-items: center; gap: 4px; }

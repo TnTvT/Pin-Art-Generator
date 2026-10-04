@@ -25,6 +25,45 @@ def small_request(mode="detachable"):
 
 
 @pytest.mark.parametrize("mode", ["fixed", "detachable"])
+def test_image_palette_snapshot_preserves_row_major_heights_and_filament_slots(mode, tmp_path):
+    payload = small_request(mode).model_dump(by_alias=True)
+    payload["parameters"]["rows"] = 2
+    payload.update(
+        heights=[2, 10.13155, 8, 15],
+        materials=["#8E9089", "#FFFFFF", "#FFFFFF", "#00B1B7"],
+        filamentProfiles=["bambu-pla-basic", "bambu-pla-basic", "bambu-pla-matte", "bambu-pla-basic"],
+        pinMaterials=[1, 3, 2, 1],
+    )
+    request = ExportRequest.model_validate(payload)
+    plates = build_plates(request)
+    output = tmp_path / "image-palette.3mf"
+    output.write_bytes(export_3mf(request, plates))
+    model = lib3mf.get_wrapper().CreateModel()
+    reader = model.QueryReader("3mf")
+    reader.SetStrictModeActive(True)
+    reader.ReadFromFile(str(output))
+    assert reader.GetWarningCount() == 0
+    with zipfile.ZipFile(output) as archive:
+        settings = json.loads(archive.read("Metadata/project_settings.config"))
+        assert settings["filament_colour"] == ["#8E9089", "#FFFFFF", "#00B1B7", "#FFFFFF"]
+        assert settings["filament_ids"] == ["GFA00", "GFA00", "GFA00", "GFA01"]
+        config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2", "3", "4", "2"]
+    namespace, root, objects, _ = read_model(output.read_bytes())
+    lengths = []
+    for item in root.findall(f"{namespace}build/{namespace}item"):
+        for component in objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component"):
+            mesh = objects[component.attrib["objectid"]]
+            if mesh.attrib["name"] == "base":
+                continue
+            vertices = np.array([[float(vertex.attrib[axis]) for axis in ["x", "y", "z"]] for vertex in mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")])
+            world = np.c_[vertices, np.ones(len(vertices))] @ (read_transform(item) @ read_transform(component)).T
+            assert world[:, 2].min() == pytest.approx(3 if mode == "fixed" else 0)
+            lengths.append(world[:, 2].max() - world[:, 2].min())
+    np.testing.assert_allclose(lengths, np.array(payload["heights"]) + (2 if mode == "detachable" else 0))
+
+
+@pytest.mark.parametrize("mode", ["fixed", "detachable"])
 def test_edited_pin_package_keeps_heights_color_profiles_and_part_ownership(mode, tmp_path):
     payload = small_request(mode).model_dump(by_alias=True)
     payload.update(heights=[30, 40], materials=["#FFFFFF", "#FFFFFF", "#FF0000"],

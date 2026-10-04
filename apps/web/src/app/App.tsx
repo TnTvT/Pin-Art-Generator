@@ -5,16 +5,20 @@ import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
 import useSourceImage from '../features/image-mapping/useSourceImage';
-import { mapImageToPins } from '../features/image-mapping/image-mapping';
+import useImageMapping from '../features/image-mapping/useImageMapping';
+import { DEFAULT_COLOR_MAPPING, type MappingMode } from '../features/image-mapping/color-mapping';
 import ExportPanel from '../features/export/ExportPanel';
 import { DEFAULTS, formatDimension, getMetrics, getWarnings, type Parameters } from '../features/pin-design/model';
-import { DEFAULT_MODEL_MATERIALS } from '../features/filaments/materials';
+import { DEFAULT_MODEL_MATERIALS, materialKey } from '../features/filaments/materials';
 import usePinEditor from '../features/pin-editing/usePinEditor';
 import PinEditorToolbar from '../features/pin-editing/PinEditorToolbar';
 import FilamentColorField from '../features/filaments/FilamentColorField';
 import InfoPopover from '../components/InfoPopover/InfoPopover';
 
 type Draft = Record<keyof Parameters, number | string>;
+const mappingLabels: Record<MappingMode, string> = {
+  height: 'Image-mapped heights', color: 'Image-mapped colors', 'height-color': 'Image-mapped height + color',
+};
 
 export default function App() {
   const [parameters, setParameters] = useState<Parameters>({ ...DEFAULTS });
@@ -23,27 +27,22 @@ export default function App() {
   const image = useSourceImage();
   const [minimum, setMinimum] = useState(2);
   const [inverted, setInverted] = useState(false);
-  const mapping = useMemo(() => {
-    if (!image.source) return { heightMap: null, error: null };
-    try {
-      return { heightMap: mapImageToPins(image.source, parameters, minimum, inverted), error: null };
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'Image processing is unavailable in this browser.';
-      return { heightMap: null, error: `Image mapping failed: ${reason} The preview is showing uniform pins. Remove or replace the image to export.` };
-    }
-  }, [image.source, parameters, minimum, inverted]);
-  const editor = usePinEditor(parameters, mapping.heightMap?.heights);
+  const [mode, setMode] = useState<MappingMode>('height');
+  const [colorOptions, setColorOptions] = useState(DEFAULT_COLOR_MAPPING);
+  const editor = usePinEditor(parameters, undefined, image.loading);
+  const mapping = useImageMapping({ source: image.source, parameters, minimum, inverted, mode, options: colorOptions, editor });
   const modelMaterials = useMemo(() => ({ base: editor.state.base, pins: DEFAULT_MODEL_MATERIALS.pins }), [editor.state.base]);
   const modelColors = useMemo(() => ({ base: modelMaterials.base.color, pins: modelMaterials.pins.color }), [modelMaterials]);
   const pinColors = useMemo(() => editor.committed.pinSelections.map(material => material.color), [editor.committed.pinSelections]);
   const materialSelections = useMemo(() => [editor.state.base, ...editor.committed.pinSelections], [editor.state.base, editor.committed.pinSelections]);
+  const materialsCount = useMemo(() => new Set(materialSelections.map(materialKey)).size, [materialSelections]);
   const metrics = getMetrics(parameters);
   const warnings = getWarnings(parameters);
-  const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : image.loading
+  const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : image.loading || mapping.loading
     ? 'Image processing is still running. Wait before exporting.'
     : image.error
       ? `Image processing failed: ${image.error} Replace the image or use uniform pins to export.`
-      : mapping.error || (image.source && !mapping.heightMap ? 'Resolved image heights are missing. Remove or replace the image before exporting.' : null);
+      : mapping.error;
 
   function changeParameter(name: keyof Parameters, value: number | string) {
     if (editor.isDragging) return;
@@ -64,6 +63,13 @@ export default function App() {
     if ((name !== 'rows' && name !== 'columns') || !editor.state.overrides.size || editor.isDragging) return;
     const value = draft[name];
     if (typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 100 && value !== parameters[name]) setPendingParameters({ parameters: { ...parameters, [name]: value }, resetGenerator: false });
+  }
+
+  function changeHeightRange([lower, upper]: [number, number]) {
+    if (editor.isDragging || !Number.isFinite(lower) || !Number.isFinite(upper) || lower <= 0 || upper < lower) return;
+    setMinimum(lower);
+    setParameters(current => ({ ...current, extension: upper }));
+    setDraft(current => ({ ...current, extension: upper }));
   }
 
   function resetParameters() {
@@ -123,10 +129,19 @@ export default function App() {
               maximum={parameters.extension}
               inverted={inverted}
               heightMap={mapping.heightMap}
+              mode={mode}
+              options={colorOptions}
+              colors={mapping.colors}
+              processing={mapping.loading || image.loading}
+              elapsedMs={mapping.elapsedMs}
+              resolvedMaterialsCount={materialsCount}
+              onModeChange={setMode}
+              onOptionsChange={setColorOptions}
+              onRetry={mapping.retry}
               onUpload={image.upload}
               onRemove={image.remove}
               onSample={image.useSample}
-              onMinimumChange={setMinimum}
+              onHeightRangeChange={changeHeightRange}
               onInvertChange={setInverted}
             />
             {image.error && !image.source && <Button variant="subtle" size="xs" onClick={image.remove}>Clear image error and use uniform pins</Button>}
@@ -138,7 +153,7 @@ export default function App() {
                   <Accordion.Panel>
                     <div className="field-pair">{field('width', 'Base width')}{field('depth', 'Base depth')}</div>
                     {field('thickness', 'Base thickness')}
-                    <div className="base-material"><FilamentColorField label="Base color" value={editor.state.base} disabled={editor.isDragging}
+                    <div className="base-material"><FilamentColorField label="Base color" value={editor.state.base} disabled={editor.isDragging || editor.blocked}
                       onChange={material => editor.dispatch({ type: 'material', target: 'base', material })} /></div>
                   </Accordion.Panel>
                 </Accordion.Item>
@@ -150,7 +165,7 @@ export default function App() {
                     {editor.state.overrides.size > 0 && <p className="field-help">New counts require confirmation on Enter or when leaving the field.</p>}
                     {field('spacing', 'Pin spacing', false, 20)}
                     {field('diameter', 'Pin diameter', false, 10)}
-                    {field('extension', image.source ? 'Mapping max height' : 'Generated pin height', false, 80)}
+                    {(!image.source || mode === 'color') && field('extension', 'Generated pin height', false, 80)}
                   </Accordion.Panel>
                 </Accordion.Item>
               </Accordion>
@@ -160,7 +175,7 @@ export default function App() {
           </aside>
           <div className="preview-column">
             <ModelPreview parameters={parameters} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
-              heightLabel={editor.state.overrides.size ? 'Edited pin design' : image.source ? 'Image-mapped heights' : 'Uniform pin height'}
+              heightLabel={editor.state.overrides.size ? 'Edited pin design' : image.source ? mappingLabels[mode] : 'Uniform pin height'}
               toolbar={<PinEditorToolbar editor={editor} columns={parameters.columns} />}
               editing={{ heightMode: editor.heightMode, selection: editor.state.selection, active: editor.state.active,
                 dragging: editor.isDragging, onSelect: editor.select, onDragStart: editor.startDrag, onDragDelta: editor.updateDrag,
