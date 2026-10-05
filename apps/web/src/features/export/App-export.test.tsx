@@ -116,6 +116,45 @@ describe('app export integration', () => {
     expect(request).not.toHaveProperty('image');
   });
 
+  it.each(['fixed', 'detachable'] as const)('exports a recolored generated group without rematching or losing manual heights in %s mode', async mode => {
+    const user = userEvent.setup();
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(357).fill(4), minimum: 4, maximum: 4 });
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByText('Height + Color', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toBeEnabled());
+    const mappingCalls = vi.mocked(startColorMapping).mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '33' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Jade White Basic group' }));
+    await user.click(screen.getByRole('combobox', { name: 'Group filament' }));
+    await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
+    await user.click(screen.getByRole('button', { name: 'Apply to group' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
+    expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('179 pins');
+    expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('→ Ivory White');
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    if (mode === 'detachable') await user.click(screen.getByText('Detachable', { exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.mode).toBe(mode);
+    expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
+    expect(request.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-matte', 'bambu-pla-basic']);
+    expect(request.pinMaterials).toEqual(Array.from({ length: 357 }, (_, index) => index % 2 + 1));
+    expect(request.heights[0]).toBe(33);
+    expect(request.heights[1]).toBeCloseTo(10.13155, 3);
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).not.toHaveTextContent('→');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('33,10.131');
+    expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
+  });
+
   it('blocks export on a worker failure and recovers with Retry mapping', async () => {
     const user = userEvent.setup();
     vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));

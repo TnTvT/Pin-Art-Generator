@@ -130,9 +130,11 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
 .mapping-mode legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
 .mapping-filaments, .mapping-palette { grid-column: 1 / -1; min-width: 0; }
 .mapping-palette { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
-.mapping-palette > strong { font-size: 11px; margin-bottom: 4px; }
+.mapping-palette > .section-title { font-size: 11px; margin-bottom: 4px; }
 .mapping-palette > span { font-size: 10px; color: var(--muted); margin-top: 4px; }
-.mapping-palette-item { display: flex; align-items: center; gap: 7px; padding: 4px; background: none; border: 0; border-radius: 4px; color: var(--ink); text-align: left; cursor: help; min-width: 0; }
+.mapping-palette-item { display: flex; align-items: center; gap: 7px; padding: 4px; background: none; border: 0; border-radius: 4px; color: var(--ink); text-align: left; cursor: pointer; min-width: 0; }
+.mapping-palette-item:not(:disabled):hover { background: var(--mantine-color-default-hover); }
+.mapping-palette-item:disabled { cursor: default; opacity: 0.6; }
 .mapping-palette-item i { width: 14px; height: 14px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 50%; }
 .mapping-palette-item span { font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-palette-item small { margin-left: auto; flex-shrink: 0; color: var(--muted); font-size: 10px; }

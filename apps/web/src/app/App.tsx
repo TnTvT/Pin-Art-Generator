@@ -146,6 +146,10 @@ export default function App() {
               options={colorOptions}
               colors={applied.current.design?.colors ?? null}
               processing={mapping.loading || image.loading}
+              editingBlocked={editor.blocked || editor.isDragging}
+              editError={editor.state.error}
+              resolvedPinMaterials={editor.committed.pinSelections}
+              onReplaceGroup={(source, material) => editor.dispatch({ type: 'material-group', source, material })}
               elapsedMs={applied.current.design?.elapsedMs ?? null}
               resolvedMaterialsCount={materialsCount}
               onModeChange={setMode}

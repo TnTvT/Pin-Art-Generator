@@ -27,6 +27,7 @@ export type EditorAction =
   | { type: 'select'; ids: number[]; operation: SelectionOperation }
   | { type: 'height'; heights: Float32Array; value: number; mode: HeightMode }
   | { type: 'material'; material: MaterialSelection; target: 'base' | 'selection' }
+  | { type: 'material-group'; source: MaterialSelection; material: MaterialSelection }
   | { type: 'reset'; target: 'height' | 'material' | 'all' }
   | { type: 'undo' | 'redo' }
   | { type: 'topology'; count: number };
@@ -123,12 +124,17 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         past: isUndo ? state.past.slice(0, -1) : [...state.past, transaction],
         future: isUndo ? [...state.future, transaction] : state.future.slice(0, -1), error: null };
     }
-    if (action.type === 'material') {
+    if (action.type === 'material' || action.type === 'material-group') {
       materialKey(action.material);
       const overrides = new Map(state.overrides);
       const material = { ...action.material, color: action.material.color.toLowerCase() };
-      const base = action.target === 'base' ? material : state.base;
-      if (action.target === 'selection') for (const index of state.selection) overrides.set(index, { ...overrides.get(index), material });
+      const base = action.type === 'material' && action.target === 'base' ? material : state.base;
+      if (action.type === 'material-group') {
+        const key = materialKey(action.source);
+        const indices = state.generatedMaterials?.flatMap((source, index) => materialKey(source) === key ? [index] : []) ?? [];
+        if (!indices.length) throw new Error('This generated group is no longer available. Choose a group from the current palette.');
+        for (const index of indices) overrides.set(index, { ...overrides.get(index), material });
+      } else if (action.target === 'selection') for (const index of state.selection) overrides.set(index, { ...overrides.get(index), material });
       validateMaterials(state.count, overrides, base, state.generatedMaterials);
       return commit(state, overrides, base);
     }

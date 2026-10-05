@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, Button, FileButton, Group, MultiSelect, NumberInput, SegmentedControl, Select, Switch, Tooltip } from '@mantine/core';
+import { Alert, Button, FileButton, Group, MultiSelect, NumberInput, SegmentedControl, Select, Switch } from '@mantine/core';
 import { FILAMENT_CATALOG, getFilament } from '../filaments/catalog';
 import type { ColorMappingOptions, ColorMappingResult, MappingMode, PaletteFamily, PaletteSource } from './color-mapping';
 import { formatDimension } from '../pin-design/model';
@@ -7,6 +7,8 @@ import { type SourceImage } from './image-mapping';
 import { type HeightMap } from './sampling';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import HeightRangeControl from './HeightRangeControl';
+import GeneratedPalette from './GeneratedPalette';
+import type { MaterialSelection } from '../filaments/materials';
 
 interface ImageMappingPanelProps {
   enabled?: boolean;
@@ -22,6 +24,10 @@ interface ImageMappingPanelProps {
   options: ColorMappingOptions;
   colors: ColorMappingResult | null;
   processing: boolean;
+  editingBlocked?: boolean;
+  editError?: string | null;
+  resolvedPinMaterials?: readonly MaterialSelection[];
+  onReplaceGroup?: (source: MaterialSelection, replacement: MaterialSelection) => void;
   resolvedMaterialsCount: number;
   elapsedMs: number | null;
   onModeChange: (mode: MappingMode) => void;
@@ -101,20 +107,8 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
               </> : <MultiSelect className="mapping-filaments" label="Available filaments" searchable size="xs" data={filamentOptions} value={props.options.filamentIds}
                 onChange={filamentIds => props.onOptionsChange({ ...props.options, filamentIds })} placeholder="Choose preset filaments" maxDropdownHeight={240}
                 renderOption={({ option }) => <div className="filament-option"><span className="filament-swatch" style={{ backgroundColor: getFilament(option.value)?.hex }} aria-hidden="true" /><span>{option.label}</span></div>} />}
-              {props.colors && <div className="mapping-palette" aria-label="Generated palette">
-                <strong>Generated palette · {props.colors.palette.length} {props.colors.palette.length === 1 ? 'material' : 'materials'}</strong>
-                {props.colors.palette.map(({ material, count }) => {
-                  const filament = getFilament(material.filamentId!);
-                  return <Tooltip key={material.filamentId} withArrow multiline position="right" events={{ hover: true, focus: true, touch: true }}
-                    label={<div className="design-color-tooltip"><strong>{filament?.color} ({filament?.code})</strong><span>{filament?.brand} · PLA {filament?.type}</span><span>{material.color.toUpperCase()} · RGB {filament?.rgb.join(', ')}</span></div>}>
-                    <button type="button" className="mapping-palette-item" aria-label={`${filament?.color} generated filament details`}>
-                      <i style={{ backgroundColor: material.color }} aria-hidden="true" /><span>{filament?.color} · {filament?.type}</span><small>{count.toLocaleString('en-US')} pins</small>
-                    </button>
-                  </Tooltip>;
-                })}
-                <span>Generated counts are before manual overrides.</span>
-                {props.colors.notice && <p className="mapping-description">{props.colors.notice}</p>}
-              </div>}
+              {props.colors && <GeneratedPalette colors={props.colors} resolvedMaterials={props.resolvedPinMaterials} disabled={props.processing || props.editingBlocked}
+                error={props.editError} onReplace={props.onReplaceGroup} />}
               <p className="mapping-description">Final design: {props.resolvedMaterialsCount} {props.resolvedMaterialsCount === 1 ? 'material' : 'materials'} (including base)</p>
             </>}
             <p className="mapping-description" role="status">{props.processing ? 'Updating mapping…' : props.elapsedMs !== null ? `Mapping updated · ${Math.round(props.elapsedMs)} ms` : ''}</p>

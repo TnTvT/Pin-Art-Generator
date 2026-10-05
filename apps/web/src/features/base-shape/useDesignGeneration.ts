@@ -21,6 +21,7 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
   const job = useMemo(() => ({ settings, base, overrides, retry }), [settings, base, overrides, retry]);
   const current = useRef(committed);
   const shapeCache = useRef<{ key: string; source: SourceImage | null; result: ReturnType<typeof generateLayout> } | null>(null);
+  const designCache = useRef<{ settings: GenerationSettings; retry: number; design: GeneratedDesign } | null>(null);
   current.current = committed;
 
   useEffect(() => {
@@ -28,6 +29,12 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
     let cancel = () => {};
     async function run() {
       try {
+        const cached = designCache.current;
+        if (cached?.settings === settings && cached.retry === retry && current.current.layout && samePins(current.current.layout, cached.design.parameters.layout!)) {
+          validateMaterials(cached.design.parameters.layout!.pins.length, new Map(overrides.map(value => [value.index, { material: value.material }])), base, cached.design.colors?.materials);
+          setStatus({ job, design: { ...cached.design, changed: false } });
+          return;
+        }
         const start = performance.now();
         const source = settings.shape.source === 'image' ? settings.source : null;
         const { width, depth, spacing, diameter } = settings.parameters;
@@ -58,7 +65,9 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         if (!active) return;
         validateMaterials(parameters.layout.pins.length, new Map(retained.map(value => [value.index, { material: value.material }])), base, colors?.materials);
         if (heightMap && (heightMap.heights.length !== parameters.layout.pins.length || heightMap.heights.some(value => !Number.isFinite(value) || value <= 0))) throw new Error('Generated heights must match the layout and be finite and greater than zero.');
-        setStatus({ job, design: { parameters, heightMap, colors, elapsedMs: performance.now() - start, changed } });
+        const design = { parameters, heightMap, colors, elapsedMs: performance.now() - start, changed };
+        designCache.current = { settings, retry, design };
+        setStatus({ job, design });
       } catch (error) {
         if (active) setStatus({ job, error: `${error instanceof Error ? error.message : 'Design generation failed.'} Current settings have not been applied.` });
       }
