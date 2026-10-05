@@ -10,6 +10,13 @@ Pin Art Studio's product requirements and significant decisions live here.
 
 - [Per-pin color and height editing](plans/001-pin-editing.md): implemented selection, Set/Offset height, per-pin materials, undo/redo, and export integration plan; accepted in ADR-013.
 
+## Archived experiments
+
+- [Balanced export runtime comparison](spikes/002-export-runtime-comparison.md): browser workers, warm Python/Node exports, live rendering and memory limits; decision is to retain the Python backend.
+- [Node.js export feasibility and performance](spikes/001-node-export.md): initial TypeScript/Manifold WASM STL and Bambu 3MF evaluation and measurement snapshot.
+
+The experimental workspace and its dependencies were removed after evaluation. Reports and measurement snapshots remain as historical evidence, not runnable features. Generated files are retained in a local, ignored `spikes/artifacts/` archive; they are not required to run or build the application.
+
 ## Accepted decisions
 
 | Record | Topic |

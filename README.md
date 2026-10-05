@@ -6,6 +6,7 @@ A React, TypeScript, Mantine, and Three.js demo with a Python export service for
 
 - [Product requirements](docs/PRD.md)
 - [Architecture and product decisions](docs/README.md)
+- [Archived export runtime evaluation](docs/spikes/002-export-runtime-comparison.md): measurements and the decision to retain the Python backend; experimental code has been removed.
 
 The root-level `docs/` folder records agreed behavior, defaults, technical rationale, and deferred work. Update the PRD when requirements change and add or supersede decision records for significant design changes.
 
@@ -74,7 +75,8 @@ apps/
     └── package.json             # Turbo adapter calling uv, no JS dependencies
 docs/
 ├── PRD.md
-└── decisions/
+├── decisions/
+└── spikes/                      # Archived evaluation reports and measurements
 package.json                    # Root commands and Turbo dependency
 pnpm-workspace.yaml
 pnpm-lock.yaml
