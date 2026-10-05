@@ -162,7 +162,7 @@ describe('app export integration', () => {
     expect(screen.getByLabelText('Pin spacing')).toHaveValue('5 mm');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
   });
-  it('shows Mixed fields instead of the first pin value for differing materials and heights', async () => {
+  it('keeps cached values for mixed selections and can explicitly reload selection values', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
@@ -177,9 +177,13 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await user.click(screen.getByRole('button', { name: 'Toggle second pin' }));
     await openEditor(user, 'Height');
+    expect(screen.getByLabelText('Selected height')).toHaveValue('30 mm');
+    await user.click(screen.getByRole('button', { name: 'Use selected height' }));
     expect(screen.getByLabelText('Selected height')).toHaveValue('');
     expect(screen.getByLabelText('Selected height')).toHaveAttribute('placeholder', 'Mixed');
     await openEditor(user, 'Material');
+    expect(screen.getByLabelText('Selection color')).toHaveValue('#ff0000');
+    await user.click(screen.getByRole('button', { name: 'Use selected material' }));
     expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveAttribute('placeholder', 'Mixed');
     expect(screen.getByLabelText('Selection color')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Apply material' })).toBeDisabled();

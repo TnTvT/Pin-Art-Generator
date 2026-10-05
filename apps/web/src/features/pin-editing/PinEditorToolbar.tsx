@@ -10,9 +10,8 @@ import { summarizeColors } from './color-summary';
 export default function PinEditorToolbar({ editor, columns = 1, parameters }: { editor: PinEditor; columns?: number; parameters?: import('../pin-design/model').Parameters }) {
   const { state, committed, isDragging, blocked } = editor;
   const busy = isDragging || blocked;
-  const [value, setValue] = useState<number | string>(20);
-  const [material, setMaterial] = useState<MaterialSelection>(DEFAULT_MODEL_MATERIALS.pins);
-  const [materialDirty, setMaterialDirty] = useState(false);
+  const [heightDrafts, setHeightDrafts] = useState<Partial<Record<HeightMode, number | string>>>({});
+  const [materialDraft, setMaterialDraft] = useState<MaterialSelection | null>(null);
   const [popover, setPopover] = useState<'height' | 'material' | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const heightButton = useRef<HTMLButtonElement>(null);
@@ -24,17 +23,17 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
   const selectedHeight = first === undefined ? null : editor.heights[first];
   const mixedHeight = selected.some(index => editor.heights[index] !== selectedHeight);
   const mixedMaterial = selected.some(index => committed.pinSelections[index].color !== committed.pinSelections[first].color || committed.pinSelections[index].filamentId !== committed.pinSelections[first].filamentId);
-  useEffect(() => {
-    const mixed = selected.some(index => committed.heights[index] !== committed.heights[first]);
-    setValue(editor.heightMode === 'offset' ? 0 : first === undefined ? 20 : mixed ? '' : committed.heights[first]);
-    setMaterial(first === undefined ? DEFAULT_MODEL_MATERIALS.pins : committed.pinSelections[first]);
-    setMaterialDirty(false);
-  }, [state.selection, committed, editor.heightMode]);
+  const value = heightDrafts[editor.heightMode] ?? (editor.heightMode === 'offset' ? 0 : first === undefined ? 20 : mixedHeight ? '' : committed.heights[first]);
+  const material = materialDraft ?? (first === undefined ? DEFAULT_MODEL_MATERIALS.pins : committed.pinSelections[first]);
+  const materialDirty = materialDraft !== null;
   useEffect(() => { if (!state.selection.size || busy) setPopover(null); }, [state.selection, busy]);
   const disabled = busy || !selected.length;
 
   function applyHeight() {
-    if (typeof value === 'number' && Number.isFinite(value) && !disabled) editor.dispatch({ type: 'height', heights: committed.heights, value, mode: editor.heightMode });
+    if (typeof value === 'number' && Number.isFinite(value) && !disabled) {
+      setHeightDrafts(current => ({ ...current, [editor.heightMode]: value }));
+      editor.dispatch({ type: 'height', heights: committed.heights, value, mode: editor.heightMode });
+    }
   }
   function selectAll() { editor.select(Array.from({ length: state.count }, (_, index) => index), 'replace'); }
   function closePanel() {
@@ -80,7 +79,7 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
     }}>
       <div className="editor-panel-heading"><h3>{popover === 'height' ? 'Pin height' : 'Pin material'}</h3>
         <InfoPopover label={popover === 'height' ? 'Height editing help' : 'Material editing help'}>
-          {popover === 'height' ? <p>Set makes selected heights equal. Offset preserves their differences. Drag the ↑ handle to adjust visually; Escape cancels a drag.</p> : <p>Bambu PLA Basic and Matte keep their official X1C presets. Custom colors use Generic PLA. Up to 16 used materials, including the base. Color counts group RGB values, not filament profiles.</p>}
+          {popover === 'height' ? <p>Set makes selected heights equal. Offset preserves their differences. Each operation remembers your input when you select another pin. Use selected height reloads the selection. Drag the ↑ handle to adjust visually; Escape cancels a drag.</p> : <p>Your chosen material is remembered for the next selection until you use selected material. Bambu PLA Basic and Matte keep their official X1C presets. Custom colors use Generic PLA. Up to 16 used materials, including the base. Color counts group RGB values, not filament profiles.</p>}
         </InfoPopover>
         <ActionIcon variant="subtle" color="gray" size={28} aria-label="Close pin editor" onClick={closePanel}>×</ActionIcon>
       </div>
@@ -90,13 +89,15 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
               data={[{ label: 'Set height', value: 'set' }, { label: 'Offset height', value: 'offset' }]} size="sm" />
           </fieldset>
           <NumberInput label={editor.heightMode === 'set' ? 'Selected height' : 'Height offset'} value={value} placeholder={mixedHeight && editor.heightMode === 'set' ? 'Mixed' : undefined}
-            onChange={setValue} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyHeight(); } }} suffix=" mm" step={0.1} decimalScale={2} clampBehavior="none" disabled={disabled} size="sm"
+            onChange={next => setHeightDrafts(current => ({ ...current, [editor.heightMode]: next }))} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyHeight(); } }} suffix=" mm" step={0.1} decimalScale={2} clampBehavior="none" disabled={disabled} size="sm"
             error={typeof value === 'number' && Number.isFinite(value) || value === '' && mixedHeight ? undefined : 'Enter a number, then Apply.'} />
-          <Button size="xs" disabled={disabled || typeof value !== 'number'} onClick={applyHeight}>Apply height</Button>
+          <Group gap="xs"><Button size="xs" disabled={disabled || typeof value !== 'number'} onClick={applyHeight}>Apply height</Button>
+            <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setHeightDrafts(current => { const next = { ...current }; delete next[editor.heightMode]; return next; })}>Use selected height</Button></Group>
       </> : <>
           <FilamentColorField label="Selection color" value={material} mixed={mixedMaterial && !materialDirty}
-            onChange={next => { setMaterial(next); setMaterialDirty(true); }} disabled={disabled} />
-          <Button size="xs" disabled={disabled || mixedMaterial && !materialDirty} onClick={() => editor.dispatch({ type: 'material', target: 'selection', material })}>Apply material</Button>
+            onChange={setMaterialDraft} disabled={disabled} />
+          <Group gap="xs"><Button size="xs" disabled={disabled || mixedMaterial && !materialDirty} onClick={() => { setMaterialDraft(material); editor.dispatch({ type: 'material', target: 'selection', material }); }}>Apply material</Button>
+            <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setMaterialDraft(null)}>Use selected material</Button></Group>
       </>}
     </section>}
     <Modal opened={confirmReset} onClose={() => setConfirmReset(false)} title="Reset all edits?" centered>
