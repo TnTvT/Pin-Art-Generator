@@ -9,6 +9,7 @@ Pin Art Studio's product requirements and significant decisions live here.
 ## Feature plans
 
 - [Per-pin color and height editing](plans/001-pin-editing.md): implemented selection, Set/Offset height, per-pin materials, undo/redo, and export integration plan; accepted in ADR-013.
+- [Pin cross-section shapes](plans/002-pin-cross-section-shapes.md): implemented Round/Square/Triangle controls, rotated footprint validation, matching sockets and compatible STL/3MF export; accepted in ADR-020.
 
 ## Archived experiments
 
@@ -40,6 +41,7 @@ The experimental workspace and its dependencies were removed after evaluation. R
 | [ADR-017](decisions/017-preset-image-color-mapping.md) | Local perceptual preset color matching, bounded palettes, workers and generated material baselines |
 | [ADR-018](decisions/018-base-shapes-and-position-layouts.md) | Preset/image contours, explicit XY layouts, atomic generation, socket validation and legacy export compatibility |
 | [ADR-019](decisions/019-reusable-edit-inputs-and-generated-groups.md) | Reusable editing drafts and stable, undoable generated-palette group recoloring |
+| [ADR-020](decisions/020-pin-cross-section-shapes.md) | Shared pin cross-sections, actual rotated footprints, offset sockets and bounds-aware print packing |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

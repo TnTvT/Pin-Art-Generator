@@ -2,11 +2,11 @@
 
 **Status:** Current demo baseline
 
-**Last updated:** October 4, 2026
+**Last updated:** October 5, 2026
 
 ## 1. Purpose
 
-Help a user explore a pin-art design by configuring a preset or image-derived base with automatically positioned cylindrical pins, viewing it in 3D, and mapping an image to pin heights and preset filament colors.
+Help a user explore a pin-art design by configuring a preset or image-derived base with automatically positioned round, square or triangular pins, viewing it in 3D, and mapping an image to pin heights and preset filament colors.
 
 The first audience is the project owner and makers experimenting with pin-art geometry before a future printable-model workflow. Success means users can quickly understand how dimensions, grid density, and image brightness affect the model without using CAD software.
 
@@ -29,7 +29,7 @@ The initial request prioritized a quick demo without tests. A later explicit req
 ## 3. User workflow
 
 1. Open the app and inspect the default uniform pin array.
-2. Choose a preset or image-derived contour. Set dimensions, edge padding, pin spacing, diameter, and generated height.
+2. Choose a preset or image-derived contour. Set dimensions, edge padding, pin shape, size, rotation, spacing, and generated height.
 3. Rotate, zoom, pan, or use camera buttons to inspect the geometry.
 4. Optionally upload an image or select **Try sample**.
 5. Adjust the minimum/maximum extensions and inversion to explore the image relief.
@@ -48,14 +48,18 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 | Corner radius | 10 mm | Rounded rectangle only; 0 to half the shorter side |
 | Edge padding | 5 mm | Minimum gap from pin outer wall to the outer silhouette boundary; nonnegative |
 | Pin spacing | 5 mm | Equal X/Y center spacing, never adjusted automatically |
-| Pin diameter | 2 mm | Positive cylindrical diameter |
+| Pin shape | Round | Design-wide Round, Square, or equilateral Triangle |
+| Pin size | 2 mm | Positive circumscribed diameter; square diagonal, triangle circumdiameter |
+| Pin rotation | 0° | Polygon-only numeric input/slider, 0–360° counterclockwise around +Z; round remembers but ignores it |
 | Generated pin height | 20 mm | Visible height above base; manual heights may exceed it |
 | Map image to pins | On | Off allows image-only base shaping without height/color generation |
 | Min height / Max height | 2 / 20 mm | One dual-thumb Height range with linked positive, ordered inputs |
 | Invert mapping | Off | Height only: dark-tall vs light-tall |
 
 - Generate lattice coordinates at integer multiples of spacing from the base center; sort actual pins by Y then X. Stable IDs encode integer grid coordinates.
-- Keep only complete pin disks inside the solid outer silhouettes with the specified padding. Enclosed image gaps are not cutouts and can contain pins. Padding never expands a base or adds connecting borders.
+- Keep only complete actual rotated pin footprints inside solid outer silhouettes with the specified padding. Test crossings and enclosed holes in compatible explicit API layouts, not just vertices. Enclosed image gaps are not cutouts and can contain pins. Padding never expands a base or adds connecting borders.
+- Square at 0° has sides parallel to X/Y; triangle has a vertex toward +Y. Square side is size / √2; triangle side is √3 × size / 2. Show dimensions/orientation help in an info popup. Normalize full-turn geometry/export to 0°.
+- Show actual rotated footprint bounds and the minimum physical wall gap, including diagonal neighbors; show no gap for a lone pin. Permit overlapping previews with warnings but block export. Preserve edits, selection and history only when pin IDs/coordinates stay unchanged; otherwise use the existing confirmation flow.
 - Curved presets use 64-point polygon approximations, with only duplicate/collinear points removed. Preview and export use identical regions.
 - Maximum 10,000 actual pins, 1,000,000 candidate positions and 20,000 total contour vertices. Empty or excessive layouts fail visibly without truncation.
 - Numeric drafts retain valid input; complete but invalid shape settings retain the applied design and block export. Never silently substitute a rectangular base.
@@ -155,7 +159,7 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Offer Fixed and Detachable modes with Download STL and Download 3MF. Snapshot the last valid parameters and resolved heights in the actual pin position order; never upload source images or silently alter geometry.
 - Fixed STL must be a watertight union. Fixed 3MF retains separate material regions within one assembled sculpture.
 - Fixed STL rejects zero-clearance tangent neighbors with an explanation; the model is not silently reshaped to repair point-contact geometry. Dense STL exports are memory-intensive and may take around a minute.
-- Detachable pins use blind sockets. Default insertion depth 2 mm and diametral clearance 0.2 mm; socket diameter equals pin diameter plus clearance. Require a 1 mm floor and 0.8 mm socket/edge walls. Printed pin length equals visible extension plus insertion depth. This is not a sliding mechanism or universal fit guarantee.
+- Detachable pins use blind sockets matching pin shape/rotation. Default insertion depth 2 mm and Socket clearance 0.2 mm, meaning a uniform outward wall offset of 0.1 mm. Round socket diameter equals pin size plus clearance; polygon offsets have rounded corners and are not circumdiameter scaling. Require a 1 mm floor and 0.8 mm socket/edge walls. Printed pin length equals visible extension plus insertion depth. This is not a sliding mechanism or universal fit guarantee.
 - Reserve plate 1 for the centered socket base; pack upright pins in actual position-list order (Y then X; legacy row-major) on centered pin-only plates starting with plate 2. Keep 5 mm margins and 4 mm part gaps. Default usable area 256 × 256 mm is editable; split automatically into at most 36 total plates. Reject oversized individual parts and invalid socket geometry.
 - Deliver one Bambu-compatible multi-plate 3MF with standard colors and matching logical filament/part/plate assignments. Deduplicate color + material-profile pairs and reusable geometry; matching RGB must not merge Basic with Matte or Generic PLA. Embed Bambu Lab X1 Carbon 0.4 nozzle identity and reference its 0.20mm Standard process and selected filament presets through system-preset inheritance. Preserve selected colors in the project palette, not by modifying system filament preset defaults; inherit temperature/flow settings without hardcoded overrides or physical AMS assignments. Align Bambu filament variant and one-based self-index arrays with the compacted used palette.
 - Extend the export snapshot with optional `filamentProfiles`, parallel to `materials`, accepting only `bambu-pla-basic`, `bambu-pla-matte`, and `generic-pla`. Validate palette alignment and reject unknown keys. Legacy omitted/null profiles resolve to Generic PLA, not an inferred Bambu product. Write aligned preset names, family IDs, vendors, PLA type, inheritance/difference groups, colors, and part extruder indices for the compacted used-material palette.
@@ -194,6 +198,8 @@ This is brightness mapping, not inference of an object's physical depth from a p
 ## 12. Shape export contract and validation
 
 New clients send optional `layout` with `regions: [{outer, holes}]`, `pins: [{id, x, y}]` and `edgePadding`, all in mm. Heights and material indices follow that pin list. Do not send image bounds, pixels, or row/column parameters. Legacy requests without layout still require rows/columns and use rectangular grid geometry.
+
+Both paths accept optional `parameters.pinShape` (`round`, `square`, `triangle`) and `pinRotation` (finite 0–360°), defaulting to Round/0. `parameters.diameter` stays compatible and represents circumscribed size. Server validation independently checks actual footprints and offset socket walls. Geometry resource/cache identities distinguish cross-sections. Upright print packing uses actual rotated bounds, including the triangle's asymmetric centroid-to-bounding-box offset. Keep existing heights, material/profile identity, plate ownership and X1C metadata unchanged. See ADR-020.
 
 The current UI sends empty `holes` arrays: image recognition defines only solid outer silhouettes. The export contract retains explicit holes support for compatibility; the backend validates supplied contours as-is, rather than silently filling or repairing API input. Detachable sockets remain actual blind holes and are unaffected by this silhouette rule.
 
