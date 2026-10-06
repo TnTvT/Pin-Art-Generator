@@ -2,11 +2,14 @@ import { getMetrics, type Parameters } from '../pin-design/model';
 import { fitImage, pixelsToHeights, type HeightMap } from './sampling';
 import type { ShapeImage } from '../base-shape/layout';
 import { DEFAULT_IMAGE_PLACEMENT, imageTransform, sourcePoint, type ImagePlacement } from './image-placement';
+import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from './image-sampling';
 
 export interface SourceImage {
   name: string;
   url: string;
   bitmap: ImageBitmap;
+  blob?: Blob;
+  originalSize?: { width: number; height: number };
 }
 
 export function readShapeImage(source: SourceImage): ShapeImage {
@@ -18,7 +21,7 @@ export function readShapeImage(source: SourceImage): ShapeImage {
   return { width: canvas.width, height: canvas.height, pixels: context.getImageData(0, 0, canvas.width, canvas.height).data };
 }
 
-export function sampleLayoutPixels(source: SourceImage, parameters: Parameters, placement = DEFAULT_IMAGE_PLACEMENT): Uint8ClampedArray {
+export function sampleLayoutPixels(source: SourceImage, parameters: Parameters, placement = DEFAULT_IMAGE_PLACEMENT, sampling: ImageSampling = DEFAULT_IMAGE_SAMPLING): Uint8ClampedArray {
   const image = readShapeImage(source), layout = parameters.layout!;
   const pixels = new Uint8ClampedArray(layout.pins.length * 4);
   const transform = imageTransform(image, parameters, placement);
@@ -29,6 +32,11 @@ export function sampleLayoutPixels(source: SourceImage, parameters: Parameters, 
   }
   layout.pins.forEach((pin, index) => {
     const { x: sourceX, y: sourceY } = sourcePoint(pin, transform);
+    if (sampling === 'pixel') {
+      for (let axis = 0; axis < 3; axis++) pixels[index * 4 + axis] = channel(Math.floor(sourceX + .5), Math.floor(sourceY + .5), axis);
+      pixels[index * 4 + 3] = 255;
+      return;
+    }
     const left = Math.floor(sourceX), top = Math.floor(sourceY), amountX = sourceX - left, amountY = sourceY - top;
     for (let axis = 0; axis < 3; axis++) pixels[index * 4 + axis] =
       (channel(left, top, axis) * (1 - amountX) + channel(left + 1, top, axis) * amountX) * (1 - amountY)
@@ -38,8 +46,8 @@ export function sampleLayoutPixels(source: SourceImage, parameters: Parameters, 
   return pixels;
 }
 
-export function sampleImagePixels(source: SourceImage, parameters: Parameters, adjustment: ImagePlacement = DEFAULT_IMAGE_PLACEMENT): Uint8ClampedArray {
-  if (parameters.layout) return sampleLayoutPixels(source, parameters, adjustment);
+export function sampleImagePixels(source: SourceImage, parameters: Parameters, adjustment: ImagePlacement = DEFAULT_IMAGE_PLACEMENT, sampling: ImageSampling = DEFAULT_IMAGE_SAMPLING): Uint8ClampedArray {
+  if (parameters.layout) return sampleLayoutPixels(source, parameters, adjustment, sampling);
   imageTransform(source.bitmap, parameters, adjustment);
   const canvas = document.createElement('canvas');
   canvas.width = parameters.columns;
@@ -50,7 +58,7 @@ export function sampleImagePixels(source: SourceImage, parameters: Parameters, a
   const placement = fitImage(source.bitmap.width, source.bitmap.height, footprint.width, footprint.depth, canvas.width, canvas.height);
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.imageSmoothingEnabled = true;
+  context.imageSmoothingEnabled = sampling === 'smooth';
   context.imageSmoothingQuality = 'high';
   context.drawImage(source.bitmap,
     (canvas.width - placement.width * adjustment.zoom) / 2 + adjustment.offsetX / footprint.width * canvas.width,
@@ -59,9 +67,9 @@ export function sampleImagePixels(source: SourceImage, parameters: Parameters, a
   return context.getImageData(0, 0, canvas.width, canvas.height).data;
 }
 
-export function mapImageToPins(source: SourceImage, parameters: Parameters, minimum: number, invert: boolean, placement?: ImagePlacement): HeightMap {
-  if (parameters.layout) return layoutPixelsToHeights(sampleImagePixels(source, parameters, placement), minimum, parameters.extension, invert);
-  return pixelsToHeights(sampleImagePixels(source, parameters, placement), parameters.columns, parameters.rows, minimum, parameters.extension, invert);
+export function mapImageToPins(source: SourceImage, parameters: Parameters, minimum: number, invert: boolean, placement?: ImagePlacement, sampling: ImageSampling = DEFAULT_IMAGE_SAMPLING): HeightMap {
+  if (parameters.layout) return layoutPixelsToHeights(sampleImagePixels(source, parameters, placement, sampling), minimum, parameters.extension, invert);
+  return pixelsToHeights(sampleImagePixels(source, parameters, placement, sampling), parameters.columns, parameters.rows, minimum, parameters.extension, invert);
 }
 
 export function layoutPixelsToRGB(pixels: Uint8ClampedArray) {

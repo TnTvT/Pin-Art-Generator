@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type SourceImage } from './image-mapping';
 import { createSampleImage } from './sample-image';
+import { releaseSamplingSource } from './sampling-source';
 
 function releaseImage(image: SourceImage | null) {
   if (!image) return;
+  releaseSamplingSource(image);
   URL.revokeObjectURL(image.url);
   image.bitmap.close();
 }
@@ -40,6 +42,7 @@ export default function useSourceImage(deferredRelease = false) {
     setLoading(true);
     try {
       const decoded = await createImageBitmap(file);
+      const originalSize = { width: decoded.width, height: decoded.height };
       let bitmap = decoded;
       const longestSide = Math.max(decoded.width, decoded.height);
       if (longestSide > 1024) {
@@ -57,7 +60,7 @@ export default function useSourceImage(deferredRelease = false) {
         bitmap.close();
         return;
       }
-      const nextImage = { name: file.name, url: URL.createObjectURL(file), bitmap };
+      const nextImage = { name: file.name, url: URL.createObjectURL(file), bitmap, blob: file, originalSize };
       if (!deferredRelease || current.current !== accepted.current) releaseImage(current.current);
       current.current = nextImage;
       setSource(nextImage);

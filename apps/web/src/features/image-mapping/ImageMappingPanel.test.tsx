@@ -38,6 +38,21 @@ function panelProps(source: SourceImage | null = null) {
 const source = { name: 'photo.png', url: 'blob:photo', bitmap: {} as ImageBitmap };
 
 describe('image mapping controls', () => {
+  it('offers independent Smooth/Pixel sampling without changing modes or placement', async () => {
+    const user = userEvent.setup();
+    const onSamplingChange = vi.fn();
+    const props = { ...panelProps(source), onSamplingChange };
+    const { rerender } = renderWithProviders(<ImageMappingPanel {...props} sampling="smooth" />);
+    expect(screen.getByRole('radio', { name: 'Smooth' })).toBeChecked();
+    await user.click(screen.getByRole('radio', { name: 'Pixel' }));
+    expect(onSamplingChange).toHaveBeenCalledWith('pixel');
+    expect(props.onModeChange).not.toHaveBeenCalled();
+    expect(props.onHeightRangeChange).not.toHaveBeenCalled();
+    rerender(<ImageMappingPanel {...props} sampling="pixel" mode="color" />);
+    expect(screen.getByRole('radio', { name: 'Pixel' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Sampling help' }));
+    expect(screen.getByText(/Multiple pins can sample the same pixel/)).toBeInTheDocument();
+  });
   it('keeps adjustment available during mapping, disables it for contour-only mode, and preserves placement on close', async () => {
     const user = userEvent.setup();
     const props = { ...panelProps({ ...source, bitmap: { width: 200, height: 100 } as ImageBitmap }),

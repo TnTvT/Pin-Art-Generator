@@ -6,6 +6,7 @@ import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
 import useSourceImage from '../features/image-mapping/useSourceImage';
 import useImagePlacement from '../features/image-mapping/useImagePlacement';
+import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from '../features/image-mapping/image-sampling';
 import { DEFAULT_COLOR_MAPPING, type MappingMode } from '../features/image-mapping/color-mapping';
 import ExportPanel from '../features/export/ExportPanel';
 import { DEFAULTS, formatDimension, getMetrics, getWarnings, pinCount, type ParameterName, type Parameters } from '../features/pin-design/model';
@@ -40,9 +41,10 @@ export default function App() {
   const [minimum, setMinimum] = useState(2);
   const [inverted, setInverted] = useState(false);
   const [mode, setMode] = useState<MappingMode>('height');
+  const [sampling, setSampling] = useState<ImageSampling>(DEFAULT_IMAGE_SAMPLING);
   const [colorOptions, setColorOptions] = useState(DEFAULT_COLOR_MAPPING);
   const editor = usePinEditor(parameters, undefined, image.loading);
-  const settings = useMemo(() => ({ parameters: requested, shape, source: image.source, enabled, minimum, inverted, mode, options: colorOptions, placement: imagePlacement.placement }), [requested, shape, image.source, enabled, minimum, inverted, mode, colorOptions, imagePlacement.placement]);
+  const settings = useMemo(() => ({ parameters: requested, shape, source: image.source, enabled, minimum, inverted, mode, sampling, options: colorOptions, placement: imagePlacement.placement }), [requested, shape, image.source, enabled, minimum, inverted, mode, sampling, colorOptions, imagePlacement.placement]);
   const mapping = useDesignGeneration(settings, parameters, editor);
   const applied = useRef<{ job?: object; settings: GenerationSettings; design?: GeneratedDesign }>({ settings });
   const updating = image.loading || mapping.loading || mapping.job !== applied.current.job || pendingDesign !== null;
@@ -109,6 +111,7 @@ export default function App() {
     setMinimum(previous.minimum);
     setInverted(previous.inverted);
     setMode(previous.mode);
+    setSampling(previous.sampling ?? DEFAULT_IMAGE_SAMPLING);
     setColorOptions(previous.options);
     imagePlacement.restore(previous.source, previous.placement);
     image.restore();
@@ -151,6 +154,8 @@ export default function App() {
               inverted={inverted}
               heightMap={applied.current.design?.heightMap ?? null}
               mode={mode}
+              sampling={sampling}
+              onSamplingChange={value => { if (!editor.isDragging && !pendingDesign) setSampling(value); }}
               options={colorOptions}
               colors={applied.current.design?.colors ?? null}
               processing={mapping.loading || image.loading}
@@ -159,6 +164,7 @@ export default function App() {
               resolvedPinMaterials={editor.committed.pinSelections}
               onReplaceGroup={(source, material) => editor.dispatch({ type: 'material-group', source, material })}
               elapsedMs={applied.current.design?.elapsedMs ?? null}
+              timings={applied.current.design?.timings}
               resolvedMaterialsCount={materialsCount}
               onModeChange={setMode}
               onOptionsChange={setColorOptions}

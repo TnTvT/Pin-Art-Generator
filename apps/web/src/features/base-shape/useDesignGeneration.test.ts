@@ -6,6 +6,7 @@ import type { PinEditor } from '../pin-editing/usePinEditor';
 import { mapImageToPins, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
 import { DEFAULT_COLOR_MAPPING } from '../image-mapping/color-mapping';
 import { startColorMapping } from '../image-mapping/color-worker';
+import { prepareSamplingSource } from '../image-mapping/sampling-source';
 import { DEFAULT_SHAPE, generateLayout } from './layout';
 import { startShapeJob } from './shape-worker';
 import useDesignGeneration, { type GenerationSettings } from './useDesignGeneration';
@@ -13,15 +14,58 @@ import useDesignGeneration, { type GenerationSettings } from './useDesignGenerat
 vi.mock('./shape-worker', () => ({ startShapeJob: vi.fn() }));
 vi.mock('../image-mapping/image-mapping', async importOriginal => ({ ...await importOriginal<typeof import('../image-mapping/image-mapping')>(), mapImageToPins: vi.fn(), sampleImagePixels: vi.fn() }));
 vi.mock('../image-mapping/color-worker', () => ({ startColorMapping: vi.fn() }));
+vi.mock('../image-mapping/sampling-source', () => ({ prepareSamplingSource: vi.fn(async source => source) }));
 const committed = { ...DEFAULTS, ...generateLayout(DEFAULTS, DEFAULT_SHAPE) };
 const settings: GenerationSettings = { parameters: DEFAULTS, shape: DEFAULT_SHAPE, source: null, enabled: true, minimum: 2, inverted: false, mode: 'height', options: DEFAULT_COLOR_MAPPING };
 const editor = { state: { base: DEFAULT_MODEL_MATERIALS.base, overrides: new Map([[0, { height: 30 }]]) } } as unknown as PinEditor;
 beforeEach(() => {
+  vi.mocked(prepareSamplingSource).mockReset().mockImplementation(async source => source);
   vi.mocked(startColorMapping).mockReset();
   vi.mocked(startShapeJob).mockReset();
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('changes sampling without changing layout, overrides or color/height sample ownership', async () => {
+    const materials = Array(committed.layout.pins.length).fill(DEFAULT_MODEL_MATERIALS.pins);
+    const pixels = new Uint8ClampedArray(materials.length * 4).fill(255);
+    vi.mocked(sampleImagePixels).mockReturnValue(pixels);
+    vi.mocked(startColorMapping).mockImplementation(() => ({ promise: Promise.resolve({ result: { materials, palette: [], notice: null }, elapsedMs: 1 }), cancel: vi.fn() }));
+    const source = { name: 'image', url: 'blob:image', bitmap: {} } as SourceImage;
+    const pixelSource = { ...source, url: 'data:pixel' };
+    vi.mocked(prepareSamplingSource).mockImplementation(async (_source, sampling) => sampling === 'pixel' ? pixelSource : source);
+    const input: GenerationSettings = { ...settings, source, mode: 'height-color', sampling: 'smooth', placement: { offsetX: 2, offsetY: -1, zoom: 2 } };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(result.current.design?.heightMap?.heights[0]).toBe(2));
+    const layout = result.current.design!.parameters.layout;
+    rerender({ input: { ...input, sampling: 'pixel' } });
+    await waitFor(() => expect(sampleImagePixels).toHaveBeenLastCalledWith(pixelSource, expect.anything(), input.placement, 'pixel'));
+    expect(result.current.design?.parameters.layout).toBe(layout);
+    expect(result.current.design?.changed).toBe(false);
+    expect(editor.state.overrides.get(0)?.height).toBe(30);
+    expect(result.current.design?.timings).toEqual({ preparationMs: expect.any(Number), samplingMs: expect.any(Number), paletteMs: expect.any(Number) });
+    expect(startShapeJob).toHaveBeenCalledTimes(1);
+    expect(startColorMapping).toHaveBeenLastCalledWith(expect.objectContaining({ rgb: new Uint8Array(materials.length * 3).fill(255) }));
+  });
+
+  it('ignores stale raster preparation and can retry a failed Pixel job', async () => {
+    const source = { name: 'image', url: 'blob:image', bitmap: {} } as SourceImage;
+    const input: GenerationSettings = { ...settings, source, sampling: 'pixel' };
+    let finish!: (source: SourceImage) => void;
+    vi.mocked(prepareSamplingSource).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(committed.layout.pins.length).fill(10), minimum: 10, maximum: 10 });
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(prepareSamplingSource).toHaveBeenCalledOnce());
+    rerender({ input: { ...input, source: null } });
+    await waitFor(() => expect(result.current.design?.heightMap).toBeNull());
+    await act(async () => finish(source));
+    expect(result.current.design?.heightMap).toBeNull();
+    vi.mocked(prepareSamplingSource).mockRejectedValueOnce(new Error('Pixel decode failed'));
+    rerender({ input });
+    await waitFor(() => expect(result.current.error).toContain('Pixel decode failed'));
+    expect(result.current.design).toBeUndefined();
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.design?.heightMap?.heights[0]).toBe(10));
+  });
   it('keeps image-derived contours and positions fixed when only placement changes', async () => {
     const pixels = new Uint8ClampedArray(4 * 4 * 4).fill(255);
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: pixels }) } as unknown as CanvasRenderingContext2D);
@@ -64,10 +108,10 @@ describe('atomic design generation', () => {
     const initialLayout = result.current.design!.parameters.layout;
     const placement = { offsetX: 12, offsetY: -3, zoom: 1.5 };
     rerender({ input: { ...initial, placement } });
-    await waitFor(() => expect(mapImageToPins).toHaveBeenLastCalledWith(source, expect.anything(), 2, false, placement));
+    await waitFor(() => expect(mapImageToPins).toHaveBeenLastCalledWith(source, expect.anything(), 2, false, placement, 'smooth'));
     rerender({ input: { ...initial, placement, mode: 'height-color' } });
     await waitFor(() => expect(result.current.design?.colors?.materials).toEqual(materials));
-    expect(sampleImagePixels).toHaveBeenLastCalledWith(source, expect.anything(), placement);
+    expect(sampleImagePixels).toHaveBeenLastCalledWith(source, expect.anything(), placement, 'smooth');
     expect(result.current.design?.parameters.layout).toBe(initialLayout);
     expect(result.current.design?.changed).toBe(false);
     expect(startShapeJob).toHaveBeenCalledTimes(1);

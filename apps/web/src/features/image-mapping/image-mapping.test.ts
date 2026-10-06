@@ -3,6 +3,34 @@ import { DEFAULTS } from '../pin-design/model';
 import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, sampleImagePixels, type SourceImage } from './image-mapping';
 
 describe('canvas image sampling', () => {
+  it('lets multiple pins share a pixel without blending neighboring cells or counting physical gaps', () => {
+    const rgba = new Uint8ClampedArray([0,0,0,255, 255,0,0,255, 255,255,255,255, 0,0,255,128]);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: rgba }) } as unknown as CanvasRenderingContext2D);
+    const source = { name: 'blocks.png', url: 'blob:blocks', bitmap: { width: 2, height: 2 } as ImageBitmap };
+    const parameters = { ...DEFAULTS, width: 2, depth: 2, layout: { regions: [], edgePadding: 0,
+      pins: [-.9, -.25, 0, .999, 1].map((x, index) => ({ id: String(index), x, y: .5 })) } };
+    const pixels = sampleImagePixels(source, parameters, undefined, 'pixel');
+    expect([...layoutPixelsToRGB(pixels)]).toEqual([0,0,0, 0,0,0, 255,0,0, 255,0,0, 255,255,255]);
+    const heights = mapImageToPins(source, parameters, 2, false, undefined, 'pixel').heights;
+    expect(heights[0]).toBe(heights[1]);
+    expect(heights[2]).toBe(heights[3]);
+    expect([...sampleImagePixels(source, { ...parameters, diameter: .1, spacing: .25 }, undefined, 'pixel')]).toEqual([...pixels]);
+    expect([...sampleImagePixels(source, parameters)].slice(4, 7)).toEqual([64,0,0]);
+  });
+
+  it('keeps Pixel height/color orientation, white outside, alpha and placement consistent', () => {
+    const rgba = new Uint8ClampedArray([0,0,0,255, 255,0,0,255, 255,255,255,255, 0,0,255,128]);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: rgba }) } as unknown as CanvasRenderingContext2D);
+    const source = { name: 'blocks.png', url: 'blob:blocks', bitmap: { width: 2, height: 2 } as ImageBitmap };
+    const placement = { offsetX: 3, offsetY: -2, zoom: 2 };
+    const parameters = { ...DEFAULTS, width: 2, depth: 2, layout: { regions: [], edgePadding: 0,
+      pins: [{ id: 'top', x: 2, y: -1 }, { id: 'bottom', x: 4, y: -3 }, { id: 'outside', x: .99, y: -1 }] } };
+    const pixels = sampleImagePixels(source, parameters, placement, 'pixel');
+    expect([...layoutPixelsToRGB(pixels)]).toEqual([0,0,0, 127,127,255, 255,255,255]);
+    expect([...mapImageToPins(source, parameters, 2, false, placement, 'pixel').heights]).toEqual([...layoutPixelsToHeights(pixels, 2, 20, false).heights]);
+    expect([...mapImageToPins(source, parameters, 2, true, placement, 'pixel').heights]).toEqual([...layoutPixelsToHeights(pixels, 2, 20, true).heights]);
+  });
+
   it('samples a centered image at grid resolution and passes the pixels to height mapping', () => {
     const context = {
       fillStyle: '',

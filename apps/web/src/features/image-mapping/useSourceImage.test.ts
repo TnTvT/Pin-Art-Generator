@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import useSourceImage from './useSourceImage';
+import { prepareSamplingSource } from './sampling-source';
 
 const decode = vi.fn<(source: unknown, options?: ImageBitmapOptions) => Promise<ImageBitmap>>();
 const createObjectURL = vi.fn(() => 'blob:image');
@@ -33,6 +34,8 @@ describe('source image lifecycle', () => {
     await act(async () => { await result.current.upload(file(type)); });
     expect(result.current.source?.bitmap).toBe(decoded);
     expect(result.current.source?.url).toBe('blob:image');
+    expect(result.current.source?.blob).toBeInstanceOf(File);
+    expect(result.current.source?.originalSize).toEqual({ width: 200, height: 100 });
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
@@ -141,5 +144,28 @@ describe('source image lifecycle', () => {
     expect(first.close).toHaveBeenCalledOnce();
     unmount();
     expect(third.close).toHaveBeenCalledOnce();
+  });
+  it('keeps accepted Pixel resources on rollback and releases rejected and replaced rasters exactly once', async () => {
+    const original = bitmap(2000, 1000), smooth = bitmap(1024, 512), pixel = bitmap(1024, 512);
+    const replacement = bitmap(2000, 1000), replacementSmooth = bitmap(1024, 512), replacementPixel = bitmap(1024, 512);
+    decode.mockResolvedValueOnce(original).mockResolvedValueOnce(smooth).mockResolvedValueOnce(pixel)
+      .mockResolvedValueOnce(replacement).mockResolvedValueOnce(replacementSmooth).mockResolvedValueOnce(replacementPixel);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,preview');
+    const { result, unmount } = renderHook(() => useSourceImage(true));
+    await act(async () => { await result.current.upload(file()); });
+    act(() => result.current.accept());
+    const accepted = result.current.source!;
+    await prepareSamplingSource(accepted, 'pixel');
+    await act(async () => { await result.current.upload(file()); });
+    await prepareSamplingSource(result.current.source!, 'pixel');
+    act(() => result.current.restore());
+    expect(result.current.source).toBe(accepted);
+    expect(pixel.close).not.toHaveBeenCalled();
+    expect(replacementPixel.close).toHaveBeenCalledOnce();
+    expect((await prepareSamplingSource(accepted, 'pixel')).bitmap).toBe(pixel);
+    unmount();
+    expect(pixel.close).toHaveBeenCalledOnce();
+    expect(smooth.close).toHaveBeenCalledOnce();
   });
 });

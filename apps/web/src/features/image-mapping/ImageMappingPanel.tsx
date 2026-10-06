@@ -11,6 +11,7 @@ import GeneratedPalette from './GeneratedPalette';
 import type { MaterialSelection } from '../filaments/materials';
 import type { ImagePlacement } from './image-placement';
 import ImagePlacementDialog from './ImagePlacementDialog';
+import { DEFAULT_IMAGE_SAMPLING, type ImageSampling, type MappingTimings } from './image-sampling';
 
 interface ImageMappingPanelProps {
   enabled?: boolean;
@@ -27,6 +28,8 @@ interface ImageMappingPanelProps {
   inverted: boolean;
   heightMap: HeightMap | null;
   mode: MappingMode;
+  sampling?: ImageSampling;
+  onSamplingChange?: (sampling: ImageSampling) => void;
   options: ColorMappingOptions;
   colors: ColorMappingResult | null;
   processing: boolean;
@@ -36,6 +39,7 @@ interface ImageMappingPanelProps {
   onReplaceGroup?: (source: MaterialSelection, replacement: MaterialSelection) => void;
   resolvedMaterialsCount: number;
   elapsedMs: number | null;
+  timings?: MappingTimings;
   onModeChange: (mode: MappingMode) => void;
   onOptionsChange: (options: ColorMappingOptions) => void;
   onRetry: () => void;
@@ -89,6 +93,10 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
           {props.parameters && props.placement && props.onPlacementChange && <Button size="xs" variant="default" fullWidth onClick={() => setAdjusting(true)}
             disabled={props.loading || props.placementBlocked || props.enabled === false}>Adjust image</Button>}
           {props.enabled !== false && <div className="mapping-controls">
+            <fieldset className="mapping-mode"><legend>Sampling <InfoPopover label="Sampling help"><p>Smooth blends neighboring pixels. Pixel reads the nearest pixel without blending. Multiple pins can sample the same pixel or enlarged color block; gaps are not extra image pixels. Pixel does not add pins or restore details missed by a sparse array, JPEG compression or image downsizing.</p><p>Processing raster: {props.source.bitmap.width} × {props.source.bitmap.height} px · Maximum side: 1,024 px. This is not an automatically detected logical pixel-art grid.</p></InfoPopover></legend>
+              <SegmentedControl fullWidth size="xs" value={props.sampling ?? DEFAULT_IMAGE_SAMPLING} disabled={props.placementBlocked}
+                onChange={sampling => props.onSamplingChange?.(sampling as ImageSampling)} data={[{ label: 'Smooth', value: 'smooth' }, { label: 'Pixel', value: 'pixel' }]} />
+            </fieldset>
             <fieldset className="mapping-mode"><legend>Mapping mode</legend>
               <SegmentedControl fullWidth size="xs" value={props.mode} onChange={mode => props.onModeChange(mode as MappingMode)}
                 data={[{ label: 'Height', value: 'height' }, { label: 'Color', value: 'color' }, { label: 'Height + Color', value: 'height-color' }]} />
@@ -120,14 +128,15 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
                 error={props.editError} onReplace={props.onReplaceGroup} />}
               <p className="mapping-description">Final design: {props.resolvedMaterialsCount} {props.resolvedMaterialsCount === 1 ? 'material' : 'materials'} (including base)</p>
             </>}
-            <p className="mapping-description" role="status">{props.processing ? 'Updating mapping…' : props.elapsedMs !== null ? `Mapping updated · ${Math.round(props.elapsedMs)} ms` : ''}</p>
+            <p className="mapping-description" role="status" data-preparation-ms={props.timings?.preparationMs} data-sampling-ms={props.timings?.samplingMs} data-palette-ms={props.timings?.paletteMs}>
+              {props.processing ? 'Updating mapping…' : props.elapsedMs !== null ? `Mapping updated · ${Math.round(props.elapsedMs)} ms` : ''}</p>
           </div>}
         </div>
       ) : null}
       {props.error && <Alert color="red" title="Image mapping needs attention" mt="sm">{props.error}<Button variant="subtle" size="xs" onClick={props.onRetry} disabled={props.processing}>Retry mapping</Button></Alert>}
       {adjusting && props.source && props.parameters && props.placement && props.onPlacementChange && <ImagePlacementDialog key={props.source.url}
         opened source={props.source} parameters={props.parameters} placement={props.placement} onChange={props.onPlacementChange} onClose={() => setAdjusting(false)}
-        processing={props.processing} blocked={!!props.placementBlocked || props.loading} error={props.error} />}
+        sampling={props.sampling} processing={props.processing} blocked={!!props.placementBlocked || props.loading} error={props.error} />}
     </section>
   );
 }

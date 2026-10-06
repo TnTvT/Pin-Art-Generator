@@ -52,6 +52,55 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it.each(['fixed', 'detachable'] as const)('exports the resolved Pixel snapshot in %s mode while preserving edits and placement', async exportMode => {
+    const actual = await vi.importActual<typeof import('../image-mapping/image-mapping')>('../image-mapping/image-mapping');
+    const rgba = new Uint8ClampedArray([0,0,0,255, 255,255,255,255]);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: rgba }) } as unknown as CanvasRenderingContext2D);
+    vi.mocked(mapImageToPins).mockImplementation(actual.mapImageToPins);
+    vi.mocked(sampleImagePixels).mockImplementation(actual.sampleImagePixels);
+    const validSource = { ...source, bitmap: { width: 2, height: 1 } as ImageBitmap };
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source: validSource }));
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    await user.click(screen.getByRole('button', { name: 'Adjust image' }));
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '150' } });
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('radio', { name: 'Pixel' }));
+    await user.click(screen.getByRole('radio', { name: 'Height + Color' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+    expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
+    if (exportMode === 'detachable') await user.click(screen.getByRole('radio', { name: 'Detachable' }));
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    const parameters = { ...request.parameters, layout: request.layout };
+    const placement = { offsetX: 8, offsetY: 0, zoom: 1.5 };
+    const generatedHeights = [...actual.mapImageToPins(validSource, parameters, 2, false, placement, 'pixel').heights];
+    generatedHeights[0] = 35;
+    expect(request.heights).toEqual(generatedHeights);
+    expect(request.mode).toBe(exportMode);
+    expect(request.layout.pins).toHaveLength(357);
+    expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
+    expect(new Set(request.pinMaterials.slice(1).map((index: number) => request.materials[index]))).toEqual(new Set(['#ffffff', '#000000']));
+    expect(request.filamentProfiles[request.pinMaterials[1]]).toBe('bambu-pla-basic');
+    expect(request.sampling).toBeUndefined();
+    expect(request.placement).toBeUndefined();
+    await user.click(screen.getByRole('button', { name: 'Reset parameters' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByRole('radio', { name: 'Pixel' })).toBeChecked();
+  }, 10000);
   it('adjusts image mapping live while retaining pin edits, selection, history and the exported layout', async () => {
     const user = userEvent.setup();
     const validSource = { ...source, bitmap: { width: 200, height: 100 } as ImageBitmap };
@@ -75,7 +124,7 @@ describe('app export integration', () => {
     fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '150' } });
     await waitFor(() => expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,12'));
-    expect(mapImageToPins).toHaveBeenLastCalledWith(validSource, expect.anything(), 2, false, { offsetX: 8, offsetY: 0, zoom: 1.5 });
+    expect(mapImageToPins).toHaveBeenLastCalledWith(validSource, expect.anything(), 2, false, { offsetX: 8, offsetY: 0, zoom: 1.5 }, 'smooth');
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();

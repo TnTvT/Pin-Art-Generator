@@ -19,6 +19,19 @@ function Harness({ initial = DEFAULT_IMAGE_PLACEMENT, onChange = vi.fn(), blocke
 }
 
 describe('image adjustment dialog', () => {
+  it('shows Pixel sampling without interpolating or moving the image and pin overlays', () => {
+    const onChange = vi.fn();
+    const props = { opened: true, source, parameters, placement: DEFAULT_IMAGE_PLACEMENT, blocked: false, processing: false, error: null, onChange, onClose: vi.fn() };
+    const { rerender } = renderWithProviders(<ImagePlacementDialog {...props} sampling="smooth" />);
+    const pinPath = document.querySelector('[data-overlay="pins"]')!.getAttribute('d');
+    const imageX = document.querySelector('svg image')!.getAttribute('x');
+    rerender(<ImagePlacementDialog {...props} sampling="pixel" />);
+    expect(screen.getByText('Sampling: Pixel')).toBeInTheDocument();
+    expect(document.querySelector('svg image')).toHaveStyle({ imageRendering: 'pixelated' });
+    expect(document.querySelector('svg image')).toHaveAttribute('x', imageX);
+    expect(document.querySelector('[data-overlay="pins"]')).toHaveAttribute('d', pinPath);
+    expect(onChange).not.toHaveBeenCalled();
+  });
   it('displays rounded gesture values without changing the actual sampling transform', () => {
     renderWithProviders(<Harness initial={{ offsetX: 12.3456789, offsetY: -3.333333333, zoom: 1.1 }} />);
     expect(screen.getByLabelText('Zoom')).toHaveValue('110 %');

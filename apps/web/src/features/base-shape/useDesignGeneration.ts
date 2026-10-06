@@ -7,11 +7,13 @@ import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, readShapeImag
 import type { HeightMap } from '../image-mapping/sampling';
 import { startColorMapping } from '../image-mapping/color-worker';
 import type { ImagePlacement } from '../image-mapping/image-placement';
+import { DEFAULT_IMAGE_SAMPLING, type ImageSampling, type MappingTimings } from '../image-mapping/image-sampling';
+import { prepareSamplingSource } from '../image-mapping/sampling-source';
 import { samePins, type generateLayout, type ShapeOptions } from './layout';
 import { startShapeJob } from './shape-worker';
 
-export interface GenerationSettings { parameters: Parameters; shape: ShapeOptions; source: SourceImage | null; enabled: boolean; minimum: number; inverted: boolean; mode: MappingMode; options: ColorMappingOptions; placement?: ImagePlacement }
-export interface GeneratedDesign { parameters: Parameters; heightMap: HeightMap | null; colors: ColorMappingResult | null; elapsedMs: number; changed: boolean }
+export interface GenerationSettings { parameters: Parameters; shape: ShapeOptions; source: SourceImage | null; enabled: boolean; minimum: number; inverted: boolean; mode: MappingMode; options: ColorMappingOptions; placement?: ImagePlacement; sampling?: ImageSampling }
+export interface GeneratedDesign { parameters: Parameters; heightMap: HeightMap | null; colors: ColorMappingResult | null; elapsedMs: number; changed: boolean; timings: MappingTimings }
 
 export default function useDesignGeneration(settings: GenerationSettings, committed: Parameters, editor: PinEditor) {
   const [retry, setRetry] = useState(0);
@@ -53,20 +55,34 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         const changed = !current.current.layout || !samePins(current.current.layout, parameters.layout);
         const retained = changed ? [] : overrides;
         let heightMap: HeightMap | null = null, colors: ColorMappingResult | null = null;
+        const timings: MappingTimings = { preparationMs: 0, samplingMs: 0, paletteMs: 0 };
         if (settings.enabled && settings.source) {
-          if (settings.mode === 'height') heightMap = mapImageToPins(settings.source, parameters, settings.minimum, settings.inverted, settings.placement);
+          const sampling = settings.sampling ?? DEFAULT_IMAGE_SAMPLING;
+          const preparationStart = performance.now();
+          const samplingSource = await prepareSamplingSource(settings.source, sampling);
+          if (!active) return;
+          timings.preparationMs = performance.now() - preparationStart;
+          const samplingStart = performance.now();
+          if (settings.mode === 'height') {
+            heightMap = mapImageToPins(samplingSource, parameters, settings.minimum, settings.inverted, settings.placement, sampling);
+            timings.samplingMs = performance.now() - samplingStart;
+          }
           else {
-            const pixels = sampleImagePixels(settings.source, parameters, settings.placement);
+            const pixels = sampleImagePixels(samplingSource, parameters, settings.placement, sampling);
             if (settings.mode === 'height-color') heightMap = layoutPixelsToHeights(pixels, settings.minimum, parameters.extension, settings.inverted);
-            const task = startColorMapping({ ...settings.options, rgb: layoutPixelsToRGB(pixels), base, overrides: retained });
+            const rgb = layoutPixelsToRGB(pixels);
+            timings.samplingMs = performance.now() - samplingStart;
+            const paletteStart = performance.now();
+            const task = startColorMapping({ ...settings.options, rgb, base, overrides: retained });
             cancel = task.cancel;
             colors = (await task.promise).result;
+            timings.paletteMs = performance.now() - paletteStart;
           }
         }
         if (!active) return;
         validateMaterials(parameters.layout.pins.length, new Map(retained.map(value => [value.index, { material: value.material }])), base, colors?.materials);
         if (heightMap && (heightMap.heights.length !== parameters.layout.pins.length || heightMap.heights.some(value => !Number.isFinite(value) || value <= 0))) throw new Error('Generated heights must match the layout and be finite and greater than zero.');
-        const design = { parameters, heightMap, colors, elapsedMs: performance.now() - start, changed };
+        const design = { parameters, heightMap, colors, elapsedMs: performance.now() - start, changed, timings };
         designCache.current = { settings, retry, design };
         setStatus({ job, design });
       } catch (error) {

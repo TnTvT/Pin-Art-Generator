@@ -3,13 +3,15 @@ import type { Parameters } from '../pin-design/model';
 import { pinVertices } from '../pin-shape/geometry';
 import type { SourceImage } from './image-mapping';
 import { imageTransform, zoomImage, type ImagePlacement } from './image-placement';
+import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from './image-sampling';
 
 interface Props {
   source: SourceImage; parameters: Parameters; placement: ImagePlacement; blocked: boolean;
+  preview?: SourceImage | null; sampling?: ImageSampling;
   onChange: (placement: ImagePlacement) => void;
 }
 
-export default function ImagePlacementCanvas({ source, parameters, placement, blocked, onChange }: Props) {
+export default function ImagePlacementCanvas({ source, preview = source, sampling = DEFAULT_IMAGE_SAMPLING, parameters, placement, blocked, onChange }: Props) {
   const canvas = useRef<SVGSVGElement>(null);
   const clipId = useId();
   const drag = useRef<{ placement: ImagePlacement; point: { x: number; y: number }; pointerId: number } | null>(null);
@@ -97,9 +99,9 @@ export default function ImagePlacementCanvas({ source, parameters, placement, bl
     onPointerCancel={event => { if (event.pointerId === drag.current?.pointerId) finish(true); }} onLostPointerCapture={() => finish(true)}
     onBlur={() => finish(true)} onKeyDown={keyDown}>
     <defs><clipPath id={clipId}><path d={contour} fillRule="evenodd" clipRule="evenodd" /></clipPath></defs>
-    <image href={source.url} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} opacity="0.22" />
+    {preview && <image href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} opacity="0.22" />}
     <path data-overlay="mapping-background" d={contour} fill="#ffffff" fillRule="evenodd" />
-    <image href={source.url} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} clipPath={`url(#${clipId})`} />
+    {preview && <image href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} clipPath={`url(#${clipId})`} />}
     <path className="image-placement-base" d={contour} fill="none" vectorEffect="non-scaling-stroke" />
     <path className="image-placement-pins" data-overlay="pins" d={pins} fill="none" vectorEffect="non-scaling-stroke" />
   </svg>;
