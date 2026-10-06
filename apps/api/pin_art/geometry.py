@@ -1,16 +1,17 @@
 from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
+from math import cos, radians, sin
 import struct
 
 import manifold3d
 import numpy as np
 
 from .layout import plan_layout
+from .cross_sections import CIRCULAR_SEGMENTS, PinShape, polygon_vertices, socket_footprint
 from .schemas import ExportRequest
 
 
-CIRCULAR_SEGMENTS = 64
 PIN_CACHE_KEY = "pin-cylinder-64"
 _MESH_CHUNK_SIZE = 65536
 
@@ -35,8 +36,18 @@ def _unit_cylinder() -> manifold3d.Manifold:
     return manifold3d.Manifold.cylinder(1, 0.5, circular_segments=CIRCULAR_SEGMENTS)
 
 
-def _transform(x: float, y: float, bottom: float, diameter: float = 1, length: float = 1) -> np.ndarray:
+@lru_cache(maxsize=3)
+def _unit_pin(shape: PinShape) -> manifold3d.Manifold:
+    if shape == "round":
+        return _unit_cylinder()
+    return manifold3d.CrossSection([polygon_vertices(shape, 1)]).extrude(1)
+
+
+def _transform(x: float, y: float, bottom: float, diameter: float = 1, length: float = 1, rotation: float = 0) -> np.ndarray:
     transform = np.diag([diameter, diameter, length, 1.0])
+    if rotation:
+        angle = radians(rotation)
+        transform[:2, :2] = diameter * np.array([[cos(angle), -sin(angle)], [sin(angle), cos(angle)]])
     transform[:3, 3] = (x, y, bottom)
     return transform
 
@@ -65,6 +76,10 @@ def build_plates(request: ExportRequest) -> list[Plate]:
     if request.mode == "detachable":
         socket_diameter = parameters.diameter + request.socket.clearance
         floor = parameters.thickness - request.socket.insertion_depth
+        if parameters.pin_shape != "round":
+            footprint = socket_footprint(parameters.pin_shape, parameters.diameter, parameters.pin_rotation, request.socket.clearance)
+            socket = manifold3d.CrossSection([np.asarray(footprint.exterior.coords[:-1])], manifold3d.FillRule.EvenOdd).extrude(request.socket.insertion_depth + 1)
+            _check_solid(socket)
         cutters = []
         count = len(request.layout.pins) if request.layout else parameters.columns * parameters.rows
         for pin_index in range(count):
@@ -74,16 +89,23 @@ def build_plates(request: ExportRequest) -> list[Plate]:
                 row, column = divmod(pin_index, parameters.columns)
                 horizontal = (column - (parameters.columns - 1) / 2) * parameters.spacing
                 vertical = (row - (parameters.rows - 1) / 2) * parameters.spacing
-            transform = _transform(
-                horizontal, vertical,
-                floor, socket_diameter, request.socket.insertion_depth + 1,
-            )
-            cutters.append(_unit_cylinder().transform(transform[:3]))
+            if parameters.pin_shape == "round":
+                transform = _transform(
+                    horizontal, vertical,
+                    floor, socket_diameter, request.socket.insertion_depth + 1,
+                )
+                cutters.append(_unit_cylinder().transform(transform[:3]))
+            else:
+                cutters.append(socket.translate((horizontal, vertical, floor)))
         base = manifold3d.Manifold.batch_boolean([base, *cutters], manifold3d.OpType.Subtract)
         base_key += f":sockets:{parameters.columns}:{parameters.rows}:{parameters.spacing!r}:{socket_diameter!r}:{request.socket.insertion_depth!r}:64"
+        rotation = parameters.pin_rotation if parameters.pin_shape != "round" else 0
+        base_key += f":shape:{parameters.pin_shape}:{rotation!r}:{parameters.diameter!r}:{request.socket.clearance!r}"
     _check_solid(base)
-    cylinder = _unit_cylinder()
-    _check_solid(cylinder)
+    pin = _unit_pin(parameters.pin_shape)
+    _check_solid(pin)
+    pin_key = PIN_CACHE_KEY if parameters.pin_shape == "round" else f"pin-{parameters.pin_shape}"
+    rotation = parameters.pin_rotation if parameters.pin_shape != "round" else 0
     plates = []
     for layout in layouts:
         parts = []
@@ -98,8 +120,8 @@ def build_plates(request: ExportRequest) -> list[Plate]:
                     length += request.socket.insertion_depth
                     bottom = 0
                 parts.append(Part(
-                    placement.name, cylinder, request.pin_materials[pin_index],
-                    _transform(placement.x, placement.y, bottom, parameters.diameter, length), PIN_CACHE_KEY,
+                    placement.name, pin, request.pin_materials[pin_index],
+                    _transform(placement.x, placement.y, bottom, parameters.diameter, length, rotation), pin_key,
                 ))
         plates.append(Plate(layout.index, parts))
     return plates

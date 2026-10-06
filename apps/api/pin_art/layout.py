@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from .cross_sections import local_bounds
 from .schemas import ExportRequest
 
 
@@ -23,15 +24,16 @@ class LayoutPlate:
 
 
 def _pin_name(request: ExportRequest, pin_index: int) -> str:
+    suffix = "" if request.parameters.pin_shape == "round" else f" {request.parameters.pin_shape} {request.parameters.pin_rotation:g}deg"
     if request.layout:
         pin = request.layout.pins[pin_index]
         length = request.heights[pin_index] + (request.socket.insertion_depth if request.mode == "detachable" else 0)
-        return f"Pin {pin.id} X{pin.x:.3f} Y{pin.y:.3f} {length:.3f} mm"
+        return f"Pin {pin.id} X{pin.x:.3f} Y{pin.y:.3f} {length:.3f} mm{suffix}"
     row, column = divmod(pin_index, request.parameters.columns)
     length = request.heights[pin_index]
     if request.mode == "detachable":
         length += request.socket.insertion_depth
-    return f"Pin R{row + 1:02d} C{column + 1:02d} {length:.3f} mm"
+    return f"Pin R{row + 1:02d} C{column + 1:02d} {length:.3f} mm{suffix}"
 
 
 def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
@@ -55,7 +57,10 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
     usable_depth = request.plate.depth - 2 * MARGIN
     if parameters.width > usable_width or parameters.depth > usable_depth:
         raise ValueError("base must fit the plate with 5 mm margins")
-    if parameters.diameter > usable_width or parameters.diameter > usable_depth:
+    minimum_x, minimum_y, maximum_x, maximum_y = local_bounds(parameters.pin_shape, parameters.diameter, parameters.pin_rotation)
+    width = maximum_x - minimum_x
+    depth = maximum_y - minimum_y
+    if width > usable_width or depth > usable_depth:
         raise ValueError("pin must fit the plate with 5 mm margins")
     plates = [
         LayoutPlate(0, [LayoutPart("base", None, request.plate.width / 2, request.plate.depth / 2)]),
@@ -65,8 +70,6 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
     cursor_y = MARGIN
     row_depth = 0.0
     for pin_index in range(count):
-        width = parameters.diameter
-        depth = parameters.diameter
         if cursor_x + width > request.plate.width - MARGIN:
             cursor_x = MARGIN
             cursor_y += row_depth + PART_GAP
@@ -79,12 +82,12 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
             cursor_y = MARGIN
             row_depth = 0.0
         name = _pin_name(request, pin_index)
-        plates[-1].parts.append(LayoutPart(name, pin_index, cursor_x + width / 2, cursor_y + depth / 2))
+        plates[-1].parts.append(LayoutPart(name, pin_index, cursor_x - minimum_x, cursor_y - minimum_y))
         cursor_x += width + PART_GAP
         row_depth = max(row_depth, depth)
     for plate in plates[1:]:
-        center_x = (min(part.x for part in plate.parts) + max(part.x for part in plate.parts)) / 2
-        center_y = (min(part.y for part in plate.parts) + max(part.y for part in plate.parts)) / 2
+        center_x = (min(part.x + minimum_x for part in plate.parts) + max(part.x + maximum_x for part in plate.parts)) / 2
+        center_y = (min(part.y + minimum_y for part in plate.parts) + max(part.y + maximum_y for part in plate.parts)) / 2
         for part in plate.parts:
             part.x += request.plate.width / 2 - center_x
             part.y += request.plate.depth / 2 - center_y

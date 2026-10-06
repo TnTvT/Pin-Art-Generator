@@ -1,9 +1,10 @@
 from math import isclose, isfinite
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from pin_art.bambu_profile import BED_DEPTH, BED_WIDTH, PRINTABLE_HEIGHT
+from pin_art.cross_sections import PinShape, local_bounds
 
 
 PositiveNumber = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -27,6 +28,13 @@ class Parameters(DomainModel):
     spacing: PositiveNumber
     diameter: PositiveNumber
     extension: PositiveNumber
+    pin_shape: PinShape = Field(default="round", alias="pinShape", exclude_if=lambda value: value == "round")
+    pin_rotation: Annotated[float, Field(ge=0, le=360, allow_inf_nan=False)] = Field(default=0, alias="pinRotation", exclude_if=lambda value: value == 0)
+
+    @field_validator("pin_rotation")
+    @classmethod
+    def canonical_rotation(cls, value: float) -> float:
+        return value % 360
 
 
 class SocketParameters(DomainModel):
@@ -89,15 +97,23 @@ class ExportRequest(DomainModel):
         diameter = parameters.diameter
         if self.mode == "detachable":
             diameter += self.socket.clearance
+        grid_width = parameters.width if self.layout else (parameters.columns - 1) * parameters.spacing + diameter
+        grid_depth = parameters.depth if self.layout else (parameters.rows - 1) * parameters.spacing + diameter
+        polygon = parameters.pin_shape != "round"
+        pin_bounds = local_bounds(parameters.pin_shape, parameters.diameter, parameters.pin_rotation)
+        if polygon and not self.layout:
+            grid_width = (parameters.columns - 1) * parameters.spacing + 2 * max(abs(pin_bounds[0]), abs(pin_bounds[2]))
+            grid_depth = (parameters.rows - 1) * parameters.spacing + 2 * max(abs(pin_bounds[1]), abs(pin_bounds[3]))
+        if not all(isfinite(value) for value in (diameter, grid_width, grid_depth)):
+            raise ValueError("derived grid dimensions must be finite")
+        if grid_width > parameters.width + (1e-6 if polygon else 0) or grid_depth > parameters.depth + (1e-6 if polygon else 0):
+            raise ValueError("pin grid must fit within the base")
         if self.layout:
             from pin_art.shape_validation import validate_shape_layout
             validate_shape_layout(self)
-        grid_width = parameters.width if self.layout else (parameters.columns - 1) * parameters.spacing + diameter
-        grid_depth = parameters.depth if self.layout else (parameters.rows - 1) * parameters.spacing + diameter
-        if not all(isfinite(value) for value in (diameter, grid_width, grid_depth)):
-            raise ValueError("derived grid dimensions must be finite")
-        if grid_width > parameters.width or grid_depth > parameters.depth:
-            raise ValueError("pin grid must fit within the base")
+        elif polygon:
+            from pin_art.shape_validation import validate_polygon_layout
+            validate_polygon_layout(self)
         if self.format == "3mf":
             if parameters.width > BED_WIDTH or parameters.depth > BED_DEPTH:
                 raise ValueError("Bambu X1C 3MF base must fit the 256 × 256 mm bed; reduce the base or export STL")
@@ -107,9 +123,9 @@ class ExportRequest(DomainModel):
             if height > PRINTABLE_HEIGHT:
                 raise ValueError("Bambu X1C 3MF parts must fit the profile's 250 mm printable height; reduce height or export STL")
         if self.mode == "fixed":
-            if not self.layout and count > 1 and parameters.spacing < parameters.diameter:
+            if not self.layout and not polygon and count > 1 and parameters.spacing < parameters.diameter:
                 raise ValueError("fixed pins must not overlap")
-            if not self.layout and self.format == "stl" and count > 1 and parameters.spacing == parameters.diameter:
+            if not self.layout and not polygon and self.format == "stl" and count > 1 and parameters.spacing == parameters.diameter:
                 raise ValueError("fixed STL pins must have positive separation to avoid point-tangent non-manifold contact")
             if any(not isfinite(parameters.thickness + height) for height in self.heights):
                 raise ValueError("assembled heights must be finite")
@@ -118,9 +134,9 @@ class ExportRequest(DomainModel):
         if floor < 1 and not isclose(floor, 1, rel_tol=0, abs_tol=1e-12):
             raise ValueError("socket floor must be at least 1 mm")
         wall = parameters.spacing - diameter
-        if not self.layout and count > 1 and wall < 0.8 and not isclose(wall, 0.8, rel_tol=0, abs_tol=1e-12):
+        if not self.layout and not polygon and count > 1 and wall < 0.8 and not isclose(wall, 0.8, rel_tol=0, abs_tol=1e-12):
             raise ValueError("wall between sockets must be at least 0.8 mm")
-        for extent, dimension in ([] if self.layout else [(grid_width, parameters.width), (grid_depth, parameters.depth)]):
+        for extent, dimension in ([] if self.layout or polygon else [(grid_width, parameters.width), (grid_depth, parameters.depth)]):
             edge_wall = (dimension - extent) / 2
             if edge_wall < 0.8 and not isclose(edge_wall, 0.8, rel_tol=0, abs_tol=1e-12):
                 raise ValueError("socket edge wall must be at least 0.8 mm")
@@ -128,6 +144,6 @@ class ExportRequest(DomainModel):
             raise ValueError("printed pin lengths must be finite")
         if parameters.width > self.plate.width - 10 or parameters.depth > self.plate.depth - 10:
             raise ValueError("base must fit the plate with 5 mm margins")
-        if parameters.diameter > self.plate.width - 10 or parameters.diameter > self.plate.depth - 10:
+        if pin_bounds[2] - pin_bounds[0] > self.plate.width - 10 or pin_bounds[3] - pin_bounds[1] > self.plate.depth - 10:
             raise ValueError("pin must fit the plate with 5 mm margins")
         return self

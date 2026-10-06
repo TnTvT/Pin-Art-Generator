@@ -15,6 +15,7 @@ def generate_export(request: ExportRequest):
         return plate_stl(plates[0]), "pin-art-fixed.stl", "model/stl", 1
     buffer = io.BytesIO()
     manifest = {"units": "mm", "mode": "detachable", "socket": request.socket.model_dump(by_alias=True), "plate": request.plate.model_dump(), "materials": request.materials, "plates": []}
+    manifest.update(pinShape=request.parameters.pin_shape, pinRotation=request.parameters.pin_rotation if request.parameters.pin_shape != "round" else 0, diameter=request.parameters.diameter)
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for index, plate in enumerate(plates, start=1):
             filename = f"plate-{index:02d}.stl"
