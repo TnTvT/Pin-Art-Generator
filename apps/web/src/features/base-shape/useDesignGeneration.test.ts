@@ -25,6 +25,20 @@ beforeEach(() => {
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('rejects same-position settings that invalidate retained geometry without silently dropping edits', async () => {
+    const input = { ...settings, parameters: { ...DEFAULTS, width: 3, depth: 3, diameter: 2, columns: 1, rows: 1, pinShape: 'square' as const }, shape: { ...DEFAULT_SHAPE, padding: 0 } };
+    const applied = { ...input.parameters, ...generateLayout(input.parameters, input.shape) };
+    const edited = { state: { base: DEFAULT_MODEL_MATERIALS.base, overrides: new Map([[0, { geometry: { shape: 'round', rotation: 0 } }]]) } } as unknown as PinEditor;
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, applied, edited), { initialProps: { input } });
+    await waitFor(() => expect(result.current.design).toBeDefined());
+    rerender({ input: { ...input, parameters: { ...input.parameters, diameter: 4 } } });
+    await waitFor(() => expect(result.current.error).toMatch(/padding/));
+    expect(result.current.design).toBeUndefined();
+    expect(edited.state.overrides.get(0)?.geometry?.shape).toBe('round');
+    rerender({ input });
+    await waitFor(() => expect(result.current.design).toBeDefined());
+    expect(result.current.design?.changed).toBe(false);
+  });
   it('changes sampling without changing layout, overrides or color/height sample ownership', async () => {
     const materials = Array(committed.layout.pins.length).fill(DEFAULT_MODEL_MATERIALS.pins);
     const pixels = new Uint8ClampedArray(materials.length * 4).fill(255);

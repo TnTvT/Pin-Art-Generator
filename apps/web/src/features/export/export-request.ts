@@ -1,7 +1,7 @@
 import { getMetrics, getPinPositions, getWarnings, pinCount, type Parameters } from '../pin-design/model';
 import { resolveFilamentProfile, type FilamentProfile, type MaterialSelection, type ModelMaterials } from '../filaments/materials';
 import { type Layout, type Region } from '../base-shape/layout';
-import { createPinContainment, effectivePinRotation, pinBounds, validatePinGeometry } from '../pin-shape/geometry';
+import { effectivePinRotation, geometryParameters, pinBounds, resolvePinGeometries, resolvedContainment, validatePinGeometry, type PinGeometry } from '../pin-shape/geometry';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = 'fixed' | 'detachable';
@@ -14,7 +14,8 @@ export interface ExportOptions {
 
 export interface ExportRequest extends ExportOptions {
   format: ExportFormat;
-  parameters: Omit<Parameters, 'layout' | 'rows' | 'columns'> & { rows?: number; columns?: number };
+  parameters: Omit<Parameters, 'layout' | 'rows' | 'columns' | 'pinGeometries'> & { rows?: number; columns?: number };
+  pinGeometries?: PinGeometry[];
   layout?: Omit<Layout, 'imageBounds'>;
   heights: number[];
   materials: string[];
@@ -37,17 +38,20 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   if (dimensions.some((value) => !Number.isFinite(value) || value <= 0)
     || !Number.isInteger(parameters.columns) || !Number.isInteger(parameters.rows)
     || parameters.columns > 100 || parameters.rows > 100) return 'Use valid positive parameters and grid counts from 1 to 100.';
-  try { validatePinGeometry(parameters); } catch (error) { return error instanceof Error ? error.message : 'Use a valid pin shape and rotation.'; }
+  try { validatePinGeometry(parameters); resolvePinGeometries(parameters); } catch (error) { return error instanceof Error ? error.message : 'Use a valid pin shape and rotation.'; }
   const metrics = measurements ?? getMetrics(parameters);
   const warning = getWarnings(parameters, metrics)[0];
   if (warning) return warning;
   const regions: Region[] = layout?.regions ?? [{ outer: [[-parameters.width / 2, -parameters.depth / 2], [parameters.width / 2, -parameters.depth / 2], [parameters.width / 2, parameters.depth / 2], [-parameters.width / 2, parameters.depth / 2]], holes: [] }];
-  const fits = createPinContainment(regions, parameters);
+  let fits: ReturnType<typeof resolvedContainment>;
+  let geometries: PinGeometry[];
+  try { fits = resolvedContainment(parameters, regions); geometries = resolvePinGeometries(parameters); }
+  catch (error) { return error instanceof Error ? error.message : 'Use valid per-pin geometries.'; }
   if (layout) {
     if (!layout.pins.length || layout.pins.length > 10000 || !Number.isFinite(layout.edgePadding) || layout.edgePadding < 0) return 'Use 1–10,000 pins and nonnegative edge padding.';
   }
   const positions = getPinPositions(parameters);
-  if (positions.some(pin => !Number.isFinite(pin.x) || !Number.isFinite(pin.y) || !fits(pin.x, pin.y, layout?.edgePadding ?? 0))) return 'Pin positions must respect every outer and hole boundary and Edge padding.';
+  if (positions.some((pin, index) => !Number.isFinite(pin.x) || !Number.isFinite(pin.y) || !fits[index](pin.x, pin.y, layout?.edgePadding ?? 0))) return 'Pin positions must respect every outer and hole boundary and Edge padding.';
   if (format === 'stl' && options.mode === 'fixed' && metrics.clearance !== null && metrics.clearance <= 0.000001) return 'Fixed STL requires a positive gap between pin footprints. Increase spacing or reduce pin size.';
   if (heights && (heights.length !== metrics.count || heights.some((height) => !Number.isFinite(height) || height <= 0))) {
     return 'Resolved pin heights are invalid or incomplete. Every pin must have a finite height greater than 0 mm.';
@@ -68,11 +72,13 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
     if (!layout && ((parameters.width - metrics.width - clearance) / 2 < 0.8 - 0.000001 || (parameters.depth - metrics.depth - clearance) / 2 < 0.8 - 0.000001)) {
       return 'Socket edges must be at least 0.8 mm from the base edge. Increase the base size or reduce the grid.';
     }
-    const bounds = pinBounds(parameters);
-    if (bounds.maxX - bounds.minX > options.plate.width - 10 || bounds.maxY - bounds.minY > options.plate.depth - 10) {
+    if (geometries.some(geometry => {
+      const bounds = pinBounds(geometryParameters(parameters, geometry));
+      return bounds.maxX - bounds.minX > options.plate.width - 10 || bounds.maxY - bounds.minY > options.plate.depth - 10;
+    })) {
       return 'Detached pins do not fit on the bed with 5 mm margins.';
     }
-    if (positions.some(pin => !fits(pin.x, pin.y, clearance / 2 + 0.8))) {
+    if (positions.some((pin, index) => !fits[index](pin.x, pin.y, clearance / 2 + 0.8))) {
       return 'Socket edges must be at least 0.8 mm from every outer or hole boundary. Increase padding or reduce socket clearance.';
     }
   }
@@ -114,12 +120,14 @@ export function buildExportRequest(parameters: Parameters, heights: Float32Array
     return materialIndex;
   });
   if (materials.length > 16) throw new Error('Use at most 16 materials including the base.');
+  const { pinGeometries: unusedGeometry, ...legacyParameters } = parameters;
   return {
     format, mode: options.mode,
     parameters: parameters.layout
       ? { width: parameters.width, depth: parameters.depth, thickness: parameters.thickness, spacing: parameters.spacing, diameter: parameters.diameter, extension: parameters.extension,
         ...(parameters.pinShape ? { pinShape: parameters.pinShape } : {}), ...(parameters.pinRotation !== undefined ? { pinRotation: effectivePinRotation(parameters) } : {}) }
-      : { ...parameters, ...(parameters.pinRotation !== undefined ? { pinRotation: effectivePinRotation(parameters) } : {}) },
+      : { ...legacyParameters, ...(parameters.pinRotation !== undefined ? { pinRotation: effectivePinRotation(parameters) } : {}) },
+    pinGeometries: resolvePinGeometries(parameters),
     ...(parameters.layout ? { layout: { regions: parameters.layout.regions, pins: parameters.layout.pins, edgePadding: parameters.layout.edgePadding } } : {}),
     heights: heights ? Array.from(heights) : Array<number>(count).fill(parameters.extension),
     materials, filamentProfiles, baseMaterial: indices[0],

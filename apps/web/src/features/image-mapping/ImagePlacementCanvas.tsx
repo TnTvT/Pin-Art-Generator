@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Parameters } from '../pin-design/model';
-import { pinVertices } from '../pin-shape/geometry';
+import { pinVertices, resolvePinGeometries } from '../pin-shape/geometry';
 import type { SourceImage } from './image-mapping';
 import { imageTransform, zoomImage, type ImagePlacement } from './image-placement';
 import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from './image-sampling';
@@ -25,12 +25,16 @@ export default function ImagePlacementCanvas({ source, preview = source, samplin
   const contour = useMemo(() => parameters.layout?.regions.map(region => [region.outer, ...region.holes]
     .map(ring => `M${ring.map(([horizontal, vertical]) => `${horizontal},${-vertical}`).join('L')}Z`).join('')).join('') ?? '', [parameters.layout]);
   const pins = useMemo(() => {
-    const vertices = parameters.pinShape && parameters.pinShape !== 'round' ? pinVertices(parameters.pinShape, parameters.diameter, parameters.pinRotation) : null;
+    const geometries = resolvePinGeometries(parameters);
+    const vertexCache = new Map<string, ReturnType<typeof pinVertices>>();
     const radius = parameters.diameter / 2;
-    return parameters.layout?.pins.map(pin => vertices
-      ? `M${vertices.map(([horizontal, vertical]) => `${pin.x + horizontal},${-pin.y - vertical}`).join('L')}Z`
-      : `M${pin.x - radius},${-pin.y}a${radius},${radius} 0 1,0 ${parameters.diameter},0a${radius},${radius} 0 1,0 ${-parameters.diameter},0`).join('') ?? '';
-  }, [parameters.layout, parameters.diameter, parameters.pinShape, parameters.pinRotation]);
+    return parameters.layout?.pins.map((pin, index) => {
+      const geometry = geometries[index], key = `${geometry.shape}:${geometry.rotation}`;
+      if (geometry.shape === 'round') return `M${pin.x - radius},${-pin.y}a${radius},${radius} 0 1,0 ${parameters.diameter},0a${radius},${radius} 0 1,0 ${-parameters.diameter},0`;
+      if (!vertexCache.has(key)) vertexCache.set(key, pinVertices(geometry.shape, parameters.diameter, geometry.rotation));
+      return `M${vertexCache.get(key)!.map(([horizontal, vertical]) => `${pin.x + horizontal},${-pin.y - vertical}`).join('L')}Z`;
+    }).join('') ?? '';
+  }, [parameters.layout, parameters.diameter, parameters.pinShape, parameters.pinRotation, parameters.pinGeometries]);
   const transform = imageTransform(source.bitmap, parameters, placement);
 
   function worldPoint(clientX: number, clientY: number) {

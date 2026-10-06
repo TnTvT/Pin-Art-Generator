@@ -8,7 +8,7 @@ import useSourceImage from '../image-mapping/useSourceImage';
 import { mapImageToPins, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
 import { startColorMapping } from '../image-mapping/color-worker';
 import { mapPinColors } from '../image-mapping/color-mapping';
-import { type ModelColors } from '../pin-design/model';
+import { type ModelColors, type Parameters } from '../pin-design/model';
 import type { PreviewEditing } from '../preview/pin-interaction';
 
 vi.mock('../image-mapping/useSourceImage', () => ({ default: vi.fn() }));
@@ -19,10 +19,11 @@ vi.mock('../base-shape/shape-worker', async () => {
 });
 vi.mock('../image-mapping/color-worker', () => ({ startColorMapping: vi.fn() }));
 vi.mock('../preview/ModelPreview', () => ({
-  default: ({ colors, pinColors, heights, editing, toolbar }: { toolbar?: ReactNode; colors: ModelColors; pinColors?: string[]; heights: Float32Array; editing: PreviewEditing }) => <div>
+  default: ({ colors, pinColors, heights, editing, toolbar, parameters }: { toolbar?: ReactNode; colors: ModelColors; pinColors?: string[]; heights: Float32Array; editing: PreviewEditing; parameters: Parameters }) => <div>
     {toolbar}
     <div data-testid="preview-colors">{colors?.base} {pinColors?.[0] ?? colors?.pins}</div>
     <div data-testid="preview-heights">{[...heights].slice(0, 2).join(',')}</div>
+    <div data-testid="preview-geometries">{JSON.stringify(parameters.pinGeometries?.slice(0, 2))}</div>
     <button onClick={() => editing.onSelect([0], 'replace')}>Pick first pin</button>
     <button onClick={() => editing.onSelect([1], 'toggle')}>Toggle second pin</button>
     <button onClick={editing.onDragStart}>Start height drag</button>
@@ -32,7 +33,7 @@ vi.mock('../preview/ModelPreview', () => ({
   </div>,
 }));
 
-async function openEditor(user: ReturnType<typeof userEvent.setup>, name: 'Height' | 'Material') {
+async function openEditor(user: ReturnType<typeof userEvent.setup>, name: 'Height' | 'Material' | 'Shape') {
   const button = screen.getByRole('button', { name });
   if (button.getAttribute('aria-expanded') !== 'true') await user.click(button);
 }
@@ -52,6 +53,65 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it.each(['restore', 'undo'] as const)('recovers rejected same-position geometry settings through %s against the valid snapshot', async recovery => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await user.click(screen.getByRole('radio', { name: 'Square' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Base width' }), { target: { value: '3' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Base depth' }), { target: { value: '3' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Edge padding' }), { target: { value: '0' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Shape');
+    await user.click(within(screen.getByRole('region', { name: 'Edit selected pin shapes' })).getByRole('radio', { name: 'Round' }));
+    await user.click(screen.getByRole('button', { name: 'Apply shape' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Pin size' }), { target: { value: '4' } });
+    await waitFor(() => expect(screen.getByText('Settings not applied')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+    if (recovery === 'undo') await user.click(screen.getByRole('button', { name: 'Undo' }));
+    else {
+      await user.click(screen.getByRole('button', { name: 'More pin actions' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Restore default shape' }));
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"square","rotation":0}]');
+    expect(screen.queryByText('Settings not applied')).not.toBeInTheDocument();
+    if (recovery === 'undo') {
+      await user.click(screen.getByRole('button', { name: 'Redo' }));
+      expect(screen.getByText('Edit not applied')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled();
+      expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"square","rotation":0}]');
+    }
+  }, 10000);
+  it.each(['fixed', 'detachable'] as const)('exports a selected shape in %s without moving pins or altering height and material', async exportMode => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Shape');
+    const panel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
+    await user.click(within(panel).getByRole('radio', { name: 'Triangle' }));
+    fireEvent.change(within(panel).getByRole('textbox', { name: 'Selected rotation' }), { target: { value: '30' } });
+    await user.click(within(panel).getByRole('button', { name: 'Apply shape' }));
+    expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"triangle","rotation":30},{"shape":"round","rotation":0}]');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    if (exportMode === 'detachable') await user.click(screen.getByRole('radio', { name: 'Detachable' }));
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: 'triangle', rotation: 30 }, { shape: 'round', rotation: 0 }]);
+    expect(request.parameters.pinGeometries).toBeUndefined();
+    expect(request.heights[0]).toBe(35);
+    expect(request.layout.pins[0]).toEqual({ id: 'g:-8:-10', x: -50, y: -40 });
+    expect(request.pinMaterials.slice(0, 2)).toEqual([1, 1]);
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"round","rotation":0},{"shape":"round","rotation":0}]');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+  }, 10000);
   it.each(['fixed', 'detachable'] as const)('exports the resolved Pixel snapshot in %s mode while preserving edits and placement', async exportMode => {
     const actual = await vi.importActual<typeof import('../image-mapping/image-mapping')>('../image-mapping/image-mapping');
     const rgba = new Uint8ClampedArray([0,0,0,255, 255,255,255,255]);
@@ -72,6 +132,11 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('option', { name: 'Custom color' }));
     fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    await openEditor(user, 'Shape');
+    const shapePanel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
+    await user.click(within(shapePanel).getByRole('radio', { name: 'Triangle' }));
+    fireEvent.change(within(shapePanel).getByRole('textbox', { name: 'Selected rotation' }), { target: { value: '30' } });
+    await user.click(within(shapePanel).getByRole('button', { name: 'Apply shape' }));
     await user.click(screen.getByRole('button', { name: 'Adjust image' }));
     fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '150' } });
@@ -93,6 +158,7 @@ describe('app export integration', () => {
     expect(request.mode).toBe(exportMode);
     expect(request.layout.pins).toHaveLength(357);
     expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
+    expect(request.pinGeometries[0]).toEqual({ shape: 'triangle', rotation: 30 });
     expect(new Set(request.pinMaterials.slice(1).map((index: number) => request.materials[index]))).toEqual(new Set(['#ffffff', '#000000']));
     expect(request.filamentProfiles[request.pinMaterials[1]]).toBe('bambu-pla-basic');
     expect(request.sampling).toBeUndefined();
@@ -595,6 +661,6 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.heights).toEqual(Array.from(heights));
-    expect(Object.keys(payload)).toEqual(['format', 'mode', 'parameters', 'layout', 'heights', 'materials', 'filamentProfiles', 'baseMaterial', 'pinMaterials', 'socket', 'plate']);
+    expect(Object.keys(payload)).toEqual(['format', 'mode', 'parameters', 'pinGeometries', 'layout', 'heights', 'materials', 'filamentProfiles', 'baseMaterial', 'pinMaterials', 'socket', 'plate']);
   });
 });

@@ -1,5 +1,5 @@
 import { EPSILON, type Layout, type PinPosition } from '../base-shape/layout';
-import { minimumPinClearance, pinBounds, type PinShape } from '../pin-shape/geometry';
+import { geometryParameters, minimumPinClearance, pinBounds, resolvePinGeometries, type PinGeometry, type PinShape } from '../pin-shape/geometry';
 
 export interface Parameters {
   width: number;
@@ -12,9 +12,10 @@ export interface Parameters {
   extension: number;
   pinShape?: PinShape;
   pinRotation?: number;
+  pinGeometries?: readonly PinGeometry[];
   layout?: Layout;
 }
-export type ParameterName = keyof Omit<Parameters, 'layout' | 'pinShape' | 'pinRotation'>;
+export type ParameterName = keyof Omit<Parameters, 'layout' | 'pinShape' | 'pinRotation' | 'pinGeometries'>;
 
 export function pinCount(parameters: Parameters) { return parameters.layout?.pins.length ?? parameters.columns * parameters.rows; }
 export function pinPosition(parameters: Parameters, index: number): PinPosition {
@@ -54,17 +55,21 @@ export const DEFAULTS: Parameters = {
 };
 
 export function getMetrics(parameters: Parameters) {
-  const bounds = pinBounds(parameters), pins = getPinPositions(parameters);
+  const pins = getPinPositions(parameters), geometries = resolvePinGeometries(parameters);
   if (!pins.length) return { count: 0, width: 0, depth: 0, clearance: null };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const pin of pins) {
-    minX = Math.min(minX, pin.x); minY = Math.min(minY, pin.y);
-    maxX = Math.max(maxX, pin.x); maxY = Math.max(maxY, pin.y);
+  const boundsCache = new Map<string, ReturnType<typeof pinBounds>>();
+  for (let index = 0; index < pins.length; index++) {
+    const pin = pins[index], geometry = geometries[index], key = `${geometry.shape}:${geometry.rotation}`;
+    if (!boundsCache.has(key)) boundsCache.set(key, pinBounds(geometryParameters(parameters, geometry)));
+    const bounds = boundsCache.get(key)!;
+    minX = Math.min(minX, pin.x + bounds.minX); minY = Math.min(minY, pin.y + bounds.minY);
+    maxX = Math.max(maxX, pin.x + bounds.maxX); maxY = Math.max(maxY, pin.y + bounds.maxY);
   }
   return {
     count: pins.length,
-    width: maxX - minX + bounds.maxX - bounds.minX,
-    depth: maxY - minY + bounds.maxY - bounds.minY,
+    width: maxX - minX,
+    depth: maxY - minY,
     clearance: minimumPinClearance(parameters, pins),
   };
 }

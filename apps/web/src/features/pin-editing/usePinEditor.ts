@@ -4,7 +4,7 @@ import type { MaterialSelection } from '../filaments/materials';
 import { createEditorState, editorReducer, heightBatch, resolveDesign, type EditorAction, type HeightMode, type SelectionOperation } from './model';
 
 export default function usePinEditor(parameters: Parameters, generated?: Float32Array, blocked = false) {
-  const [state, rawDispatch] = useReducer(editorReducer, pinCount(parameters), createEditorState);
+  const [state, rawDispatch] = useReducer(editorReducer, parameters, initial => createEditorState(pinCount(initial), initial));
   blocked = blocked || state.mappingPending;
   const dispatch = useCallback((action: EditorAction) => {
     if (!blocked || action.type === 'select' || action.type === 'topology') rawDispatch(action);
@@ -13,8 +13,8 @@ export default function usePinEditor(parameters: Parameters, generated?: Float32
   const [transient, setTransient] = useState<Float32Array | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
   const committed = useMemo(() => resolveDesign(state, parameters, generated), [state.overrides, state.generatedMaterials, state.generatedHeights, parameters, generated]);
-  const regenerate = useCallback((heights?: Float32Array, nextMaterials?: readonly MaterialSelection[]) => {
-    rawDispatch({ type: 'generation', heights, materials: nextMaterials });
+  const regenerate = useCallback((heights?: Float32Array, nextMaterials?: readonly MaterialSelection[], nextParameters?: Parameters) => {
+    rawDispatch({ type: 'generation', heights, materials: nextMaterials, parameters: nextParameters });
   }, []);
   const setMappingPending = useCallback((pending: boolean) => rawDispatch({ type: 'mapping-status', pending }), []);
   const drag = useRef<{ heights: Float32Array; selected: number[]; mode: HeightMode; activeHeight: number; value: number | null } | null>(null);

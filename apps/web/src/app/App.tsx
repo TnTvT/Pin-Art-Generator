@@ -47,12 +47,19 @@ export default function App() {
   const settings = useMemo(() => ({ parameters: requested, shape, source: image.source, enabled, minimum, inverted, mode, sampling, options: colorOptions, placement: imagePlacement.placement }), [requested, shape, image.source, enabled, minimum, inverted, mode, sampling, colorOptions, imagePlacement.placement]);
   const mapping = useDesignGeneration(settings, parameters, editor);
   const applied = useRef<{ job?: object; settings: GenerationSettings; design?: GeneratedDesign }>({ settings });
-  const updating = image.loading || mapping.loading || mapping.job !== applied.current.job || pendingDesign !== null;
-  if (editor.state.mappingPending !== (updating || !!mapping.error)) editor.setMappingPending(updating || !!mapping.error);
+  const updating = image.loading || mapping.loading || (!mapping.error && mapping.job !== applied.current.job) || pendingDesign !== null;
+  const editsBlocked = updating || !!mapping.error && !mapping.geometryConflict;
+  if (editor.state.mappingPending !== editsBlocked) editor.setMappingPending(editsBlocked);
+  const recoveryOverrides = useRef(editor.state.overrides);
+  useEffect(() => {
+    const changed = recoveryOverrides.current !== editor.state.overrides;
+    recoveryOverrides.current = editor.state.overrides;
+    if (mapping.geometryConflict && changed) mapping.retry();
+  }, [mapping.geometryConflict, editor.state.overrides]);
 
   function publish(design: GeneratedDesign, job: object, acceptedSettings: GenerationSettings) {
     if (design.changed) editor.dispatch({ type: 'topology', count: pinCount(design.parameters) });
-    editor.regenerate(design.heightMap?.heights, design.colors?.materials);
+    editor.regenerate(design.heightMap?.heights, design.colors?.materials, design.parameters);
     applied.current = { job, settings: acceptedSettings, design };
     setParameters(design.parameters);
     image.accept();
@@ -68,8 +75,9 @@ export default function App() {
   const pinColors = useMemo(() => editor.committed.pinSelections.map(material => material.color), [editor.committed.pinSelections]);
   const materialSelections = useMemo(() => [editor.state.base, ...editor.committed.pinSelections], [editor.state.base, editor.committed.pinSelections]);
   const materialsCount = useMemo(() => new Set(materialSelections.map(materialKey)).size, [materialSelections]);
-  const metrics = useMemo(() => getMetrics(parameters), [parameters]);
-  const warnings = useMemo(() => getWarnings(parameters, metrics), [parameters, metrics]);
+  const resolvedParameters = useMemo(() => ({ ...parameters, pinGeometries: editor.committed.pinGeometries }), [parameters, editor.committed.pinGeometries]);
+  const metrics = useMemo(() => getMetrics(resolvedParameters), [resolvedParameters]);
+  const warnings = useMemo(() => getWarnings(resolvedParameters, metrics), [resolvedParameters, metrics]);
   const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : mapping.error || (updating
     ? 'Design processing is still running. Wait before exporting.'
     : image.error
@@ -143,7 +151,7 @@ export default function App() {
             <ImageMappingPanel
               enabled={enabled} onEnabledChange={setEnabled}
               source={image.source}
-              parameters={parameters}
+              parameters={resolvedParameters}
               placement={imagePlacement.placement}
               placementBlocked={editor.isDragging || pendingDesign !== null}
               onPlacementChange={placement => { if (!editor.isDragging && !pendingDesign) imagePlacement.change(placement); }}
@@ -182,7 +190,7 @@ export default function App() {
                 <Accordion.Item value="base">
                   <Accordion.Control><span className="section-heading"><span>Base plate</span><span>Foundation</span></span></Accordion.Control>
                   <Accordion.Panel>
-                    <ShapeControls key={resetVersion} value={shape} onChange={setShape} layout={parameters.layout!} diameter={parameters.diameter} pinShape={parameters.pinShape} pinRotation={parameters.pinRotation} />
+                    <ShapeControls key={resetVersion} value={shape} onChange={setShape} layout={parameters.layout!} diameter={parameters.diameter} pinShape={parameters.pinShape} pinRotation={parameters.pinRotation} pinGeometries={editor.committed.pinGeometries} />
                     <div className="field-pair">{field('width', shape.source === 'preset' && shape.preset === 'circle' ? 'Base diameter' : 'Base width')}
                       {shape.source === 'image' ? <NumberInput label="Base depth" size="xs" suffix=" mm" value={parameters.depth} min={0.01} clampBehavior="none" disabled={!parameters.layout?.imageBounds}
                         onChange={depth => { if (typeof depth === 'number' && depth > 0 && !editor.isDragging) changeParameter('width', depth * parameters.width / parameters.depth); }} />
@@ -206,10 +214,10 @@ export default function App() {
               </Accordion>
               <div className="controls-bottom"><Button variant="default" fullWidth onClick={resetParameters}>Reset parameters</Button></div>
             </section>
-            <ExportPanel parameters={parameters} heights={editor.committed.heights} materials={modelMaterials} pinSelections={editor.committed.pinSelections} blockedReason={exportBlockedReason} />
+            <ExportPanel parameters={resolvedParameters} heights={editor.committed.heights} materials={modelMaterials} pinSelections={editor.committed.pinSelections} blockedReason={exportBlockedReason} />
           </aside>
           <div className="preview-column">
-            <ModelPreview parameters={parameters} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
+            <ModelPreview parameters={resolvedParameters} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
               heightLabel={editor.state.overrides.size ? 'Edited pin design' : applied.current.settings.source && applied.current.settings.enabled ? mappingLabels[applied.current.settings.mode] : 'Uniform pin height'}
               toolbar={<PinEditorToolbar editor={editor} parameters={parameters} />}
               editing={{ heightMode: editor.heightMode, selection: editor.state.selection, active: editor.state.active,

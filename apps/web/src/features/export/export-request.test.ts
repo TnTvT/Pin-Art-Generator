@@ -18,6 +18,7 @@ describe('export request mapping', () => {
     const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, 'stl');
     expect(request).toEqual({
       format: 'stl', mode: 'fixed', parameters: DEFAULTS,
+      pinGeometries: Array(320).fill({ shape: 'round', rotation: 0 }),
       heights: Array(320).fill(20), materials: ['#8e9089', '#00b1b7'],
       filamentProfiles: ['bambu-pla-basic', 'bambu-pla-basic'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),

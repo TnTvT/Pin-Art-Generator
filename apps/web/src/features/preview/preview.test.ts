@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Color, GridHelper, InstancedMesh, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
+import { Color, GridHelper, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, Vector3, type Camera, type Scene } from 'three';
 import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
 import { createPreview, type Preview } from './preview';
 import { PREVIEW_COLORS } from './appearance';
+import { pinTip, projectTip } from './pin-selection';
 
 const renderer = vi.hoisted(() => ({ render: vi.fn(), dispose: vi.fn(), forceContextLoss: vi.fn() }));
 const OriginalResizeObserver = window.ResizeObserver;
@@ -80,6 +81,122 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('recolors canonical pins after mixed-to-mixed regrouping without replacing shape geometry', () => {
+    const parameters = { ...DEFAULTS, columns: 3, rows: 1, pinGeometries: [
+      { shape: 'round' as const, rotation: 0 }, { shape: 'square' as const, rotation: 45 }, { shape: 'triangle' as const, rotation: 15 },
+    ] };
+    preview.setModelColors({ base: '#123456', pins: '#abcdef' });
+    preview.update(parameters); renderedCamera();
+    const groups = renderedScene().children.filter(child => child instanceof InstancedMesh) as InstancedMesh[];
+    groups.forEach(group => expect((group.material as MeshStandardMaterial).color.getHexString()).toBe('abcdef'));
+    const geometries = groups.map(group => group.geometry);
+    preview.setPinColors(['#ff0000', '#00ff00', '#0000ff']);
+    preview.update({ ...parameters, pinGeometries: parameters.pinGeometries.slice().reverse() }); renderedCamera();
+    expect(groups.map(group => group.geometry)).toEqual(geometries);
+    const color = new Color();
+    groups.forEach((group, index) => {
+      group.getColorAt(0, color);
+      expect(color.getHexString()).toBe(['0000ff', '00ff00', 'ff0000'][index]);
+      expect((group.material as MeshStandardMaterial).color.getHexString()).toBe('ffffff');
+    });
+    preview.setPinColors(['#0000ff', '#ff0000', '#00ff00']);
+    groups.forEach((group, index) => {
+      group.getColorAt(0, color); expect(color.getHexString()).toBe(['00ff00', 'ff0000', '0000ff'][index]);
+    });
+  });
+  it('fits all grouped bounds and clears stale bounds when groups disappear', () => {
+    const parameters = { ...DEFAULTS, columns: 3, rows: 1, spacing: 300, pinGeometries: [
+      { shape: 'triangle' as const, rotation: 90 }, { shape: 'round' as const, rotation: 0 }, { shape: 'square' as const, rotation: 45 },
+    ] };
+    preview.update(parameters, new Float32Array([2, 4, 100]));
+    preview.setView('fit');
+    const camera = renderedCamera();
+    const groups = renderedScene().children.filter(child => child instanceof InstancedMesh) as InstancedMesh[];
+    const corners = groups.flatMap(group => {
+      const bounds = group.boundingBox!;
+      return [bounds.min, bounds.max];
+    });
+    for (const corner of corners) {
+      const point = corner.clone().project(camera);
+      expect(Math.abs(point.x)).toBeLessThan(1); expect(Math.abs(point.y)).toBeLessThan(1);
+    }
+    preview.update({ ...DEFAULTS, columns: 0, rows: 0 });
+    preview.setView('top');
+    const top = renderedCamera();
+    expect(renderedScene().children.filter(child => child instanceof InstancedMesh)).toHaveLength(0);
+    expect(new Vector3(0, 50, 0).project(top).y).toBeGreaterThan(.85);
+    preview.update({ ...DEFAULTS, columns: 1, rows: 1, pinShape: 'square' });
+    expect(renderedCamera()).toBe(top);
+    expect(renderedScene().children.filter(child => child instanceof InstancedMesh)).toHaveLength(1);
+  });
+  it('regroups resolved shapes without changing canonical colors, outlines, heights or the camera', () => {
+    const parameters = { ...DEFAULTS, columns: 4, rows: 1, pinGeometries: [
+      { shape: 'square' as const, rotation: 0 }, { shape: 'round' as const, rotation: 0 },
+      { shape: 'triangle' as const, rotation: 30 }, { shape: 'square' as const, rotation: 90 },
+    ] };
+    const heights = new Float32Array([2, 4, 6, 8]);
+    const onSelect = vi.fn();
+    vi.spyOn(canvas, 'getBoundingClientRect').mockImplementation(() => ({ ...size, left: 0, top: 0 } as DOMRect));
+    canvas.setPointerCapture = vi.fn(); canvas.releasePointerCapture = vi.fn();
+    preview.setPinColors(['#ff0000', '#00ff00', '#0000ff', '#ff0088']);
+    preview.setEditing({ heightMode: 'set', selection: new Set([1, 2, 3]), active: 3,
+      onSelect, onDragStart: () => true, onDragDelta: vi.fn(), onDragEnd: vi.fn(), onDragCancel: vi.fn() });
+    preview.setView('top');
+    const camera = renderedCamera() as OrthographicCamera;
+    camera.zoom = 2;
+    const position = camera.position.clone();
+    preview.update(parameters, heights);
+    expect(renderedCamera()).toBe(camera);
+    expect(camera.zoom).toBe(2); expect(camera.position.equals(position)).toBe(true);
+    function pickActive() {
+      renderedScene().updateMatrixWorld();
+      const point = projectTip(pinTip(3, parameters, heights), camera, size)!;
+      for (const type of ['pointerdown', 'pointerup']) {
+        canvas.dispatchEvent(new PointerEvent(type, { pointerId: 1, button: 0, clientX: point.x, clientY: point.y, bubbles: true }));
+      }
+      expect(onSelect).toHaveBeenLastCalledWith([3], 'replace');
+    }
+    pickActive();
+    const handle = canvas.parentElement!.querySelector('[aria-label="Drag selected pin height"]')!;
+    const handlePosition = handle.getAttribute('style');
+    const groups = renderedScene().children.filter(child => child instanceof InstancedMesh) as InstancedMesh[];
+    expect(groups).toHaveLength(3);
+    expect(groups.map(group => group.count).sort()).toEqual([1, 1, 2]);
+    const square = groups.find(group => group.count === 2)!;
+    const color = new Color(); square.getColorAt(1, color);
+    expect(color.getHexString()).toBe('ff0088');
+    const matrix = new Matrix4(); square.getMatrixAt(1, matrix);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([7.5, 0, 7]);
+    const maskScene = renderer.render.mock.calls.slice().reverse().find(([scene]) => (scene as Scene).children?.some(child => child.name === 'Selected pin outline mask'))![0] as Scene;
+    const masks = maskScene.children as InstancedMesh[];
+    expect(masks).toHaveLength(3);
+    expect(masks.reduce((sum, mask) => sum + mask.count, 0)).toBe(3);
+    const squareMask = masks.find(mask => mask.geometry === square.geometry)!;
+    expect(squareMask.count).toBe(1); squareMask.getMatrixAt(0, matrix);
+    expect(new Vector3().setFromMatrixPosition(matrix).x).toBe(7.5);
+    const removed = groups.filter(group => group !== square);
+    const disposal = removed.map(group => [vi.spyOn(group, 'dispose'), vi.spyOn(group.geometry, 'dispose')]);
+    const maskDisposal = masks.filter(mask => mask !== squareMask).map(mask => vi.spyOn(mask, 'dispose'));
+    preview.update({ ...parameters, pinGeometries: parameters.pinGeometries.map(() => ({ shape: 'square' as const, rotation: 45 })) }, heights);
+    expect(renderedCamera()).toBe(camera);
+    pickActive();
+    expect(handle.getAttribute('style')).toBe(handlePosition);
+    expect(handle.textContent).toBe('↑ 8.0 mm');
+    expect(renderedScene().children.filter(child => child instanceof InstancedMesh)).toEqual([square]);
+    expect(square.count).toBe(4);
+    ['ff0000', '00ff00', '0000ff', 'ff0088'].forEach((expected, index) => {
+      square.getColorAt(index, color); expect(color.getHexString()).toBe(expected);
+    });
+    disposal.flat().forEach(dispose => expect(dispose).toHaveBeenCalledOnce());
+    maskDisposal.forEach(dispose => expect(dispose).toHaveBeenCalledOnce());
+    expect(maskScene.children).toHaveLength(1);
+    expect((maskScene.children[0] as InstancedMesh).count).toBe(3);
+    const maskDispose = vi.spyOn(maskScene.children[0] as InstancedMesh, 'dispose');
+    const meshDispose = vi.spyOn(square, 'dispose'), geometryDispose = vi.spyOn(square.geometry, 'dispose');
+    preview.dispose();
+    expect(meshDispose).toHaveBeenCalledOnce(); expect(geometryDispose).toHaveBeenCalledOnce();
+    expect(maskDispose).toHaveBeenCalledOnce();
+  });
   it('replaces pin and outline geometry without replacing the camera, canvas or printable colors', () => {
     preview.setPinColors(Array<string>(320).fill('#ff0088'));
     preview.setEditing({ heightMode: 'set', selection: new Set([0]), active: 0,

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
-import { updatePinInstances } from './pin-grid';
+import { DEFAULT_MODEL_COLORS, pinCount, type ModelColors, type Parameters } from '../pin-design/model';
+import { updatePinInstances, type PinInstanceGroup } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
 import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
 import { createOrientationHelper } from './orientation-helper';
@@ -62,14 +62,16 @@ export function createPreview(container: HTMLDivElement): Preview {
   const baseEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
   base.add(baseEdges);
 
-  let lastPinShape: PinShape = 'round';
-  let pinGeometry = createPinGeometry(lastPinShape);
   const pinMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.pins, roughness: 0.32, metalness: 0.28 });
-  const pins = new THREE.InstancedMesh(pinGeometry, pinMaterial, 10000);
-  pins.count = 0;
-  pins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  scene.add(pins);
-  const selectionOutline = createSelectionOutline(renderer, pinGeometry);
+  function createGroup(shape: PinShape): PinInstanceGroup {
+    const mesh = new THREE.InstancedMesh(createPinGeometry(shape), pinMaterial, 10000);
+    mesh.count = 0;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(mesh);
+    return { shape, mesh, indices: [], canonicalToLocal: new Map() };
+  }
+  let pinGroups = [createGroup('round')];
+  const selectionOutline = createSelectionOutline(renderer, pinGroups[0].mesh.geometry);
   const grid = new THREE.GridHelper(400, 40, '#cbd4d8', '#dfe5e7');
   grid.material.color.set(colors.gridTint);
   grid.rotation.x = Math.PI / 2;
@@ -86,11 +88,53 @@ export function createPreview(container: HTMLDivElement): Preview {
   const bounds = new THREE.Box3();
   let editing: PreviewEditing | undefined;
   let hasInstanceColors = false;
+  let pinColors: readonly string[] = [];
+  let modelPinColor = DEFAULT_MODEL_COLORS.pins;
   let controls = createControls();
-  const interaction = createPinInteraction(container, renderer.domElement, pins, base, () => camera, enabled => { controls.enabled = enabled; });
+  const interaction = createPinInteraction(container, renderer.domElement, () => pinGroups, base, () => camera, enabled => { controls.enabled = enabled; });
 
   function updateHighlights() {
-    selectionOutline.update(pins, editing?.selection ?? new Set());
+    selectionOutline.update(pinGroups, editing?.selection ?? new Set());
+  }
+
+  function updateColors() {
+    if (!hasInstanceColors) return;
+    const color = new THREE.Color();
+    for (const group of pinGroups) {
+      group.indices.forEach((index, localIndex) => group.mesh.setColorAt(localIndex, color.set(pinColors[index] ?? modelPinColor)));
+      if (group.mesh.instanceColor) {
+        group.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        group.mesh.instanceColor.needsUpdate = true;
+      }
+    }
+  }
+
+  function updateGroups(parameters: Parameters, heights?: Float32Array) {
+    const indicesByShape = new Map<PinShape, number[]>();
+    for (let index = 0; index < pinCount(parameters); index++) {
+      const shape = parameters.pinGeometries?.[index]?.shape ?? parameters.pinShape ?? 'round';
+      const indices = indicesByShape.get(shape) ?? [];
+      indices.push(index); indicesByShape.set(shape, indices);
+    }
+    const available = pinGroups.filter(group => !indicesByShape.has(group.shape));
+    const nextGroups: PinInstanceGroup[] = [];
+    for (const [shape, indices] of indicesByShape) {
+      const group = pinGroups.find(candidate => candidate.shape === shape) ?? available.shift() ?? createGroup(shape);
+      if (group.shape !== shape) {
+        group.mesh.geometry.dispose();
+        group.mesh.geometry = createPinGeometry(shape);
+        group.shape = shape;
+      }
+      group.indices = indices;
+      group.canonicalToLocal = new Map(indices.map((index, localIndex) => [index, localIndex]));
+      updatePinInstances(group.mesh, parameters, heights, indices);
+      nextGroups.push(group);
+    }
+    for (const group of available) {
+      scene.remove(group.mesh); group.mesh.dispose(); group.mesh.geometry.dispose();
+    }
+    pinGroups = nextGroups;
+    updateColors();
   }
 
   function createControls() {
@@ -158,14 +202,6 @@ export function createPreview(container: HTMLDivElement): Preview {
   }
 
   function update(parameters: Parameters, heights?: Float32Array) {
-    const pinShape = parameters.pinShape ?? 'round';
-    if (pinShape !== lastPinShape) {
-      const previousGeometry = pinGeometry;
-      pinGeometry = createPinGeometry(pinShape);
-      pins.geometry = pinGeometry;
-      lastPinShape = pinShape;
-      previousGeometry.dispose();
-    }
     if (parameters.layout !== lastLayout || parameters.layout && parameters.thickness !== lastThickness) {
       baseGeometry.dispose(); edgesGeometry.dispose();
       baseGeometry = parameters.layout ? createBaseGeometry(parameters.layout, parameters.thickness) : new THREE.BoxGeometry(1, 1, 1);
@@ -175,14 +211,16 @@ export function createPreview(container: HTMLDivElement): Preview {
     }
     base.scale.set(parameters.layout ? 1 : parameters.width, parameters.layout ? 1 : parameters.depth, parameters.layout ? 1 : parameters.thickness);
     base.position.z = parameters.layout ? 0 : parameters.thickness / 2;
-    updatePinInstances(pins, parameters, heights);
+    updateGroups(parameters, heights);
     interaction.update(parameters, heights);
     updateHighlights();
     bounds.set(
       new THREE.Vector3(-parameters.width / 2, -parameters.depth / 2, 0),
       new THREE.Vector3(parameters.width / 2, parameters.depth / 2, parameters.thickness),
     );
-    if (pins.boundingBox) bounds.union(pins.boundingBox);
+    for (const group of pinGroups) {
+      if (group.mesh.boundingBox) bounds.union(group.mesh.boundingBox);
+    }
     const size = bounds.getSize(new THREE.Vector3());
     radius = size.length() / 2;
     bounds.getCenter(center);
@@ -223,15 +261,16 @@ export function createPreview(container: HTMLDivElement): Preview {
     },
     setModelColors(modelColors) {
       baseMaterial.color.set(modelColors.base);
+      modelPinColor = modelColors.pins;
       pinMaterial.color.set(hasInstanceColors ? '#ffffff' : modelColors.pins);
+      updateColors();
       requestRender();
     },
-    setPinColors(pinColors) {
-      const color = new THREE.Color();
-      pinColors.forEach((value, index) => pins.setColorAt(index, color.set(value)));
+    setPinColors(nextColors) {
+      pinColors = nextColors.slice();
       hasInstanceColors = true;
       pinMaterial.color.set('#ffffff');
-      if (pins.instanceColor) { pins.instanceColor.setUsage(THREE.DynamicDrawUsage); pins.instanceColor.needsUpdate = true; }
+      updateColors();
       requestRender();
     },
     setEditing(next) {
@@ -242,19 +281,19 @@ export function createPreview(container: HTMLDivElement): Preview {
       requestRender();
     },
     dispose() {
+      if (disposed) return;
       disposed = true;
       interaction.dispose();
       if (frame !== null) cancelAnimationFrame(frame);
       resizeObserver.disconnect();
       controls.removeEventListener('change', requestRender);
       controls.dispose();
-      pins.dispose();
+      for (const group of pinGroups) { group.mesh.dispose(); group.mesh.geometry.dispose(); }
       orientationHelper.dispose();
       baseGeometry.dispose();
       baseMaterial.dispose();
       edgesGeometry.dispose();
       edgesMaterial.dispose();
-      pinGeometry.dispose();
       pinMaterial.dispose();
       selectionOutline.dispose();
       grid.geometry.dispose();

@@ -1,10 +1,11 @@
 import { DEFAULT_MODEL_MATERIALS, materialKey, type MaterialSelection } from '../filaments/materials';
 export { materialKey } from '../filaments/materials';
 import { pinCount, type Parameters } from '../pin-design/model';
+import { resolvePinGeometries, validateResolvedGeometry, type PinGeometry } from '../pin-shape/geometry';
 
 export type HeightMode = 'set' | 'offset';
 export type SelectionOperation = 'replace' | 'add' | 'toggle';
-export interface PinOverride { height?: number; material?: MaterialSelection }
+export interface PinOverride { height?: number; material?: MaterialSelection; geometry?: PinGeometry }
 interface Delta { index: number; before?: PinOverride; after?: PinOverride }
 interface Transaction { deltas: Delta[]; beforeBase: MaterialSelection; afterBase: MaterialSelection; bytes: number }
 export interface EditorState {
@@ -20,20 +21,22 @@ export interface EditorState {
   generatedMaterials?: readonly MaterialSelection[];
   generatedHeights?: Float32Array;
   mappingPending: boolean;
+  parameters?: Parameters;
 }
 export type EditorAction =
-  | { type: 'generation'; materials?: readonly MaterialSelection[]; heights?: Float32Array }
+  | { type: 'generation'; materials?: readonly MaterialSelection[]; heights?: Float32Array; parameters?: Parameters }
   | { type: 'mapping-status'; pending: boolean }
   | { type: 'select'; ids: number[]; operation: SelectionOperation }
   | { type: 'height'; heights: Float32Array; value: number; mode: HeightMode }
+  | { type: 'geometry'; geometry: PinGeometry }
   | { type: 'material'; material: MaterialSelection; target: 'base' | 'selection' }
   | { type: 'material-group'; source: MaterialSelection; material: MaterialSelection }
-  | { type: 'reset'; target: 'height' | 'material' | 'all' }
+  | { type: 'reset'; target: 'height' | 'material' | 'geometry' | 'all' }
   | { type: 'undo' | 'redo' }
   | { type: 'topology'; count: number };
 
-export function createEditorState(count: number): EditorState {
-  return { count, base: { ...DEFAULT_MODEL_MATERIALS.base }, overrides: new Map(), selection: new Set(), active: null, past: [], future: [], historyBytes: 0, error: null, mappingPending: false };
+export function createEditorState(count: number, parameters?: Parameters): EditorState {
+  return { count, parameters, base: { ...DEFAULT_MODEL_MATERIALS.base }, overrides: new Map(), selection: new Set(), active: null, past: [], future: [], historyBytes: 0, error: null, mappingPending: false };
 }
 
 export function hasPinEdits(state: EditorState) {
@@ -41,7 +44,18 @@ export function hasPinEdits(state: EditorState) {
 }
 
 function equalOverride(first?: PinOverride, second?: PinOverride) {
-  return first?.height === second?.height && first?.material?.color === second?.material?.color && first?.material?.filamentId === second?.material?.filamentId;
+  return first?.height === second?.height && first?.material?.color === second?.material?.color && first?.material?.filamentId === second?.material?.filamentId
+    && first?.geometry?.shape === second?.geometry?.shape && first?.geometry?.rotation === second?.geometry?.rotation;
+}
+
+export function resolveEditedGeometries(parameters: Parameters, overrides: ReadonlyMap<number, PinOverride>) {
+  const geometries = resolvePinGeometries({ ...parameters, pinGeometries: undefined });
+  for (const [index, value] of overrides) if (index < geometries.length && value.geometry) geometries[index] = value.geometry;
+  return resolvePinGeometries({ ...parameters, pinGeometries: geometries });
+}
+
+export function validateGeometryOverrides(parameters: Parameters, overrides: ReadonlyMap<number, PinOverride>) {
+  if ([...overrides.values()].some(value => value.geometry)) validateResolvedGeometry({ ...parameters, pinGeometries: resolveEditedGeometries(parameters, overrides) });
 }
 
 export function validateMaterials(count: number, overrides: Map<number, PinOverride>, base: MaterialSelection, generated?: readonly MaterialSelection[]) {
@@ -87,16 +101,18 @@ export function resolveDesign(state: EditorState, parameters: Parameters, genera
     if (override.height !== undefined) heights[index] = override.height;
     if (override.material) pinSelections[index] = override.material;
   }
-  return { heights, pinSelections };
+  return { heights, pinSelections, pinGeometries: resolveEditedGeometries(parameters, state.overrides) };
 }
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   try {
     if (action.type === 'mapping-status') return { ...state, mappingPending: action.pending };
     if (action.type === 'generation') {
+      const parameters = action.parameters ?? state.parameters;
+      if (parameters) validateGeometryOverrides(parameters, state.overrides);
       validateMaterials(state.count, state.overrides, state.base, action.materials);
       if (action.heights && (action.heights.length !== state.count || action.heights.some(height => !Number.isFinite(height) || height <= 0))) throw new Error('Generated heights must match the grid and be finite and positive.');
-      return { ...state, generatedMaterials: action.materials, generatedHeights: action.heights, mappingPending: false, error: null };
+      return { ...state, parameters, generatedMaterials: action.materials, generatedHeights: action.heights, mappingPending: false, error: null };
     }
     if (action.type === 'topology') return { ...createEditorState(action.count), base: state.base };
     if (action.type === 'select') {
@@ -120,6 +136,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       const base = isUndo ? transaction.beforeBase : transaction.afterBase;
       validateMaterials(state.count, overrides, base, state.generatedMaterials);
+      if (state.parameters && transaction.deltas.some(delta => delta.before?.geometry || delta.after?.geometry)) validateResolvedGeometry({ ...state.parameters, pinGeometries: resolveEditedGeometries(state.parameters, overrides) });
       return { ...state, overrides, base,
         past: isUndo ? state.past.slice(0, -1) : [...state.past, transaction],
         future: isUndo ? [...state.future, transaction] : state.future.slice(0, -1), error: null };
@@ -139,21 +156,28 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return commit(state, overrides, base);
     }
     const overrides = new Map(state.overrides);
-    if (action.type === 'height') {
+    if (action.type === 'geometry') {
+      if (!state.parameters) throw new Error('Wait for the committed design before changing shapes.');
+      const geometry = resolvePinGeometries({ ...state.parameters, columns: 1, rows: 1, layout: undefined, pinGeometries: [action.geometry] })[0];
+      for (const index of state.selection) overrides.set(index, { ...overrides.get(index), geometry });
+      validateResolvedGeometry({ ...state.parameters, pinGeometries: resolveEditedGeometries(state.parameters, overrides) });
+    } else if (action.type === 'height') {
       if (action.heights.length !== state.count) throw new Error('Pin heights do not match the grid.');
       const heights = heightBatch(action.heights, state.selection, action.value, action.mode);
       for (const index of state.selection) overrides.set(index, { ...overrides.get(index), height: heights[index] });
     } else if (action.type === 'reset') {
       if (action.target === 'all') {
+        if (state.parameters && [...state.overrides.values()].some(value => value.geometry)) validateResolvedGeometry({ ...state.parameters, pinGeometries: resolveEditedGeometries(state.parameters, new Map()) });
         validateMaterials(state.count, new Map(), DEFAULT_MODEL_MATERIALS.base, state.generatedMaterials);
         return commit(state, new Map(), { ...DEFAULT_MODEL_MATERIALS.base });
       }
       for (const index of state.selection) {
         const next = { ...overrides.get(index) };
         delete next[action.target];
-        if (next.height === undefined && !next.material) overrides.delete(index);
+        if (next.height === undefined && !next.material && !next.geometry) overrides.delete(index);
         else overrides.set(index, next);
       }
+      if (action.target === 'geometry' && state.parameters) validateResolvedGeometry({ ...state.parameters, pinGeometries: resolveEditedGeometries(state.parameters, overrides) });
     }
     validateMaterials(state.count, overrides, state.base, state.generatedMaterials);
     return commit(state, overrides);

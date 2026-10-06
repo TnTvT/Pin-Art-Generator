@@ -2,6 +2,7 @@ import { Camera, InstancedMesh, Object3D, Raycaster, Vector2, Vector3 } from 'th
 import type { Parameters } from '../pin-design/model';
 import type { HeightMode, SelectionOperation } from '../pin-editing/model';
 import { heightDragDelta, marqueeSelection, pinTip, projectTip, type ScreenPoint } from './pin-selection';
+import type { PinInstanceGroup } from './pin-grid';
 
 export interface PreviewEditing {
   heightMode: HeightMode;
@@ -15,7 +16,7 @@ export interface PreviewEditing {
   onDragCancel: () => void;
 }
 
-export function createPinInteraction(container: HTMLDivElement, canvas: HTMLCanvasElement, pins: InstancedMesh, base: Object3D, getCamera: () => Camera, enableNavigation: (enabled: boolean) => void) {
+export function createPinInteraction(container: HTMLDivElement, canvas: HTMLCanvasElement, pins: InstancedMesh | (() => readonly PinInstanceGroup[]), base: Object3D, getCamera: () => Camera, enableNavigation: (enabled: boolean) => void) {
   let editing: PreviewEditing | undefined;
   let parameters: Parameters | undefined;
   let heights: Float32Array | undefined;
@@ -33,8 +34,16 @@ export function createPinInteraction(container: HTMLDivElement, canvas: HTMLCanv
     const viewport = size();
     const ray = new Raycaster();
     ray.setFromCamera(new Vector2(point.x / viewport.width * 2 - 1, 1 - point.y / viewport.height * 2), getCamera());
-    const hit = ray.intersectObjects([pins, base], false)[0];
-    return hit?.object === pins ? hit.instanceId : undefined;
+    const groups = typeof pins === 'function' ? pins() : undefined;
+    const meshes = groups ? groups.map(group => group.mesh) : [pins as InstancedMesh];
+    for (const hit of ray.intersectObjects([...meshes, base], false)) {
+      if (hit.object === base) return undefined;
+      if (hit.instanceId === undefined) continue;
+      const group = groups?.find(candidate => candidate.mesh === hit.object);
+      const index = groups ? group?.indices[hit.instanceId] : hit.instanceId;
+      if (index !== undefined) return index;
+    }
+    return undefined;
   }
   function down(event: PointerEvent) {
     if (!editing || !parameters || event.button !== 0 || gesture) return;

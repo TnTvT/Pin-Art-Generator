@@ -10,6 +10,26 @@ const mesh = new InstancedMesh(geometry, material, 10000);
 afterEach(() => { mesh.count = 0; });
 
 describe('pin instance placement', () => {
+  it('places group-local instances using canonical positions, heights and rotations', () => {
+    const parameters = { ...DEFAULTS, columns: 4, rows: 1, pinShape: 'triangle' as const, pinRotation: 120, pinGeometries: [
+      { shape: 'round' as const, rotation: 90 }, { shape: 'square' as const, rotation: 0 },
+      { shape: 'triangle' as const, rotation: 30 }, { shape: 'square' as const, rotation: 90 },
+    ] };
+    updatePinInstances(mesh, parameters, new Float32Array([2, 4, 6, 8]), [3, 1]);
+    expect(mesh.count).toBe(2);
+    const matrix = new Matrix4();
+    mesh.getMatrixAt(0, matrix);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([7.5, 0, 7]);
+    expect(new Vector3(0, -.5, 0).applyMatrix4(matrix).z).toBeCloseTo(3);
+    expect(new Vector3(0, .5, 0).applyMatrix4(matrix).z).toBeCloseTo(11);
+    const radial = new Vector3(.5, 0, 0).applyMatrix4(matrix).sub(new Vector3().setFromMatrixPosition(matrix));
+    expect(radial.x).toBeCloseTo(0); expect(radial.y).toBeCloseTo(1);
+    mesh.getMatrixAt(1, matrix);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([-2.5, 0, 5]);
+    updatePinInstances(mesh, parameters, undefined, [0]);
+    mesh.getMatrixAt(0, matrix);
+    expect(matrix.elements[0]).toBeCloseTo(2);
+  });
   it('centers pins and places their bottoms exactly on the base top', () => {
     updatePinInstances(mesh, { ...DEFAULTS, columns: 2, rows: 2 });
     const first = new Matrix4();

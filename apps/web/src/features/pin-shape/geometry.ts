@@ -3,10 +3,12 @@ import { EPSILON, regionIndex, type PinPosition, type Point, type Region } from 
 import type { Parameters } from '../pin-design/model';
 
 export type PinShape = 'round' | 'square' | 'triangle';
+export interface PinGeometry { shape: PinShape; rotation: number }
 interface Bounds { minX: number; minY: number; maxX: number; maxY: number }
 interface Segment extends Bounds { start: Point; end: Point }
 interface IndexedPin extends Bounds { pin: PinPosition; index: number }
 interface SpatialNode extends Bounds { children: (SpatialNode | IndexedPin)[] }
+interface BoundaryIndex { containsCenter: ReturnType<typeof regionIndex>; tree?: RBush<Segment> }
 
 function validateShape(shape: PinShape, size: number, rotation: number) {
   if (!['round', 'square', 'triangle'].includes(shape)) throw new Error('Pin shape must be round, square or triangle.');
@@ -21,6 +23,47 @@ export function validatePinGeometry(parameters: Parameters): void {
 export function effectivePinRotation(parameters: Parameters): number {
   validatePinGeometry(parameters);
   return (parameters.pinShape ?? 'round') === 'round' || parameters.pinRotation === 360 ? 0 : parameters.pinRotation ?? 0;
+}
+
+export function resolvePinGeometries(parameters: Parameters): PinGeometry[] {
+  validatePinGeometry(parameters);
+  const count = parameters.layout?.pins.length ?? parameters.columns * parameters.rows;
+  if (parameters.pinGeometries && parameters.pinGeometries.length !== count) throw new Error('Pin geometries must match the committed pin count.');
+  const values = parameters.pinGeometries ?? Array<PinGeometry>(count).fill({ shape: parameters.pinShape ?? 'round', rotation: parameters.pinRotation ?? 0 });
+  return values.map(value => {
+    if (!value) throw new Error('Every pin requires a shape and rotation.');
+    validateShape(value.shape, parameters.diameter, value.rotation);
+    return { shape: value.shape, rotation: value.shape === 'round' || value.rotation === 360 ? 0 : value.rotation };
+  });
+}
+
+export function geometryParameters(parameters: Parameters, geometry: PinGeometry): Parameters {
+  return { ...parameters, pinGeometries: undefined, pinShape: geometry.shape, pinRotation: geometry.rotation };
+}
+
+export function resolvedContainment(parameters: Parameters, regions: Region[]) {
+  const geometries = resolvePinGeometries(parameters);
+  const boundary = { containsCenter: regionIndex(regions), tree: geometries.some(geometry => geometry.shape !== 'round') ? boundaryTree(regions) : undefined };
+  const checks = new Map<string, ReturnType<typeof createPinContainment>>();
+  return geometries.map(geometry => {
+    const key = `${geometry.shape}:${geometry.rotation}`;
+    if (!checks.has(key)) checks.set(key, createPinContainment(regions, geometryParameters(parameters, geometry), boundary));
+    return checks.get(key)!;
+  });
+}
+
+export function validateResolvedGeometry(parameters: Parameters) {
+  const regions = parameters.layout?.regions ?? [{ outer: [[-parameters.width / 2, -parameters.depth / 2], [parameters.width / 2, -parameters.depth / 2], [parameters.width / 2, parameters.depth / 2], [-parameters.width / 2, parameters.depth / 2]] as Point[], holes: [] }];
+  const pins = parameters.layout?.pins ?? Array.from({ length: parameters.columns * parameters.rows }, (_, index) => ({
+    id: `R${Math.floor(index / parameters.columns) + 1}:C${index % parameters.columns + 1}`,
+    x: (index % parameters.columns - (parameters.columns - 1) / 2) * parameters.spacing,
+    y: (Math.floor(index / parameters.columns) - (parameters.rows - 1) / 2) * parameters.spacing,
+  }));
+  const checks = resolvedContainment(parameters, regions);
+  const invalid = pins.findIndex((pin, index) => !checks[index](pin.x, pin.y, parameters.layout?.edgePadding ?? 0));
+  if (invalid !== -1) throw new Error(`Pin ${pins[invalid].id} violates base boundary or Edge padding. Undo the setting or restore its default shape. No pins were changed.`);
+  const gap = minimumPinClearance(parameters, pins);
+  if (gap !== null && gap < -EPSILON) throw new Error('Pin footprints overlap. Select the affected pins and reduce rotation or change shape. No pins were changed.');
 }
 
 export function pinVertices(shape: PinShape, size: number, rotation = 0): Point[] {
@@ -78,20 +121,25 @@ function entersPolygon(start: Point, end: Point, vertices: Point[]) {
   return lower < upper;
 }
 
-export function createPinContainment(regions: Region[], parameters: Parameters): (x: number, y: number, padding: number) => boolean {
+function boundaryTree(regions: Region[]) {
+  const tree = new RBush<Segment>();
+  tree.load(regions.flatMap(region => [region.outer, ...region.holes].flatMap(ring => ring.map((start, index) => {
+    const end = ring[(index + 1) % ring.length];
+    return { start, end, minX: Math.min(start[0], end[0]), minY: Math.min(start[1], end[1]), maxX: Math.max(start[0], end[0]), maxY: Math.max(start[1], end[1]) };
+  }))));
+  return tree;
+}
+
+export function createPinContainment(regions: Region[], parameters: Parameters, shared?: BoundaryIndex): (x: number, y: number, padding: number) => boolean {
   validatePinGeometry(parameters);
-  const containsCenter = regionIndex(regions);
+  const containsCenter = shared?.containsCenter ?? regionIndex(regions);
   if ((parameters.pinShape ?? 'round') === 'round') {
     const radius = parameters.diameter / 2;
     return (horizontal, vertical, padding) => containsCenter(horizontal, vertical, radius + padding);
   }
   const vertices = pinVertices(parameters.pinShape!, parameters.diameter, effectivePinRotation(parameters));
   const bounds = pinBounds(parameters);
-  const tree = new RBush<Segment>();
-  tree.load(regions.flatMap(region => [region.outer, ...region.holes].flatMap(ring => ring.map((start, index) => {
-    const end = ring[(index + 1) % ring.length];
-    return { start, end, minX: Math.min(start[0], end[0]), minY: Math.min(start[1], end[1]), maxX: Math.max(start[0], end[0]), maxY: Math.max(start[1], end[1]) };
-  }))));
+  const tree = shared?.tree ?? boundaryTree(regions);
   return (horizontal, vertical, padding) => {
     if (!containsCenter(horizontal, vertical, 0)) return false;
     const threshold = Math.max(0, padding - EPSILON) ** 2;
@@ -133,6 +181,11 @@ function signedPolygonDistance(point: Point, vertices: Point[], tolerance: numbe
 
 export function minimumPinClearance(parameters: Parameters, pins: readonly PinPosition[]): number | null {
   validatePinGeometry(parameters);
+  if (parameters.pinGeometries) {
+    const geometries = resolvePinGeometries(parameters), first = geometries[0];
+    if (first && geometries.every(geometry => geometry.shape === first.shape && geometry.rotation === first.rotation)) return minimumPinClearance(geometryParameters(parameters, first), pins);
+    return mixedPinClearance(parameters, pins, geometries);
+  }
   if (pins.length < 2) return null;
   const shape = parameters.pinShape ?? 'round';
   const tolerance = parameters.diameter * 1e-12;
@@ -176,6 +229,92 @@ export function minimumPinClearance(parameters: Parameters, pins: readonly PinPo
         minimum = Math.min(minimum, gap(pin, neighbour.pin));
         if (minimum <= lowest + tolerance) return minimum;
       }
+    }
+  }
+  return Math.abs(minimum) < tolerance ? 0 : minimum;
+}
+
+function mixedPinClearance(parameters: Parameters, pins: readonly PinPosition[], geometries: PinGeometry[]): number | null {
+  if (pins.length < 2) return null;
+  const tolerance = parameters.diameter * 1e-12;
+  const vertices = new Map<string, Point[]>(), differences = new Map<string, Point[]>();
+  const key = (geometry: PinGeometry) => `${geometry.shape}:${geometry.rotation}`;
+  const polygon = (geometry: PinGeometry) => {
+    const identity = key(geometry);
+    if (!vertices.has(identity)) vertices.set(identity, pinVertices(geometry.shape, parameters.diameter, geometry.rotation));
+    return vertices.get(identity)!;
+  };
+  const difference = (first: PinGeometry, second: PinGeometry) => {
+    const identity = `${key(first)}|${key(second)}`;
+    if (!differences.has(identity)) {
+      differences.set(identity, first.shape === 'round' ? polygon(second).map(point => [-point[0], -point[1]] as Point)
+        : second.shape === 'round' ? polygon(first)
+        : convexHull(polygon(first).flatMap(start => polygon(second).map(end => [start[0] - end[0], start[1] - end[1]] as Point))));
+    }
+    return differences.get(identity)!;
+  };
+  const gap = (firstIndex: number, secondIndex: number) => {
+    const first = geometries[firstIndex], second = geometries[secondIndex];
+    const delta: Point = [pins[secondIndex].x - pins[firstIndex].x, pins[secondIndex].y - pins[firstIndex].y];
+    if (first.shape === 'round' && second.shape === 'round') return Math.hypot(...delta) - parameters.diameter;
+    if (first.shape === 'round') return signedPolygonDistance([-delta[0], -delta[1]], polygon(second), tolerance) - parameters.diameter / 2;
+    if (second.shape === 'round') return signedPolygonDistance(delta, polygon(first), tolerance) - parameters.diameter / 2;
+    return signedPolygonDistance(delta, difference(first, second), tolerance);
+  };
+  const sorted = pins.map((pin, index) => ({ pin, index })).sort((first, second) => first.pin.x - second.pin.x || first.pin.y - second.pin.y);
+  let minimum = Infinity;
+  for (let index = 1; index < sorted.length; index++) minimum = Math.min(minimum, gap(sorted[index - 1].index, sorted[index].index));
+  const tree = new RBush<IndexedPin>();
+  tree.load(pins.map((pin, index) => ({ pin, index, minX: pin.x, maxX: pin.x, minY: pin.y, maxY: pin.y })));
+  const root = tree.toJSON() as SpatialNode;
+  const summaries = new Map<SpatialNode | IndexedPin, number[]>();
+  function summarize(node: SpatialNode | IndexedPin): number[] | null {
+    if ('index' in node) return [node.index];
+    const identities = new Map<string, number>();
+    let complete = true;
+    for (const child of node.children) {
+      const indices = summarize(child);
+      if (!indices) complete = false;
+      else if (identities.size <= 8) for (const index of indices) identities.set(key(geometries[index]), index);
+    }
+    if (!complete || identities.size > 8) return null;
+    const result = [...identities.values()];
+    summaries.set(node, result);
+    return result;
+  }
+  summarize(root);
+  const planeCache = new Map<string, { normalX: number; normalY: number; offset: number }[]>();
+  function polygonLowerBound(first: PinGeometry, second: PinGeometry, pin: PinPosition, node: Bounds) {
+    if (first.shape === 'round' && second.shape === 'round') return -Infinity;
+    const identity = `${key(first)}|${key(second)}`;
+    if (!planeCache.has(identity)) {
+      const vertices = difference(first, second);
+      const radius = first.shape === 'round' || second.shape === 'round' ? parameters.diameter / 2 : 0;
+      planeCache.set(identity, vertices.map((start, index) => {
+        const end = vertices[(index + 1) % vertices.length], length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        const normalX = (end[1] - start[1]) / length, normalY = (start[0] - end[0]) / length;
+        return { normalX, normalY, offset: normalX * start[0] + normalY * start[1] + radius };
+      }));
+    }
+    let bound = -Infinity;
+    for (const { normalX, normalY, offset } of planeCache.get(identity)!) {
+      bound = Math.max(bound, normalX * ((normalX >= 0 ? node.minX : node.maxX) - pin.x)
+        + normalY * ((normalY >= 0 ? node.minY : node.maxY) - pin.y) - offset);
+    }
+    return bound;
+  }
+  for (let index = 0; index < pins.length; index++) {
+    const pin = pins[index], pending: (SpatialNode | IndexedPin)[] = [root];
+    while (pending.length) {
+      const node = pending.pop()!;
+      const deltaX = Math.max(node.minX - pin.x, 0, pin.x - node.maxX), deltaY = Math.max(node.minY - pin.y, 0, pin.y - node.maxY);
+      if (Math.hypot(deltaX, deltaY) - parameters.diameter > minimum + tolerance) continue;
+      if (minimum < 0) {
+        const candidates = 'index' in node ? [node.index] : summaries.get(node);
+        if (candidates && Math.min(...candidates.map(candidate => polygonLowerBound(geometries[index], geometries[candidate], pin, node))) > minimum + tolerance) continue;
+      }
+      if ('children' in node) pending.push(...node.children);
+      else if (node.index > index) minimum = Math.min(minimum, gap(index, node.index));
     }
   }
   return Math.abs(minimum) < tolerance ? 0 : minimum;

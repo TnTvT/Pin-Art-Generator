@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Parameters } from '../pin-design/model';
 import type { PinEditor } from '../pin-editing/usePinEditor';
-import { validateMaterials } from '../pin-editing/model';
+import { validateGeometryOverrides, validateMaterials } from '../pin-editing/model';
 import type { ColorMappingOptions, ColorMappingResult, MappingMode, MaterialOverride } from '../image-mapping/color-mapping';
 import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, readShapeImage, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
 import type { HeightMap } from '../image-mapping/sampling';
@@ -17,12 +17,14 @@ export interface GeneratedDesign { parameters: Parameters; heightMap: HeightMap 
 
 export default function useDesignGeneration(settings: GenerationSettings, committed: Parameters, editor: PinEditor) {
   const [retry, setRetry] = useState(0);
-  const [status, setStatus] = useState<{ job: object; design?: GeneratedDesign; error?: string } | null>(null);
+  const [status, setStatus] = useState<{ job: object; design?: GeneratedDesign; error?: string; geometryConflict?: boolean } | null>(null);
   const overridesSignature = JSON.stringify([...editor.state.overrides].flatMap(([index, value]) => value.material ? [{ index, material: value.material }] : []));
   const overrides = useMemo(() => JSON.parse(overridesSignature) as MaterialOverride[], [overridesSignature]);
   const base = editor.state.base;
   const job = useMemo(() => ({ settings, base, overrides, retry }), [settings, base, overrides, retry]);
   const current = useRef(committed);
+  const geometryOverrides = useRef(editor.state.overrides);
+  geometryOverrides.current = editor.state.overrides;
   const shapeCache = useRef<{ key: string; source: SourceImage | null; result: ReturnType<typeof generateLayout> } | null>(null);
   const designCache = useRef<{ settings: GenerationSettings; retry: number; design: GeneratedDesign } | null>(null);
   current.current = committed;
@@ -30,10 +32,16 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
   useEffect(() => {
     let active = true;
     let cancel = () => {};
+    let geometryConflict = false;
+    function validateRetained(parameters: Parameters) {
+      try { validateGeometryOverrides(parameters, geometryOverrides.current); }
+      catch (error) { geometryConflict = true; throw error; }
+    }
     async function run() {
       try {
         const cached = designCache.current;
         if (cached?.settings === settings && cached.retry === retry && current.current.layout && samePins(current.current.layout, cached.design.parameters.layout!)) {
+          validateRetained(cached.design.parameters);
           validateMaterials(cached.design.parameters.layout!.pins.length, new Map(overrides.map(value => [value.index, { material: value.material }])), base, cached.design.colors?.materials);
           setStatus({ job, design: { ...cached.design, changed: false } });
           return;
@@ -53,6 +61,7 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         const parameters = { ...settings.parameters, ...shapeResult };
         if (![parameters.thickness, parameters.extension].every(value => Number.isFinite(value) && value > 0)) throw new Error('Use positive finite base thickness and generated height.');
         const changed = !current.current.layout || !samePins(current.current.layout, parameters.layout);
+        if (!changed) validateRetained(parameters);
         const retained = changed ? [] : overrides;
         let heightMap: HeightMap | null = null, colors: ColorMappingResult | null = null;
         const timings: MappingTimings = { preparationMs: 0, samplingMs: 0, paletteMs: 0 };
@@ -86,7 +95,7 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         designCache.current = { settings, retry, design };
         setStatus({ job, design });
       } catch (error) {
-        if (active) setStatus({ job, error: `${error instanceof Error ? error.message : 'Design generation failed.'} Current settings have not been applied.` });
+        if (active) setStatus({ job, geometryConflict, error: `${error instanceof Error ? error.message : 'Design generation failed.'} Current settings have not been applied.` });
       }
     }
     void run();
@@ -94,5 +103,6 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
   }, [job]);
 
   return { job, design: status?.job === job ? status.design : undefined, loading: status?.job !== job,
+    geometryConflict: status?.job === job && status.geometryConflict === true,
     error: status?.job === job ? status.error ?? null : null, retry: () => setRetry(value => value + 1) };
 }

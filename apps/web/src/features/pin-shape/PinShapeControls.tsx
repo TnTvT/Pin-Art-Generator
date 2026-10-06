@@ -19,7 +19,7 @@ export default function PinShapeControls({ parameters, onChange, disabled = fals
   }
   return <div className="shape-controls">
     <fieldset className="mapping-mode"><legend>Pin shape <InfoPopover label="Pin shape help">
-      <p>Pin size is the diameter of the enclosing circle. A square's diagonal and a triangle's circumcircle have this size. All pins share one shape and rotation.</p>
+      <p>Pin size is the diameter of the enclosing circle. A square's diagonal and a triangle's circumcircle have this size. These controls set the defaults; use Shape in the preview toolbar to override selected pins. All pins share one size.</p>
       {parameters.pinShape === 'square' && <p>Square side: {formatDimension(parameters.diameter / Math.sqrt(2))} mm.</p>}
       {parameters.pinShape === 'triangle' && <p>Triangle side: {formatDimension(parameters.diameter * Math.sqrt(3) / 2)} mm.</p>}
       <p>Rotation is counterclockwise in Top view. At 0°, square sides align with X/Y and the triangle points toward +Y. Spacing is measured between pin centers; padding and clearance use the actual shape.</p>
