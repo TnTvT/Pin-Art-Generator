@@ -31,34 +31,7 @@ def _base_shape(request: "ExportRequest") -> MultiPolygon:
 
 def validate_shape_layout(request: "ExportRequest") -> None:
     shape = _base_shape(request)
-    if request.parameters.pin_shape != "round":
-        validate_polygon_layout(request, shape)
-        return
-    layout = request.layout
-    parameters = request.parameters
-    points = [Point(pin.x, pin.y) for pin in layout.pins]
-    radius = parameters.diameter / 2
-    edge_distance = radius + layout.edge_padding
-    if request.mode == "detachable":
-        edge_distance = max(edge_distance, (parameters.diameter + request.socket.clearance) / 2 + 0.8)
-    boundary = shape.boundary
-    for pin, point in zip(layout.pins, points, strict=True):
-        if not shape.covers(point) or point.distance(boundary) < edge_distance - 1e-6:
-            raise ValueError(f"pin {pin.id} violates base/hole padding or socket edge wall; increase Edge padding")
-    separation = parameters.diameter
-    if request.mode == "detachable":
-        separation += request.socket.clearance + 0.8
-    tree = STRtree(points)
-    for index, point in enumerate(points):
-        neighbours = tree.query(point, predicate="dwithin", distance=separation + 1e-6)
-        for neighbour in neighbours:
-            if neighbour <= index:
-                continue
-            distance = point.distance(points[neighbour])
-            if distance < separation - 1e-6:
-                raise ValueError("pins overlap or socket walls are below 0.8 mm; increase spacing")
-            if request.mode == "fixed" and request.format == "stl" and distance <= separation + 1e-6:
-                raise ValueError("fixed STL pins must have positive separation to avoid tangent non-manifold contact")
+    validate_polygon_layout(request, shape)
 
 
 def validate_polygon_layout(request: "ExportRequest", base: MultiPolygon | Polygon | None = None) -> None:
@@ -67,11 +40,21 @@ def validate_polygon_layout(request: "ExportRequest", base: MultiPolygon | Polyg
         base = box(-parameters.width / 2, -parameters.depth / 2, parameters.width / 2, parameters.depth / 2)
     prepare(base)
     boundary = base.boundary
-    pin = Polygon(polygon_vertices(parameters.pin_shape, parameters.diameter, parameters.pin_rotation))
     offset = request.socket.clearance / 2 if request.mode == "detachable" else 0
-    socket_area = pin.area + pin.length * offset + pi * offset * offset
-    if not np.isfinite(pin.area) or not np.isfinite(socket_area) or pin.area <= 0:
-        raise ValueError("derived footprints must have finite positive area")
+    radius = parameters.diameter / 2
+    profiles = {}
+    geometries = request.resolved_pin_geometries
+    for geometry in geometries:
+        key = (geometry.shape, geometry.rotation)
+        if key in profiles:
+            continue
+        pin = Point(0, 0) if geometry.shape == "round" else Polygon(polygon_vertices(geometry.shape, parameters.diameter, geometry.rotation))
+        area = pi * radius * radius if geometry.shape == "round" else pin.area
+        perimeter = 2 * pi * radius if geometry.shape == "round" else pin.length
+        socket_area = area + perimeter * offset + pi * offset * offset
+        if not np.isfinite(area) or not np.isfinite(socket_area) or area <= 0:
+            raise ValueError("derived footprints must have finite positive area")
+        profiles[key] = pin
     padding = request.layout.edge_padding if request.layout else 0
     if request.layout:
         positions = [(position.id, position.x, position.y) for position in request.layout.pins]
@@ -81,26 +64,35 @@ def validate_polygon_layout(request: "ExportRequest", base: MultiPolygon | Polyg
             for row in range(parameters.rows) for column in range(parameters.columns)
         ]
     footprints = []
-    for name, horizontal, vertical in positions:
+    bounds = []
+    radii = []
+    for (name, horizontal, vertical), geometry in zip(positions, geometries, strict=True):
+        pin = profiles[(geometry.shape, geometry.rotation)]
         footprint = translate(pin, horizontal, vertical)
-        if not base.covers(footprint) or footprint.distance(boundary) < padding - 1e-6:
+        pin_radius = radius if geometry.shape == "round" else 0
+        edge_distance = footprint.distance(boundary) - pin_radius
+        if not base.covers(footprint) or edge_distance < padding - 1e-6:
             raise ValueError(f"pin {name} violates base/hole padding; increase Edge padding or base size")
         if request.mode == "detachable":
-            if footprint.distance(boundary) - offset < 0.8 - 1e-6:
+            if edge_distance - offset < 0.8 - 1e-6:
                 raise ValueError(f"pin {name} socket edge wall must be at least 0.8 mm; increase Edge padding or base size")
         footprints.append(footprint)
+        radii.append(pin_radius)
+        minimum_x, minimum_y, maximum_x, maximum_y = footprint.bounds
+        bounds.append(box(minimum_x - pin_radius, minimum_y - pin_radius, maximum_x + pin_radius, maximum_y + pin_radius))
     separation = request.socket.clearance + 0.8 if request.mode == "detachable" else 0
-    tree = STRtree(footprints)
+    tree = STRtree(bounds)
     for index, footprint in enumerate(footprints):
-        for neighbour in tree.query(footprint, predicate="dwithin", distance=separation + 1e-6):
+        for neighbour in tree.query(bounds[index], predicate="dwithin", distance=separation + 1e-6):
             if neighbour <= index:
                 continue
             other = footprints[neighbour]
-            distance = footprint.distance(other)
+            distance = footprint.distance(other) - radii[index] - radii[neighbour]
+            names = f"pins {positions[index][0]} and {positions[neighbour][0]}"
             if request.mode == "detachable":
                 if distance < separation - 1e-6:
-                    raise ValueError("wall between sockets must be at least 0.8 mm; increase spacing")
-            elif footprint.relate_pattern(other, "T********"):
-                raise ValueError("fixed pins must not overlap; increase spacing or change pin rotation")
+                    raise ValueError(f"wall between sockets must be at least 0.8 mm for {names}; increase spacing")
+            elif (distance < -1e-6 if radii[index] or radii[neighbour] else footprint.relate_pattern(other, "T********")):
+                raise ValueError(f"fixed pins must not overlap: {names}; increase spacing or change pin rotation")
             elif request.format == "stl" and distance <= 1e-6:
                 raise ValueError("fixed STL pins must have positive separation to avoid tangent non-manifold contact")

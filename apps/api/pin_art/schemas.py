@@ -19,6 +19,16 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
+class PinGeometry(DomainModel):
+    shape: PinShape
+    rotation: Annotated[float, Field(ge=0, le=360, allow_inf_nan=False)]
+
+    @model_validator(mode="after")
+    def canonical_rotation(self) -> Self:
+        self.rotation = self.rotation % 360 if self.shape != "round" else 0
+        return self
+
+
 class Parameters(DomainModel):
     width: PositiveNumber
     depth: PositiveNumber
@@ -79,8 +89,24 @@ class ExportRequest(DomainModel):
     filament_profiles: list[FilamentProfile] | None = Field(default=None, alias="filamentProfiles", min_length=1, max_length=16)
     base_material: MaterialIndex = Field(alias="baseMaterial")
     pin_materials: list[MaterialIndex] = Field(alias="pinMaterials", max_length=10000)
+    pin_geometries: list[PinGeometry] | None = Field(default=None, alias="pinGeometries", min_length=1, max_length=10000, exclude_if=lambda value: value is None)
     socket: SocketParameters = Field(default_factory=SocketParameters)
     plate: PlateParameters = Field(default_factory=PlateParameters)
+
+    @field_validator("pin_geometries", mode="before")
+    @classmethod
+    def require_geometry_array(cls, value):
+        if value is None:
+            raise ValueError("pinGeometries must be a complete array when present")
+        return value
+
+    @property
+    def resolved_pin_geometries(self) -> list[PinGeometry]:
+        if self.pin_geometries is not None:
+            return self.pin_geometries
+        count = len(self.heights)
+        geometry = PinGeometry(shape=self.parameters.pin_shape, rotation=self.parameters.pin_rotation)
+        return [geometry] * count
 
     @model_validator(mode="after")
     def validate_design(self) -> Self:
@@ -88,6 +114,8 @@ class ExportRequest(DomainModel):
         if self.layout is None and (parameters.columns is None or parameters.rows is None):
             raise ValueError("rows and columns are required for legacy requests without layout")
         count = len(self.layout.pins) if self.layout else parameters.columns * parameters.rows
+        if self.pin_geometries is not None and len(self.pin_geometries) != count:
+            raise ValueError("pinGeometries length must match the grid count or layout pins and heights")
         if self.filament_profiles is not None and len(self.filament_profiles) != len(self.materials):
             raise ValueError("filamentProfiles length must match the material palette")
         if len(self.heights) != count or len(self.pin_materials) != count:
@@ -99,9 +127,11 @@ class ExportRequest(DomainModel):
             diameter += self.socket.clearance
         grid_width = parameters.width if self.layout else (parameters.columns - 1) * parameters.spacing + diameter
         grid_depth = parameters.depth if self.layout else (parameters.rows - 1) * parameters.spacing + diameter
-        polygon = parameters.pin_shape != "round"
+        polygon = parameters.pin_shape != "round" or self.pin_geometries is not None
         pin_bounds = local_bounds(parameters.pin_shape, parameters.diameter, parameters.pin_rotation)
-        if polygon and not self.layout:
+        if self.pin_geometries is not None:
+            grid_width, grid_depth = parameters.width, parameters.depth
+        elif polygon and not self.layout:
             grid_width = (parameters.columns - 1) * parameters.spacing + 2 * max(abs(pin_bounds[0]), abs(pin_bounds[2]))
             grid_depth = (parameters.rows - 1) * parameters.spacing + 2 * max(abs(pin_bounds[1]), abs(pin_bounds[3]))
         if not all(isfinite(value) for value in (diameter, grid_width, grid_depth)):
@@ -144,6 +174,8 @@ class ExportRequest(DomainModel):
             raise ValueError("printed pin lengths must be finite")
         if parameters.width > self.plate.width - 10 or parameters.depth > self.plate.depth - 10:
             raise ValueError("base must fit the plate with 5 mm margins")
-        if pin_bounds[2] - pin_bounds[0] > self.plate.width - 10 or pin_bounds[3] - pin_bounds[1] > self.plate.depth - 10:
-            raise ValueError("pin must fit the plate with 5 mm margins")
+        for geometry in self.resolved_pin_geometries:
+            bounds = local_bounds(geometry.shape, parameters.diameter, geometry.rotation)
+            if bounds[2] - bounds[0] > self.plate.width - 10 or bounds[3] - bounds[1] > self.plate.depth - 10:
+                raise ValueError("pin must fit the plate with 5 mm margins")
         return self

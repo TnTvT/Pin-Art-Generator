@@ -16,11 +16,19 @@ def generate_export(request: ExportRequest):
     buffer = io.BytesIO()
     manifest = {"units": "mm", "mode": "detachable", "socket": request.socket.model_dump(by_alias=True), "plate": request.plate.model_dump(), "materials": request.materials, "plates": []}
     manifest.update(pinShape=request.parameters.pin_shape, pinRotation=request.parameters.pin_rotation if request.parameters.pin_shape != "round" else 0, diameter=request.parameters.diameter)
+    geometries = request.resolved_pin_geometries
+    manifest["pinGeometries"] = [geometry.model_dump() for geometry in geometries]
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for index, plate in enumerate(plates, start=1):
             filename = f"plate-{index:02d}.stl"
             archive.writestr(filename, plate_stl(plate))
-            manifest["plates"].append({"file": filename, "parts": [{"name": part.name, "material": part.material, "transform": part.transform.tolist()} for part in plate.parts]})
+            parts = []
+            for part in plate.parts:
+                entry = {"name": part.name, "material": part.material, "transform": part.transform.tolist()}
+                if part.pin_index is not None:
+                    entry.update(pinIndex=part.pin_index, **geometries[part.pin_index].model_dump())
+                parts.append(entry)
+            manifest["plates"].append({"file": filename, "parts": parts})
         manifest["heights"] = request.heights
         if request.layout:
             manifest["layout"] = request.layout.model_dump(by_alias=True)
