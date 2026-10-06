@@ -15,7 +15,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Stage | Capability | Status |
 | --- | --- | --- |
 | Initial MVP | Parametric base, uniform pin array, interactive 3D preview, English UI | Implemented |
-| Image mapping | Local upload, Height / Color / Height + Color, automatic or user-selected preset palettes, range controls, inversion and manual image placement | Implemented |
+| Image mapping | Local upload, Height / Color / Height + Color, Smooth / Pixel sampling, preset palettes, range controls, inversion and manual image placement | Implemented |
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
@@ -86,7 +86,9 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Reset placement on successful image replacement/removal, not failed uploads, mode changes or Reset parameters. Cancelling a layout change restores the applied source and placement together. Disable adjustment for contour-only mapping or during a pin-height drag. Placement stays in session memory; the export contract continues to send only resolved geometry/heights/materials, not images or placement settings.
 - Composite transparent pixels and unused margins over white.
 - Reduce the decoded image's longest side to at most 1,024 pixels for sampling, preserving its aspect ratio.
-- Bilinearly sample original RGBA at actual pin XY positions; heights and colors share those samples.
+- Offer **Sampling: Smooth / Pixel**, default Smooth, independently of the three mapping modes. Smooth retains bilinear RGBA interpolation; Pixel reads the containing raster pixel at actual XY positions without blending neighbors. Multiple pins may share a source pixel or enlarged pixel-art block; gaps are not additional pixels. Never enforce one pin per pixel, collapse missing positions, or automatically change spacing, size, shape or count. Both outputs share the same sampled RGBA and placement transform.
+- For oversized images, retain the original local Blob and lazily prepare/cache a separate Pixel raster using nearest resizing to the canonical raster's exact capped dimensions. Keep the Smooth/contour raster and source identity unchanged; sampling switches must not change image-derived outlines or pin positions. Release owned rasters on replacement/removal/unmount while preserving accepted-source rollback. The adjustment dialog displays the matching processing raster, labeled with the active sampling mode; Pixel disables visual interpolation.
+- Preserve manual height/material overrides, selection, edit drafts, history and placement when changing sampling. Regenerate generated groups, not overrides. Keep atomic validation, stale-result suppression, retry and last-valid preview/export blocking during raster preparation and mapping. Sampling preferences survive image replacement and Reset parameters, but are not persisted across reloads or sent to the exporter. Explain density, downsizing and JPEG limitations through an info popup, not a permanent block.
 - Convert RGB to weighted grayscale using `0.2126R + 0.7152G + 0.0722B`.
 - Default height is `minimum + (1 − brightness / 255) × (maximum − minimum)`. Inversion replaces `1 − brightness / 255` with `brightness / 255`.
 - Map image top to positive Y so **Top view** reads upright.
