@@ -11,6 +11,7 @@ Pin Art Studio's product requirements and significant decisions live here.
 - [Per-pin color and height editing](plans/001-pin-editing.md): implemented selection, Set/Offset height, per-pin materials, undo/redo, and export integration plan; accepted in ADR-013.
 - [Pin cross-section shapes](plans/002-pin-cross-section-shapes.md): implemented Round/Square/Triangle controls, rotated footprint validation, matching sockets and compatible STL/3MF export; accepted in ADR-020.
 - [Pixel image mapping](plans/003-pixel-image-mapping.md): implemented edge-preserving sampling with multiple pins per source pixel/block, independent spacing and preserved image placement; accepted in ADR-022.
+- [Per-pin cross-section editing](plans/004-per-pin-cross-section-editing.md): implemented selected-pin shape/rotation overrides, mixed-shape preview, matching sockets and compatible export; accepted in ADR-023.
 
 ## Archived experiments
 
@@ -45,6 +46,7 @@ The experimental workspace and its dependencies were removed after evaluation. R
 | [ADR-020](decisions/020-pin-cross-section-shapes.md) | Shared pin cross-sections, actual rotated footprints, offset sockets and bounds-aware print packing |
 | [ADR-021](decisions/021-image-placement-and-shared-sampling.md) | Mapping-only image translation/zoom, shared sampling and independent 2D adjustment |
 | [ADR-022](decisions/022-pixel-image-sampling.md) | Independent Smooth/Pixel sampling, original-Blob nearest resizing, shared raster ownership and unchanged export snapshots |
+| [ADR-023](decisions/023-per-pin-cross-section-editing.md) | Transactional selected geometry, canonical mixed instances, validated history/recovery and compatible individual sockets/exports |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

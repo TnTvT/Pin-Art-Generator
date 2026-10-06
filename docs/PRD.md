@@ -2,7 +2,7 @@
 
 **Status:** Current demo baseline
 
-**Last updated:** October 5, 2026
+**Last updated:** October 6, 2026
 
 ## 1. Purpose
 
@@ -20,7 +20,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
 | Model downloads | STL, Bambu-compatible colored 3MF, detachable socket pins, multi-plate layout | Implemented; Bambu GUI/physical fit verification is user-owned |
-| Per-pin editing | Selection, Set/Offset heights, per-pin materials, transactional drag and undo/redo | Implemented |
+| Per-pin editing | Selection, Set/Offset heights, materials, shape/rotation overrides, transactional drag and undo/redo | Implemented |
 | Base shapes | Rectangle, rounded rectangle, circle, ellipse, solid image silhouettes/disconnected regions and automatic layout | Implemented |
 | Moving-pin hardware | Captive sliding pins, stops, and retainers | Deferred |
 
@@ -48,7 +48,7 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 | Corner radius | 10 mm | Rounded rectangle only; 0 to half the shorter side |
 | Edge padding | 5 mm | Minimum gap from pin outer wall to the outer silhouette boundary; nonnegative |
 | Pin spacing | 5 mm | Equal X/Y center spacing, never adjusted automatically |
-| Pin shape | Round | Design-wide Round, Square, or equilateral Triangle |
+| Pin shape | Round | Generation default: Round, Square, or equilateral Triangle; selected pins can override it |
 | Pin size | 2 mm | Positive circumscribed diameter; square diagonal, triangle circumdiameter |
 | Pin rotation | 0° | Polygon-only numeric input/slider, 0–360° counterclockwise around +Z; round remembers but ignores it |
 | Generated pin height | 20 mm | Visible height above base; manual heights may exceed it |
@@ -63,8 +63,8 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Curved presets use 64-point polygon approximations, with only duplicate/collinear points removed. Preview and export use identical regions.
 - Maximum 10,000 actual pins, 1,000,000 candidate positions and 20,000 total contour vertices. Empty or excessive layouts fail visibly without truncation.
 - Numeric drafts retain valid input; complete but invalid shape settings retain the applied design and block export. Never silently substitute a rectangular base.
-- Show Total pins, actual Pin footprint (XY bounds plus diameter), and Pin clearance (spacing minus diameter).
-- Spacing smaller than diameter can be inspected with an overlap warning but cannot be exported.
+- Show Total pins, actual Pin footprint and minimum wall clearance using the resolved shapes/angles of each pin.
+- Actual footprint overlap can be inspected in generated previews with a warning but cannot be exported; geometry editing requires a valid non-overlapping candidate.
 - Contour recognition shares the local upload: PNG/JPG/WebP, 20 MB, maximum decoded side 1,024 px. Use original RGBA for contour detection.
 - Auto uses Transparency if any alpha is below 128, otherwise Background color. Transparency treats alpha ≥ 128 as foreground. Background mode composites alpha onto the chosen background then compares Color.js ΔE2000; default white, tolerance 10, range 0–50.
 - Use d3-contour with smoothing disabled. Keep external silhouettes, fill enclosed gaps, and absorb nested foreground islands into their enclosing solid silhouette to avoid overlapping regions. Preserve separate silhouettes and clean only duplicate/collinear outer points; no small-region removal, bridging, or AI. This affects base geometry and pin eligibility only, never the original height/color samples.
@@ -186,17 +186,20 @@ This is brightness mapping, not inference of an object's physical depth from a p
 
 ## 11. Per-pin editing
 
-- Keep generation and export in the independently scrollable sidebar. Float a fixed-width editing toolbar over the upper-left of the preview, with Height and Material panels beside it. The canvas occupies the full viewport; opening, switching or closing editing panels must not resize it, change projection, or refit the camera. Floating panels may overlap geometry. Keep the base material under Base plate. At 900px and narrower, float a compact tool row at the canvas bottom and use a bottom editing sheet over generation; small screens move history and Clear selection into the more menu.
+- Keep generation and export in the independently scrollable sidebar. Float a fixed-width editing toolbar over the upper-left of the preview, with Height, Material and Shape panels beside it. The canvas occupies the full viewport; opening, switching or closing editing panels must not resize it, change projection, or refit the camera. Floating panels may overlap geometry. Keep the base material under Base plate. At 900px and narrower, float a compact tool row at the canvas bottom and use a bottom editing sheet over generation; small screens move history and Clear selection into the more menu.
 - Maximize canvas space with compact preview headings, status and measurement strips, without decorative footer copy. Put explanatory preview, image, grid, height, material and export guidance behind labeled info icons with keyboard-accessible popups. Keep errors, export blockers and memory warnings directly visible. Escape dismisses nested controls before the editor and closing fields restores trigger focus.
 - Display distinct selected-pin RGB color counts and swatches, plus design-wide color counts including the base. Design swatches reveal hex, RGB, actual selected filament names/codes and families, and base/pin usage through hover or keyboard-focus tooltips. Normalize hex case; identical RGB from different filament profiles counts as one displayed color, not one export material, and its tooltip lists all used identities without inferring a preset from RGB alone.
 - Both views support direct click selection, Shift-click toggling, Shift-drag additive projected-tip marquee, all and clear selection, without Navigate/Select modes. An ordinary drag anywhere on the model or background rotates the camera and never changes selection, even if the pointer returns to its starting position. Empty clicks clear selection unless Shift is held. Scroll zooms; right-drag pans; height handles exclusively own height drags. Marquees include occluded pins but exclude tips outside the viewport or behind the camera.
 - Preserve selection across view/theme changes. Show selected count, single-pin stable ID and X/Y coordinates, and Mixed heights/materials. Highlight only exterior contours in yellow (#FFD43B) using an isolated instanced selection mask and a screen-space edge overlay. Do not fill/tint pin surfaces, change printable instance colors, or switch the main scene's color-processing pipeline when selecting pins. Outline rendering supports both projections and theme changes; selected silhouettes can be visible through occluding geometry.
 - Set height assigns one absolute value; Offset adds a signed amount while preserving differences. Apply/Enter commits a numeric batch; reject any nonpositive, nonfinite or unrepresentable result without changing any pins.
+- Shape changes one, multiple or all selected pins to Round, Square or Triangle and a finite 0–360° rotation. Mixed shape/angle needs explicit input; cache the reusable draft across selections, with Use selected shape to reload actual values. Round resolves to 0°, without erasing the cached polygon angle. Size remains shared. Reject invalid whole-design containment/padding/overlap atomically; keep positions, heights, materials, mapping and camera unchanged.
+- Store a complete shape/angle override separately from height/material overrides. Applying the current default remains an explicit override until Restore default shape removes it. Reset all edits removes every override, including geometry. Undo/redo validates geometry against the latest committed dimensions, defaults, positions and padding; reject invalid replay/reset without moving the history cursor or partially changing pins.
+- Same-position generation validates retained geometry before publication. A conflict retains the applied snapshot and blocks exports, but permits corrective editing, Undo and restoration against that snapshot; retry the requested settings after correction. Actual topology changes still require confirmation and clear all pin edits when accepted. Render at most three printable instance groups, with canonical pin identity and yellow outline masks across groups; both 2D overlays show actual per-pin shapes.
 - Remember separate Set/Offset numeric drafts and the last chosen material across selections, clearing selection, editor reopening and history changes, for the current page session only. Changing selection never applies cached values automatically. Keep actual/Mixed values in the selection summary; Use selected height/material explicitly reloads current selection values. Draft changes do not enter edit history.
 - Perspective height dragging uses a camera-facing plane containing the active pin's world-Z line. Top view uses vertical screen displacement scaled to orthographic mm. Show live mm; compute against starting heights; release commits once. Escape, pointer cancellation, blur or view changes restore the original committed heights. Invalid drag updates retain the last valid transient batch. Block export until release/cancellation.
 - Keep generated heights/materials separate from sparse position-indexed pin overrides. Image regeneration/removal and mapping mode changes preserve overrides. Geometry adjustments preserve them only when actual ID/XY positions remain unchanged. Restore generated heights/colors removes selected overrides and resolves the latest image generator, or defaults when absent. Reset all retains mapping settings and resets the base to its default.
 - Actual ID/XY changes with pin edits require confirmation. Acceptance clears pin edits, selection and history but retains base material; cancellation restores applied shape settings and source image. Reset all edits is confirmed and undoable.
-- History covers heights, materials and resets, not selection/navigation/generation. Keep at most 50 transactions and 16 MiB of encoded sparse deltas; discard the oldest records first. New edits clear redo. Ignore undo shortcuts in text fields/dialogs.
+- History covers heights, materials, shape/rotation and resets, not selection/navigation/generation. Keep at most 50 transactions and 16 MiB of encoded sparse deltas; discard the oldest records first. New edits clear redo. Ignore undo shortcuts in text fields/dialogs.
 - Preserve color and catalog identity per pin. Compact the actually used RGB + filament-profile pairs for export, including the base, with at most 16 slots. Reject a seventeenth material even if introduced by restoring colors, undo or redo against a changed generator. Same RGB with different profiles remains distinct.
 - Fill existing API heights and pinMaterials from the shared committed design. No new endpoints, raw image transfers, physical AMS assignments, brush tools, AI depth/segmentation, project save/load or pin repositioning are introduced.
 - Verify both projections, cancellation and history, regeneration and topology confirmations, 10,000-pin editing, fixed/detachable actual heights, profile/color indices, strict lib3mf read-back, backend/frontend tests, typecheck and build. Bambu import/slicing remains user-owned.
@@ -206,6 +209,8 @@ This is brightness mapping, not inference of an object's physical depth from a p
 New clients send optional `layout` with `regions: [{outer, holes}]`, `pins: [{id, x, y}]` and `edgePadding`, all in mm. Heights and material indices follow that pin list. Do not send image bounds, pixels, or row/column parameters. Legacy requests without layout still require rows/columns and use rectangular grid geometry.
 
 Both paths accept optional `parameters.pinShape` (`round`, `square`, `triangle`) and `pinRotation` (finite 0–360°), defaulting to Round/0. `parameters.diameter` stays compatible and represents circumscribed size. Server validation independently checks actual footprints and offset socket walls. Geometry resource/cache identities distinguish cross-sections. Upright print packing uses actual rotated bounds, including the triangle's asymmetric centroid-to-bounding-box offset. Keep existing heights, material/profile identity, plate ownership and X1C metadata unchanged. See ADR-020.
+
+New clients also send complete ordered `pinGeometries: [{shape, rotation}]`, resolving selected overrides over those global defaults. Its length must equal heights/material indices and actual layout pins (legacy row-major order when layout is absent). Validate entries before canonicalizing full-turn and round angles to 0; reject null, empty, malformed or incomplete arrays. Omission retains the legacy uniform path. Each socket and packed pin uses its own geometry; cache identities, names and STL manifest entries retain that identity. Keep existing endpoints, request/process/material limits and profiles unchanged. See ADR-023.
 
 The current UI sends empty `holes` arrays: image recognition defines only solid outer silhouettes. The export contract retains explicit holes support for compatibility; the backend validates supplied contours as-is, rather than silently filling or repairing API input. Detachable sockets remain actual blind holes and are unaffected by this silhouette rule.
 
