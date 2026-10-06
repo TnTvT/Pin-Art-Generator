@@ -42,6 +42,7 @@ The experimental workspace and its dependencies were removed after evaluation. R
 | [ADR-018](decisions/018-base-shapes-and-position-layouts.md) | Preset/image contours, explicit XY layouts, atomic generation, socket validation and legacy export compatibility |
 | [ADR-019](decisions/019-reusable-edit-inputs-and-generated-groups.md) | Reusable editing drafts and stable, undoable generated-palette group recoloring |
 | [ADR-020](decisions/020-pin-cross-section-shapes.md) | Shared pin cross-sections, actual rotated footprints, offset sockets and bounds-aware print packing |
+| [ADR-021](decisions/021-image-placement-and-shared-sampling.md) | Mapping-only image translation/zoom, shared sampling and independent 2D adjustment |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

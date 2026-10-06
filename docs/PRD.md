@@ -15,7 +15,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Stage | Capability | Status |
 | --- | --- | --- |
 | Initial MVP | Parametric base, uniform pin array, interactive 3D preview, English UI | Implemented |
-| Image mapping | Local upload, Height / Color / Height + Color, automatic or user-selected preset palettes, range controls and inversion | Implemented |
+| Image mapping | Local upload, Height / Color / Height + Color, automatic or user-selected preset palettes, range controls, inversion and manual image placement | Implemented |
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
@@ -32,7 +32,7 @@ The initial request prioritized a quick demo without tests. A later explicit req
 2. Choose a preset or image-derived contour. Set dimensions, edge padding, pin shape, size, rotation, spacing, and generated height.
 3. Rotate, zoom, pan, or use camera buttons to inspect the geometry.
 4. Optionally upload an image or select **Try sample**.
-5. Adjust the minimum/maximum extensions and inversion to explore the image relief.
+5. Use **Adjust image** to align and zoom the image over actual pin positions. Adjust the height range, inversion and palette to explore the relief.
 6. Resolve generation errors by changing settings; the last applied design remains visible and export is blocked.
 7. Remove the image to return to uniform heights on a preset base. From image requires a new upload or switching to a preset.
 
@@ -79,7 +79,11 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Reject unsupported, oversized, or unreadable files with an English error. An unsuccessful replacement keeps the previous image.
 - Provide a source thumbnail, filename, **Replace image**, and **Remove image**.
 - Provide a generated sample image through **Try sample** when no image is selected.
-- Preset bases contain the full image centered inside the base dimensions. Image bases sample through the exact foreground-bounds transform used by the contour. Preserve aspect ratio and positive-Y orientation.
+- Default placement contains the full image centered inside preset base dimensions. Image bases start with the foreground-bounds transform used by the contour. Preserve aspect ratio and positive-Y orientation.
+- **Adjust image** opens an independent 2D window with the applied base contour and actual pin footprints. Drag translates the image; wheel zoom anchors at the cursor. Provide a 10–400% zoom slider and numeric Zoom / Offset X / Offset Y controls; numeric zoom preserves translation. Arrow keys move 1 mm (Shift: 5 mm), and +/− zoom. Escape, pointer cancellation or focus loss restores the start of an active drag. Closing the window keeps live changes.
+- **Center image** resets translation only; **Fit image** contains source content in the actual pin footprint, using foreground bounds for image bases and respecting zoom limits. **Reset** restores zero offsets and 100%. Incomplete/invalid numeric drafts keep the last valid placement.
+- Image placement affects height/color sampling only, not contour extraction, dimensions, padding, positions or pin count, including From image. Both outputs use the same transform; manual overrides, selection and edit history survive. Updates retain cancellation, atomic validation/publication and export blocking. Do not count placement as pin-edit undo history.
+- Reset placement on successful image replacement/removal, not failed uploads, mode changes or Reset parameters. Cancelling a layout change restores the applied source and placement together. Disable adjustment for contour-only mapping or during a pin-height drag. Placement stays in session memory; the export contract continues to send only resolved geometry/heights/materials, not images or placement settings.
 - Composite transparent pixels and unused margins over white.
 - Reduce the decoded image's longest side to at most 1,024 pixels for sampling, preserving its aspect ratio.
 - Bilinearly sample original RGBA at actual pin XY positions; heights and colors share those samples.
