@@ -2,18 +2,24 @@ import { useRef, useState } from 'react';
 import { Alert, Button, FileButton, Group, MultiSelect, NumberInput, SegmentedControl, Select, Switch } from '@mantine/core';
 import { FILAMENT_CATALOG, getFilament } from '../filaments/catalog';
 import type { ColorMappingOptions, ColorMappingResult, MappingMode, PaletteFamily, PaletteSource } from './color-mapping';
-import { formatDimension } from '../pin-design/model';
+import { formatDimension, type Parameters } from '../pin-design/model';
 import { type SourceImage } from './image-mapping';
 import { type HeightMap } from './sampling';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import HeightRangeControl from './HeightRangeControl';
 import GeneratedPalette from './GeneratedPalette';
 import type { MaterialSelection } from '../filaments/materials';
+import type { ImagePlacement } from './image-placement';
+import ImagePlacementDialog from './ImagePlacementDialog';
 
 interface ImageMappingPanelProps {
   enabled?: boolean;
   onEnabledChange?: (value: boolean) => void;
   source: SourceImage | null;
+  parameters?: Parameters;
+  placement?: ImagePlacement;
+  placementBlocked?: boolean;
+  onPlacementChange?: (placement: ImagePlacement) => void;
   loading: boolean;
   error: string | null;
   minimum: number;
@@ -47,6 +53,7 @@ const filamentOptions = (['Basic', 'Matte'] as const).map(type => ({
 
 export default function ImageMappingPanel(props: ImageMappingPanelProps) {
   const resetFile = useRef<(() => void) | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
   const [draftMaximum, setDraftMaximum] = useState<number | string>(props.options.maximum);
   const [lastMaximum, setLastMaximum] = useState(props.options.maximum);
   if (lastMaximum !== props.options.maximum) {
@@ -79,6 +86,8 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
             <Button variant="subtle" color="gray" size="compact-xs" onClick={props.onRemove}>Remove image</Button>
           </div>
           {props.onEnabledChange && <Switch label="Map image to pins" checked={props.enabled !== false} onChange={event => props.onEnabledChange?.(event.currentTarget.checked)} size="xs" />}
+          {props.parameters && props.placement && props.onPlacementChange && <Button size="xs" variant="default" fullWidth onClick={() => setAdjusting(true)}
+            disabled={props.loading || props.placementBlocked || props.enabled === false}>Adjust image</Button>}
           {props.enabled !== false && <div className="mapping-controls">
             <fieldset className="mapping-mode"><legend>Mapping mode</legend>
               <SegmentedControl fullWidth size="xs" value={props.mode} onChange={mode => props.onModeChange(mode as MappingMode)}
@@ -116,6 +125,9 @@ export default function ImageMappingPanel(props: ImageMappingPanelProps) {
         </div>
       ) : null}
       {props.error && <Alert color="red" title="Image mapping needs attention" mt="sm">{props.error}<Button variant="subtle" size="xs" onClick={props.onRetry} disabled={props.processing}>Retry mapping</Button></Alert>}
+      {adjusting && props.source && props.parameters && props.placement && props.onPlacementChange && <ImagePlacementDialog key={props.source.url}
+        opened source={props.source} parameters={props.parameters} placement={props.placement} onChange={props.onPlacementChange} onClose={() => setAdjusting(false)}
+        processing={props.processing} blocked={!!props.placementBlocked || props.loading} error={props.error} />}
     </section>
   );
 }

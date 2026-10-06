@@ -52,6 +52,42 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it('adjusts image mapping live while retaining pin edits, selection, history and the exported layout', async () => {
+    const user = userEvent.setup();
+    const validSource = { ...source, bitmap: { width: 200, height: 100 } as ImageBitmap };
+    vi.mocked(useSourceImage).mockReturnValue(imageState({ source: validSource }));
+    vi.mocked(mapImageToPins).mockImplementation((_source, parameters, _minimum, _inverted, placement) => ({
+      heights: new Float32Array(parameters.layout!.pins.length).fill(4 + (placement?.offsetX ?? 0)), minimum: 4, maximum: 20,
+    }));
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await openEditor(user, 'Material');
+    await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
+    await user.click(screen.getByRole('option', { name: 'Custom color' }));
+    fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
+    await user.click(screen.getByRole('button', { name: 'Apply material' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Adjust image' }));
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '150' } });
+    await waitFor(() => expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,12'));
+    expect(mapImageToPins).toHaveBeenLastCalledWith(validSource, expect.anything(), 2, false, { offsetX: 8, offsetY: 0, zoom: 1.5 });
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+    expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.heights.slice(0, 2)).toEqual([35, 12]);
+    expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
+    expect(request.layout.pins).toHaveLength(357);
+    expect(request.layout.pins[0]).toEqual({ id: 'g:-8:-10', x: -50, y: -40 });
+    expect(request.placement).toBeUndefined();
+  });
   it('keeps manual edits, selection, cached inputs and history when shape or rotation preserves positions', async () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);

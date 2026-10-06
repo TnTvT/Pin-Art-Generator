@@ -5,6 +5,7 @@ import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
 import ImageMappingPanel from '../features/image-mapping/ImageMappingPanel';
 import useSourceImage from '../features/image-mapping/useSourceImage';
+import useImagePlacement from '../features/image-mapping/useImagePlacement';
 import { DEFAULT_COLOR_MAPPING, type MappingMode } from '../features/image-mapping/color-mapping';
 import ExportPanel from '../features/export/ExportPanel';
 import { DEFAULTS, formatDimension, getMetrics, getWarnings, pinCount, type ParameterName, type Parameters } from '../features/pin-design/model';
@@ -35,12 +36,13 @@ export default function App() {
   const [draft, setDraft] = useState<Draft>({ ...DEFAULTS });
   const [pendingDesign, setPendingDesign] = useState<{ job: object; design: GeneratedDesign; settings: GenerationSettings } | null>(null);
   const image = useSourceImage(true);
+  const imagePlacement = useImagePlacement(image.source);
   const [minimum, setMinimum] = useState(2);
   const [inverted, setInverted] = useState(false);
   const [mode, setMode] = useState<MappingMode>('height');
   const [colorOptions, setColorOptions] = useState(DEFAULT_COLOR_MAPPING);
   const editor = usePinEditor(parameters, undefined, image.loading);
-  const settings = useMemo(() => ({ parameters: requested, shape, source: image.source, enabled, minimum, inverted, mode, options: colorOptions }), [requested, shape, image.source, enabled, minimum, inverted, mode, colorOptions]);
+  const settings = useMemo(() => ({ parameters: requested, shape, source: image.source, enabled, minimum, inverted, mode, options: colorOptions, placement: imagePlacement.placement }), [requested, shape, image.source, enabled, minimum, inverted, mode, colorOptions, imagePlacement.placement]);
   const mapping = useDesignGeneration(settings, parameters, editor);
   const applied = useRef<{ job?: object; settings: GenerationSettings; design?: GeneratedDesign }>({ settings });
   const updating = image.loading || mapping.loading || mapping.job !== applied.current.job || pendingDesign !== null;
@@ -108,6 +110,7 @@ export default function App() {
     setInverted(previous.inverted);
     setMode(previous.mode);
     setColorOptions(previous.options);
+    imagePlacement.restore(previous.source, previous.placement);
     image.restore();
   }
 
@@ -137,6 +140,10 @@ export default function App() {
             <ImageMappingPanel
               enabled={enabled} onEnabledChange={setEnabled}
               source={image.source}
+              parameters={parameters}
+              placement={imagePlacement.placement}
+              placementBlocked={editor.isDragging || pendingDesign !== null}
+              onPlacementChange={placement => { if (!editor.isDragging && !pendingDesign) imagePlacement.change(placement); }}
               loading={image.loading}
               error={image.error || mapping.error}
               minimum={minimum}

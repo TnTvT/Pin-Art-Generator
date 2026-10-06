@@ -5,6 +5,9 @@ import { renderWithProviders } from '../../test/render';
 import ImageMappingPanel from './ImageMappingPanel';
 import type { SourceImage } from './image-mapping';
 import { DEFAULT_COLOR_MAPPING } from './color-mapping';
+import { DEFAULTS } from '../pin-design/model';
+import { DEFAULT_SHAPE, generateLayout } from '../base-shape/layout';
+import { DEFAULT_IMAGE_PLACEMENT } from './image-placement';
 
 function panelProps(source: SourceImage | null = null) {
   return {
@@ -35,6 +38,20 @@ function panelProps(source: SourceImage | null = null) {
 const source = { name: 'photo.png', url: 'blob:photo', bitmap: {} as ImageBitmap };
 
 describe('image mapping controls', () => {
+  it('keeps adjustment available during mapping, disables it for contour-only mode, and preserves placement on close', async () => {
+    const user = userEvent.setup();
+    const props = { ...panelProps({ ...source, bitmap: { width: 200, height: 100 } as ImageBitmap }),
+      parameters: { ...DEFAULTS, ...generateLayout(DEFAULTS, DEFAULT_SHAPE) }, placement: DEFAULT_IMAGE_PLACEMENT, onPlacementChange: vi.fn() };
+    const { rerender } = renderWithProviders(<ImageMappingPanel {...props} processing />);
+    await user.click(screen.getByRole('button', { name: 'Adjust image' }));
+    expect(screen.getByRole('dialog', { name: 'Adjust image' })).toHaveTextContent('Updating mapping');
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '8' } });
+    expect(props.onPlacementChange).toHaveBeenLastCalledWith({ ...DEFAULT_IMAGE_PLACEMENT, offsetX: 8 });
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(props.onPlacementChange).toHaveBeenCalledOnce();
+    rerender(<ImageMappingPanel {...props} enabled={false} />);
+    expect(screen.getByRole('button', { name: 'Adjust image' })).toBeDisabled();
+  });
   it('offers three modes and shows palette controls instead of height controls in Color mode', async () => {
     const props = panelProps(source);
     const user = userEvent.setup();
