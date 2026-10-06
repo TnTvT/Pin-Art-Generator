@@ -37,4 +37,17 @@ describe('canvas image sampling', () => {
     expect([...layoutPixelsToHeights(pixels, 2, 20, false).heights].slice(0, 2)).toEqual([2,20]);
     expect([...sampleImagePixels(source, { ...parameters, layout: { ...parameters.layout, imageBounds: [0,0,2,2] } })]).toEqual([...pixels]);
   });
+  it('moves and zooms the same original RGBA samples for heights and colors, with white outside the image', () => {
+    const rgba = new Uint8ClampedArray([0,0,0,255, 255,0,0,255, 255,255,255,255, 0,0,255,128]);
+    const context = { drawImage: vi.fn(), getImageData: vi.fn(() => ({ data: rgba })) };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const source = { name: 'asymmetric.png', url: 'blob:test', bitmap: { width: 2, height: 2 } as ImageBitmap };
+    const parameters = { ...DEFAULTS, width: 2, depth: 2, layout: { regions: [], edgePadding: 0, imageBounds: [0,0,2,2] as [number, number, number, number], pins: [{ id: 'a', x: -.5, y: .5 }, { id: 'b', x: 1.5, y: -1.5 }] } };
+    const placement = { offsetX: .5, offsetY: -.5, zoom: 2 };
+    const sampled = sampleImagePixels(source, parameters, placement);
+    expect([...layoutPixelsToRGB(sampled)]).toEqual([0,0,0, 127,127,255]);
+    expect([...mapImageToPins(source, parameters, 2, false, placement).heights]).toEqual([...layoutPixelsToHeights(sampled, 2, 20, false).heights]);
+    expect([...sampleImagePixels(source, parameters, { offsetX: 100, offsetY: 100, zoom: 1 })]).toEqual([255,255,255,255,255,255,255,255]);
+    expect(parameters.layout.pins[0]).toEqual({ id: 'a', x: -.5, y: .5 });
+  });
 });

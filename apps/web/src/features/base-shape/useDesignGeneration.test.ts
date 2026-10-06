@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULTS } from '../pin-design/model';
+import { DEFAULTS, type Parameters } from '../pin-design/model';
 import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
 import type { PinEditor } from '../pin-editing/usePinEditor';
 import { mapImageToPins, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
@@ -22,6 +22,56 @@ beforeEach(() => {
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('keeps image-derived contours and positions fixed when only placement changes', async () => {
+    const pixels = new Uint8ClampedArray(4 * 4 * 4).fill(255);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: pixels }) } as unknown as CanvasRenderingContext2D);
+    const input: GenerationSettings = { ...settings, parameters: { ...DEFAULTS, width: 40 }, shape: { ...DEFAULT_SHAPE, source: 'image', detection: 'transparency' },
+      enabled: false, source: { name: 'contour', url: 'blob:contour', bitmap: { width: 4, height: 4 } as ImageBitmap } };
+    const { result, rerender } = renderHook(({ input, applied }) => useDesignGeneration(input, applied, editor), { initialProps: { input, applied: committed as Parameters } });
+    await waitFor(() => expect(result.current.design).toBeDefined());
+    const applied = result.current.design!.parameters;
+    rerender({ input: { ...input, placement: { offsetX: 15, offsetY: 10, zoom: 3 } }, applied });
+    await waitFor(() => expect(result.current.design?.changed).toBe(false));
+    expect(result.current.design?.parameters.layout).toBe(applied.layout);
+    expect(startShapeJob).toHaveBeenCalledTimes(1);
+  });
+  it('cancels old color jobs on placement changes and never publishes their stale palettes', async () => {
+    const materials = Array(committed.layout.pins.length).fill(DEFAULT_MODEL_MATERIALS.pins);
+    vi.mocked(sampleImagePixels).mockReturnValue(new Uint8ClampedArray(materials.length * 4));
+    let finish!: (value: Awaited<ReturnType<typeof startColorMapping>['promise']>) => void;
+    const cancel = vi.fn();
+    const latest = { materials, palette: [], notice: null };
+    vi.mocked(startColorMapping).mockImplementationOnce(() => ({ promise: new Promise(resolve => { finish = resolve; }), cancel }))
+      .mockImplementation(() => ({ promise: Promise.resolve({ result: latest, elapsedMs: 1 }), cancel: vi.fn() }));
+    const input: GenerationSettings = { ...settings, mode: 'color', source: { name: 'test', bitmap: {}, url: 'blob:test' } as SourceImage };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(startColorMapping).toHaveBeenCalledTimes(1));
+    rerender({ input: { ...input, placement: { offsetX: 5, offsetY: 0, zoom: 1 } } });
+    await waitFor(() => expect(result.current.design?.colors).toBe(latest));
+    expect(cancel).toHaveBeenCalledOnce();
+    await act(async () => { finish({ result: { ...latest, notice: 'stale' }, elapsedMs: 1 }); });
+    expect(result.current.design?.colors).toBe(latest);
+  });
+  it('moves the height and color samples together without regenerating the base or changing pin positions', async () => {
+    const materials = Array(committed.layout.pins.length).fill(DEFAULT_MODEL_MATERIALS.pins);
+    vi.mocked(sampleImagePixels).mockReturnValue(new Uint8ClampedArray(materials.length * 4));
+    vi.mocked(startColorMapping).mockImplementation(() => ({ promise: Promise.resolve({ result: { materials, palette: [], notice: null }, elapsedMs: 1 }), cancel: vi.fn() }));
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(materials.length).fill(10), minimum: 10, maximum: 10 });
+    const source = { name: 'test', bitmap: {}, url: 'blob:test' } as SourceImage;
+    const initial = { ...settings, source, placement: { offsetX: 0, offsetY: 0, zoom: 1 } };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input: initial } });
+    await waitFor(() => expect(result.current.design?.changed).toBe(false));
+    const initialLayout = result.current.design!.parameters.layout;
+    const placement = { offsetX: 12, offsetY: -3, zoom: 1.5 };
+    rerender({ input: { ...initial, placement } });
+    await waitFor(() => expect(mapImageToPins).toHaveBeenLastCalledWith(source, expect.anything(), 2, false, placement));
+    rerender({ input: { ...initial, placement, mode: 'height-color' } });
+    await waitFor(() => expect(result.current.design?.colors?.materials).toEqual(materials));
+    expect(sampleImagePixels).toHaveBeenLastCalledWith(source, expect.anything(), placement);
+    expect(result.current.design?.parameters.layout).toBe(initialLayout);
+    expect(result.current.design?.changed).toBe(false);
+    expect(startShapeJob).toHaveBeenCalledTimes(1);
+  });
   it('regenerates shape footprints and rotation without clearing unchanged pin IDs or edit baselines', async () => {
     const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input: settings } });
     await waitFor(() => expect(result.current.design?.changed).toBe(false));

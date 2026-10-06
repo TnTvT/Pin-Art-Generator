@@ -6,10 +6,11 @@ import type { ColorMappingOptions, ColorMappingResult, MappingMode, MaterialOver
 import { layoutPixelsToHeights, layoutPixelsToRGB, mapImageToPins, readShapeImage, sampleImagePixels, type SourceImage } from '../image-mapping/image-mapping';
 import type { HeightMap } from '../image-mapping/sampling';
 import { startColorMapping } from '../image-mapping/color-worker';
+import type { ImagePlacement } from '../image-mapping/image-placement';
 import { samePins, type generateLayout, type ShapeOptions } from './layout';
 import { startShapeJob } from './shape-worker';
 
-export interface GenerationSettings { parameters: Parameters; shape: ShapeOptions; source: SourceImage | null; enabled: boolean; minimum: number; inverted: boolean; mode: MappingMode; options: ColorMappingOptions }
+export interface GenerationSettings { parameters: Parameters; shape: ShapeOptions; source: SourceImage | null; enabled: boolean; minimum: number; inverted: boolean; mode: MappingMode; options: ColorMappingOptions; placement?: ImagePlacement }
 export interface GeneratedDesign { parameters: Parameters; heightMap: HeightMap | null; colors: ColorMappingResult | null; elapsedMs: number; changed: boolean }
 
 export default function useDesignGeneration(settings: GenerationSettings, committed: Parameters, editor: PinEditor) {
@@ -53,9 +54,9 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         const retained = changed ? [] : overrides;
         let heightMap: HeightMap | null = null, colors: ColorMappingResult | null = null;
         if (settings.enabled && settings.source) {
-          if (settings.mode === 'height') heightMap = mapImageToPins(settings.source, parameters, settings.minimum, settings.inverted);
+          if (settings.mode === 'height') heightMap = mapImageToPins(settings.source, parameters, settings.minimum, settings.inverted, settings.placement);
           else {
-            const pixels = sampleImagePixels(settings.source, parameters);
+            const pixels = sampleImagePixels(settings.source, parameters, settings.placement);
             if (settings.mode === 'height-color') heightMap = layoutPixelsToHeights(pixels, settings.minimum, parameters.extension, settings.inverted);
             const task = startColorMapping({ ...settings.options, rgb: layoutPixelsToRGB(pixels), base, overrides: retained });
             cancel = task.cancel;
