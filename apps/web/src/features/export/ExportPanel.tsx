@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Group, NumberInput, SegmentedControl } from '@mantine/core';
-import { type Parameters } from '../pin-design/model';
+import { getMetrics, type Parameters } from '../pin-design/model';
 import { type MaterialSelection, type ModelMaterials } from '../filaments/materials';
 import { BAMBU_PROFILE, buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport, type ExportFormat, type ExportMode, type ExportOptions } from './export-request';
 import { fetchExport } from './export-client';
@@ -26,8 +26,10 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const downloadUrls = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const validation = blockedReason || validateExport(parameters, heights, options);
-  const bambuValidation = validation || validateExport(parameters, heights, options, '3mf');
+  const measurements = useMemo(() => getMetrics(parameters), [parameters]);
+  const validation = useMemo(() => blockedReason || validateExport(parameters, heights, options, undefined, measurements), [blockedReason, parameters, heights, options, measurements]);
+  const bambuValidation = useMemo(() => validation || validateExport(parameters, heights, options, '3mf', measurements), [validation, parameters, heights, options, measurements]);
+  const stlValidation = useMemo(() => validation || validateExport(parameters, heights, options, 'stl', measurements), [validation, parameters, heights, options, measurements]);
 
   useEffect(() => {
     mounted.current = true;
@@ -63,7 +65,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
   }
 
   async function exportModel(format: ExportFormat) {
-    if (controller.current || validation) return;
+    if (controller.current || (format === 'stl' ? stlValidation : bambuValidation)) return;
     const requestController = new AbortController();
     controller.current = requestController;
     setBusy(format);
@@ -100,8 +102,8 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
     <section className="export-panel controls-panel" aria-label="Print export" aria-busy={busy !== null}>
       <div className="controls-heading"><div className="section-title"><h2>Print export</h2><InfoPopover label="Export help">
         <p>Fixed: pins joined to the base in one printable sculpture. Detachable: plate 1 contains only the centered socket base. Upright pins start on plate 2, with additional pin-only plates as needed. The preview stays assembled.</p>
-        <p>Clearance adds to the socket diameter. Minimum floor: 1 mm; walls and edges: 0.8 mm. Use a physical fit sample to calibrate clearance.</p>
-        <p>5 mm bed margins, diameter + 4 mm pin separation. The server determines the actual plate count.</p>
+        <p>Sockets follow the pin shape and rotation. Socket clearance of 0.2 mm offsets each wall outward by 0.1 mm, with rounded outer corners. Minimum floor: 1 mm; walls and edges: 0.8 mm. Use a physical fit sample to calibrate clearance.</p>
+        <p>5 mm bed margins and 4 mm separation between actual pin footprints. The server determines the actual plate count.</p>
         <p>3MF printer: {BAMBU_PROFILE.name} · 256 × 256 mm bed · 250 mm profile height. Uses the 0.20mm Standard X1C preset; verify material profiles and filament assignments in Bambu Studio. STL remains printer-independent.</p>
       </InfoPopover></div><span>03 / EXPORT</span></div>
       <div className="export-settings">
@@ -118,8 +120,9 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
         {(parameters.layout?.pins.length ?? parameters.columns * parameters.rows) >= 2500 && <p className="field-help">Dense exports can take a minute. STL may require several GB of memory; use fewer pins on memory-constrained computers.</p>}
         {validation && <p id="export-block-reason" className="export-blocked" role="status">Export blocked: {validation}</p>}
         {!validation && bambuValidation && <p id="bambu-block-reason" className="export-blocked" role="status">3MF blocked: {bambuValidation}</p>}
+        {!validation && stlValidation && <p id="stl-block-reason" className="export-blocked" role="status">STL blocked: {stlValidation}</p>}
         <div className="export-actions">
-          <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!validation} aria-describedby={validation ? 'export-block-reason' : undefined}>Download STL</Button>
+          <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!stlValidation} aria-describedby={validation ? 'export-block-reason' : stlValidation ? 'stl-block-reason' : undefined}>Download STL</Button>
           <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!bambuValidation} aria-describedby={validation ? 'export-block-reason' : bambuValidation ? 'bambu-block-reason' : undefined}>Download Bambu 3MF</Button>
         </div>
         <div aria-live="polite" role="status">
@@ -129,7 +132,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
         {error && <Alert color="red" title="Export failed">
           {error}
           <Group gap="xs" mt="sm">
-            <Button variant="light" size="xs" onClick={() => void exportModel(failedFormat)} disabled={busy !== null || !!validation}>Retry export</Button>
+            <Button variant="light" size="xs" onClick={() => void exportModel(failedFormat)} disabled={busy !== null || !!(failedFormat === 'stl' ? stlValidation : bambuValidation)}>Retry export</Button>
             <Button variant="subtle" size="xs" onClick={() => setError(null)}>Clear error</Button>
           </Group>
         </Alert>}

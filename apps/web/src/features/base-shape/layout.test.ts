@@ -10,17 +10,37 @@ describe('shape-owned layouts', () => {
     expect(first.layout.pins.every(pin => Math.abs(pin.x) + 1 + 5 <= 60 && Math.abs(pin.y) + 1 + 5 <= 50)).toBe(true);
     expect(samePins(first.layout, generateLayout(DEFAULTS, DEFAULT_SHAPE).layout)).toBe(true);
   });
+  it('accepts polygon footprints when the circumcircle would not fit', () => {
+    const parameters = { ...DEFAULTS, width: 1.5, depth: 1.5, pinShape: 'square' as const };
+    const shape = { ...DEFAULT_SHAPE, padding: 0 };
+    expect(() => generateLayout({ ...parameters, pinShape: 'round' }, shape)).toThrow(/No pins/);
+    expect(generateLayout(parameters, shape).layout.pins).toEqual([{ id: 'g:0:0', x: 0, y: 0 }]);
+    expect(() => generateLayout({ ...parameters, pinRotation: 45 }, shape)).toThrow(/No pins/);
+  });
+  it('uses asymmetric triangle bounds without recentering the integer grid', () => {
+    const parameters = { ...DEFAULTS, width: 4, depth: 3, spacing: 1, pinShape: 'triangle' as const };
+    const result = generateLayout(parameters, { ...DEFAULT_SHAPE, padding: 0 });
+    expect(result.layout.pins).toEqual([
+      { id: 'g:-1:-1', x: -1, y: -1 }, { id: 'g:-1:0', x: 0, y: -1 }, { id: 'g:-1:1', x: 1, y: -1 },
+      { id: 'g:0:-1', x: -1, y: 0 }, { id: 'g:0:0', x: 0, y: 0 }, { id: 'g:0:1', x: 1, y: 0 },
+    ]);
+    expect(generateLayout({ ...parameters, pinRotation: 360 }, { ...DEFAULT_SHAPE, padding: 0 }).layout.pins).toEqual(result.layout.pins);
+  });
+  it.each([{ pinShape: 'hexagon' }, { pinRotation: 361 }, { pinRotation: NaN }])('rejects invalid pin geometry %o', changes => {
+    expect(() => generateLayout({ ...DEFAULTS, ...changes } as typeof DEFAULTS, DEFAULT_SHAPE)).toThrow(/shape|rotation/i);
+  });
   it.each(['circle', 'ellipse', 'rounded'] as const)('clips %s without changing spacing or diameter', preset => {
     const result = generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, preset });
     expect(result.layout.pins.length).toBeGreaterThan(0);
     expect(result.layout.regions[0].outer.length).toBeGreaterThanOrEqual(64);
     expect(result.layout.pins.every(pin => pin.x % 5 === 0 && pin.y % 5 === 0)).toBe(true);
   });
-  it('rejects zero pins, invalid corners, excessive candidates and pins', () => {
-    expect(() => generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, padding: 100 })).toThrow(/No pins/);
-    expect(() => generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, preset: 'rounded', radius: 60 })).toThrow(/radius/);
-    expect(() => generateLayout({ ...DEFAULTS, spacing: 0.001 }, DEFAULT_SHAPE)).toThrow(/candidate/);
-    expect(() => generateLayout({ ...DEFAULTS, spacing: 0.5 }, DEFAULT_SHAPE)).toThrow(/10,000/);
+  it.each(['round', 'square', 'triangle'] as const)('preserves zero-pin and complexity guards for %s', pinShape => {
+    const parameters = { ...DEFAULTS, pinShape };
+    expect(() => generateLayout(parameters, { ...DEFAULT_SHAPE, padding: 100 })).toThrow(/No pins/);
+    expect(() => generateLayout(parameters, { ...DEFAULT_SHAPE, preset: 'rounded', radius: 60 })).toThrow(/radius/);
+    expect(() => generateLayout({ ...parameters, spacing: 0.001 }, DEFAULT_SHAPE)).toThrow(/candidate/);
+    expect(() => generateLayout({ ...parameters, spacing: 0.5 }, DEFAULT_SHAPE)).toThrow(/10,000/);
   });
   it('fills transparent interior gaps while keeping separate outer contours and their foreground dimensions', () => {
     const image: ShapeImage = { width: 12, height: 7, pixels: new Uint8ClampedArray(12 * 7 * 4) };

@@ -9,6 +9,8 @@ import { createPinInteraction, type PreviewEditing } from './pin-interaction';
 import { createSelectionOutline } from './selection-outline';
 import { createBaseGeometry } from '../base-shape/base-geometry';
 import type { Layout } from '../base-shape/layout';
+import { createPinGeometry } from '../pin-shape/preview-geometry';
+import type { PinShape } from '../pin-shape/geometry';
 export type { PreviewEditing } from './pin-interaction';
 
 export type ViewAction = 'reset' | 'top' | 'fit';
@@ -60,7 +62,8 @@ export function createPreview(container: HTMLDivElement): Preview {
   const baseEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
   base.add(baseEdges);
 
-  const pinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16);
+  let lastPinShape: PinShape = 'round';
+  let pinGeometry = createPinGeometry(lastPinShape);
   const pinMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.pins, roughness: 0.32, metalness: 0.28 });
   const pins = new THREE.InstancedMesh(pinGeometry, pinMaterial, 10000);
   pins.count = 0;
@@ -155,6 +158,14 @@ export function createPreview(container: HTMLDivElement): Preview {
   }
 
   function update(parameters: Parameters, heights?: Float32Array) {
+    const pinShape = parameters.pinShape ?? 'round';
+    if (pinShape !== lastPinShape) {
+      const previousGeometry = pinGeometry;
+      pinGeometry = createPinGeometry(pinShape);
+      pins.geometry = pinGeometry;
+      lastPinShape = pinShape;
+      previousGeometry.dispose();
+    }
     if (parameters.layout !== lastLayout || parameters.layout && parameters.thickness !== lastThickness) {
       baseGeometry.dispose(); edgesGeometry.dispose();
       baseGeometry = parameters.layout ? createBaseGeometry(parameters.layout, parameters.thickness) : new THREE.BoxGeometry(1, 1, 1);

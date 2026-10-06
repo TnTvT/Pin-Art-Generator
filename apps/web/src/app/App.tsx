@@ -11,6 +11,7 @@ import { DEFAULTS, formatDimension, getMetrics, getWarnings, pinCount, type Para
 import { DEFAULT_SHAPE, generateLayout, type ShapeOptions } from '../features/base-shape/layout';
 import ShapeControls from '../features/base-shape/ShapeControls';
 import ShapeNumberField from '../features/base-shape/ShapeNumberField';
+import PinShapeControls from '../features/pin-shape/PinShapeControls';
 import useDesignGeneration, { type GeneratedDesign, type GenerationSettings } from '../features/base-shape/useDesignGeneration';
 import { DEFAULT_MODEL_MATERIALS, materialKey } from '../features/filaments/materials';
 import usePinEditor from '../features/pin-editing/usePinEditor';
@@ -63,8 +64,8 @@ export default function App() {
   const pinColors = useMemo(() => editor.committed.pinSelections.map(material => material.color), [editor.committed.pinSelections]);
   const materialSelections = useMemo(() => [editor.state.base, ...editor.committed.pinSelections], [editor.state.base, editor.committed.pinSelections]);
   const materialsCount = useMemo(() => new Set(materialSelections.map(materialKey)).size, [materialSelections]);
-  const metrics = getMetrics(parameters);
-  const warnings = getWarnings(parameters);
+  const metrics = useMemo(() => getMetrics(parameters), [parameters]);
+  const warnings = useMemo(() => getWarnings(parameters, metrics), [parameters, metrics]);
   const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : mapping.error || (updating
     ? 'Design processing is still running. Wait before exporting.'
     : image.error
@@ -168,7 +169,7 @@ export default function App() {
                 <Accordion.Item value="base">
                   <Accordion.Control><span className="section-heading"><span>Base plate</span><span>Foundation</span></span></Accordion.Control>
                   <Accordion.Panel>
-                    <ShapeControls key={resetVersion} value={shape} onChange={setShape} layout={parameters.layout!} diameter={parameters.diameter} />
+                    <ShapeControls key={resetVersion} value={shape} onChange={setShape} layout={parameters.layout!} diameter={parameters.diameter} pinShape={parameters.pinShape} pinRotation={parameters.pinRotation} />
                     <div className="field-pair">{field('width', shape.source === 'preset' && shape.preset === 'circle' ? 'Base diameter' : 'Base width')}
                       {shape.source === 'image' ? <NumberInput label="Base depth" size="xs" suffix=" mm" value={parameters.depth} min={0.01} clampBehavior="none" disabled={!parameters.layout?.imageBounds}
                         onChange={depth => { if (typeof depth === 'number' && depth > 0 && !editor.isDragging) changeParameter('width', depth * parameters.width / parameters.depth); }} />
@@ -181,10 +182,11 @@ export default function App() {
                 <Accordion.Item value="pins">
                   <Accordion.Control><span className="section-heading"><span>Pin array</span><Badge color="teal" variant="light" size="sm">{metrics.count.toLocaleString('en-US')} pins</Badge></span></Accordion.Control>
                   <Accordion.Panel>
+                    <PinShapeControls key={`pin-shape-${resetVersion}`} parameters={requested} disabled={editor.isDragging} onChange={value => setRequested(current => ({ ...current, ...value }))} />
                     <div className="parameter-info"><InfoPopover label="Grid and height help"><p>Pins use a centered square grid inside the contour. Spacing is center to center. Edge padding measures from the pin's outer wall to every boundary. Layout changes require confirmation when pins have manual edits.</p></InfoPopover></div>
                     <ShapeNumberField key={resetVersion} label="Edge padding" value={shape.padding} onChange={padding => setShape(current => ({ ...current, padding }))} />
                     {field('spacing', 'Pin spacing', false, 20)}
-                    {field('diameter', 'Pin diameter', false, 10)}
+                    {field('diameter', 'Pin size', false, 10)}
                     {(!image.source || !enabled || mode === 'color') && field('extension', 'Generated pin height', false, 80)}
                   </Accordion.Panel>
                 </Accordion.Item>
@@ -203,7 +205,7 @@ export default function App() {
             <div className="metrics" aria-label="Design measurements">
               <div className="metric"><span>Total pins</span><strong>{metrics.count.toLocaleString('en-US')}</strong></div>
               <div className="metric"><span>Pin footprint</span><strong>{formatDimension(metrics.width)} × {formatDimension(metrics.depth)} <em>mm</em></strong></div>
-              <div className="metric"><span>Pin clearance</span><strong>{formatDimension(metrics.clearance)} <em>mm</em></strong></div>
+              <div className="metric"><span>Pin clearance</span><strong>{metrics.clearance === null ? '—' : <>{formatDimension(metrics.clearance)} <em>mm</em></>}</strong></div>
             </div>
             <div className="design-feedback" role="status" aria-live="polite">
               {mapping.error ? <Alert color="red" title="Settings not applied">{mapping.error}<Button size="xs" variant="subtle" onClick={mapping.retry}>Retry settings</Button></Alert> : updating ? <span>Updating design…</span> : warnings.length > 0 ? warnings.map((warning) => <Alert key={warning} color="orange" title="Check your dimensions">{warning}</Alert>) : <span className="fit-message"><span aria-hidden="true">✓</span> Your pin array fits within the base. · {Math.round(applied.current.design?.elapsedMs ?? 0)} ms</span>}

@@ -52,6 +52,60 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it('keeps manual edits, selection, cached inputs and history when shape or rotation preserves positions', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await user.click(screen.getByText('Triangle', { exact: true }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Pin rotation' }), { target: { value: '30' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+    expect(screen.getByRole('textbox', { name: 'Pin rotation' })).toHaveValue('30°');
+    await openEditor(user, 'Height');
+    expect(screen.getByLabelText('Selected height')).toHaveValue('35 mm');
+    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.parameters.pinShape).toBe('triangle');
+    expect(request.parameters.pinRotation).toBe(30);
+    expect(request.heights[0]).toBe(35);
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+  });
+  it('confirms changed shape footprints and restores shape controls on cancellation', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    fireEvent.change(screen.getByLabelText('Edge padding'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Base width'), { target: { value: '16' } });
+    fireEvent.change(screen.getByLabelText('Base depth'), { target: { value: '16' } });
+    fireEvent.change(screen.getByLabelText('Pin size'), { target: { value: '6.5' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await user.click(screen.getByText('Square', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Change pin layout?' })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Keep layout' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    expect(screen.getByLabelText('Round')).toBeChecked();
+    expect(screen.queryByRole('textbox', { name: 'Pin rotation' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35');
+    await user.click(screen.getByText('Square', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Change pin layout?' })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Change layout' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(screen.getByText(/0 selected/)).toBeInTheDocument();
+  });
   it('maps and exports one height range while keeping manual heights and invalid drafts intact', async () => {
     const user = userEvent.setup();
     vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));

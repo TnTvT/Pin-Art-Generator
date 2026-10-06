@@ -37,8 +37,8 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         }
         const start = performance.now();
         const source = settings.shape.source === 'image' ? settings.source : null;
-        const { width, depth, spacing, diameter } = settings.parameters;
-        const key = JSON.stringify({ width, depth, spacing, diameter, shape: settings.shape });
+        const { width, depth, spacing, diameter, pinShape, pinRotation } = settings.parameters;
+        const key = JSON.stringify({ width, depth, spacing, diameter, pinShape: pinShape ?? 'round', pinRotation: pinShape === 'round' || !pinShape ? 0 : (pinRotation ?? 0) % 360, shape: settings.shape });
         let shapeResult = shapeCache.current?.key === key && shapeCache.current.source === source ? shapeCache.current.result : null;
         if (!shapeResult) {
           const shapeTask = startShapeJob({ parameters: settings.parameters, shape: settings.shape, image: source ? readShapeImage(source) : undefined });

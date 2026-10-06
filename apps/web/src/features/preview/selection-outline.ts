@@ -47,6 +47,7 @@ export function createSelectionOutline(renderer: WebGLRenderer, geometry: Buffer
 
   return {
     update(pins: InstancedMesh, selected: ReadonlySet<number>) {
+      mask.geometry = pins.geometry;
       const matrix = new Matrix4();
       let count = 0;
       for (const index of selected) {

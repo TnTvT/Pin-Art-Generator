@@ -80,6 +80,31 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('replaces pin and outline geometry without replacing the camera, canvas or printable colors', () => {
+    preview.setPinColors(Array<string>(320).fill('#ff0088'));
+    preview.setEditing({ heightMode: 'set', selection: new Set([0]), active: 0,
+      onSelect: vi.fn(), onDragStart: () => true, onDragDelta: vi.fn(), onDragEnd: vi.fn(), onDragCancel: vi.fn() });
+    preview.setView('top');
+    const camera = renderedCamera() as OrthographicCamera;
+    camera.zoom = 2;
+    const pins = renderedScene().children.find(child => child instanceof InstancedMesh) as InstancedMesh;
+    const original = pins.geometry;
+    const dispose = vi.spyOn(original, 'dispose');
+    preview.update({ ...DEFAULTS, pinShape: 'triangle', pinRotation: 30 });
+    expect(renderedCamera()).toBe(camera);
+    expect(camera.zoom).toBe(2);
+    expect(pins.geometry).not.toBe(original);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(canvas.parentElement!.querySelector('canvas')).toBe(canvas);
+    const color = new Color(); pins.getColorAt(0, color);
+    expect(color.getHexString()).toBe('ff0088');
+    const mask = (renderer.render.mock.calls.slice().reverse().find(([scene]) => (scene as Scene).children?.some(child => child.name === 'Selected pin outline mask'))![0] as Scene).children[0] as InstancedMesh;
+    expect(mask.geometry).toBe(pins.geometry);
+    expect(mask.count).toBe(1);
+    const polygon = pins.geometry;
+    preview.update({ ...DEFAULTS, pinShape: 'triangle', pinRotation: 90 });
+    expect(pins.geometry).toBe(polygon);
+  });
   it('renders per-instance printable colors with separate selection overlays', () => {
     preview.setPinColors(Array.from({ length: 320 }, (_, index) => index === 1 ? '#ff0000' : '#2dada3'));
     preview.setEditing({ heightMode: 'set', selection: new Set([0, 1]), active: 1,

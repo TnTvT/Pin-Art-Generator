@@ -28,6 +28,13 @@ beforeEach(() => {
 });
 
 describe('export panel', () => {
+  it('blocks tangent fixed STL before submitting while keeping round 3MF available', () => {
+    renderWithProviders(<Panel parameters={{ ...DEFAULTS, spacing: DEFAULTS.diameter }} />);
+    expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled();
+    expect(screen.getByText(/STL blocked:.*positive gap/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('leaves material editing to the dedicated editor panel', () => {
     renderWithProviders(<ExportPanel parameters={DEFAULTS} materials={DEFAULT_MODEL_MATERIALS} />);
     expect(screen.queryByRole('combobox', { name: 'Base filament' })).not.toBeInTheDocument();

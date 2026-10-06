@@ -35,14 +35,14 @@ describe('workspace shape flow', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '10' } });
     await waitFor(() => expect(screen.getByTestId('preview-parameters')).toHaveTextContent('99 pins'));
-    await user.clear(screen.getByLabelText('Pin diameter'));
+    await user.clear(screen.getByLabelText('Pin size'));
     const baseToggle = screen.getByRole('button', { name: /Base plate/ });
     await user.click(baseToggle);
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
     expect(baseToggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: /Pin array/ })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByLabelText('Pin spacing')).toHaveValue('10 mm');
-    expect(screen.getByLabelText('Pin diameter')).toHaveValue('');
+    expect(screen.getByLabelText('Pin size')).toHaveValue('');
     expect(screen.getByTestId('preview-parameters')).toHaveTextContent('99 pins');
   });
 

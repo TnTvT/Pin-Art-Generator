@@ -22,6 +22,19 @@ beforeEach(() => {
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('regenerates shape footprints and rotation without clearing unchanged pin IDs or edit baselines', async () => {
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input: settings } });
+    await waitFor(() => expect(result.current.design?.changed).toBe(false));
+    rerender({ input: { ...settings, parameters: { ...DEFAULTS, pinShape: 'triangle', pinRotation: 30 } } });
+    await waitFor(() => expect(result.current.design?.parameters.pinShape).toBe('triangle'));
+    expect(result.current.design?.changed).toBe(false);
+    expect(startShapeJob).toHaveBeenCalledTimes(2);
+    rerender({ input: { ...settings, parameters: { ...DEFAULTS, pinShape: 'triangle', pinRotation: 90 } } });
+    await waitFor(() => expect(result.current.design?.parameters.pinRotation).toBe(90));
+    expect(startShapeJob).toHaveBeenCalledTimes(3);
+    expect(result.current.design?.changed).toBe(false);
+    expect(result.current.design?.parameters.layout?.pins).toEqual(committed.layout.pins);
+  });
   it('preserves generated groups across manual colors, base edits and undo without rematching', async () => {
     const materials = Array(committed.layout.pins.length).fill(DEFAULT_MODEL_MATERIALS.pins);
     const colors = { materials, palette: [{ material: DEFAULT_MODEL_MATERIALS.pins, count: materials.length }], notice: null };

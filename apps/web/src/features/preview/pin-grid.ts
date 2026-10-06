@@ -1,9 +1,10 @@
 import { InstancedMesh, Object3D } from 'three';
 import { pinCount, pinPosition, type Parameters } from '../pin-design/model';
+import { effectivePinRotation } from '../pin-shape/geometry';
 
 export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, heights?: Float32Array) {
   const instance = new Object3D();
-  instance.rotation.x = Math.PI / 2;
+  instance.rotation.set(Math.PI / 2, 0, effectivePinRotation(parameters) * Math.PI / 180, 'ZYX');
   pins.count = pinCount(parameters);
   for (let index = 0; index < pins.count; index++) {
     const position = pinPosition(parameters, index);

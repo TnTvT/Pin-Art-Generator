@@ -6,6 +6,14 @@ import { DEFAULT_SHAPE, generateLayout } from './layout';
 import { createEditorState, editorReducer, hasPinEdits } from '../pin-editing/model';
 
 describe('shape export snapshots', () => {
+  it('keeps explicit layout cross-sections in the export contract', () => {
+    const input = { ...DEFAULTS, pinShape: 'triangle' as const, pinRotation: 30 };
+    const parameters = { ...input, ...generateLayout(input, DEFAULT_SHAPE) };
+    const request = buildExportRequest(parameters, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf');
+    expect(request.parameters.pinShape).toBe('triangle');
+    expect(request.parameters.pinRotation).toBe(30);
+    expect(request.layout?.pins).toEqual(parameters.layout.pins);
+  });
   it.each(['rectangle', 'rounded', 'circle', 'ellipse'] as const)('sends explicit %s geometry without legacy counts or image metadata', preset => {
     const parameters = { ...DEFAULTS, ...generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, preset }) };
     parameters.layout.imageBounds = [0, 0, 100, 100];
