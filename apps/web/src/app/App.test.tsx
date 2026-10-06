@@ -62,11 +62,11 @@ describe('workspace shape flow', () => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
     fireEvent.change(screen.getByLabelText('Base width'), { target: { value: '50' } });
-    await waitFor(() => expect(screen.getByTestId('preview-parameters')).toHaveTextContent('119 pins'));
+    await waitFor(() => expect(screen.getByTestId('preview-parameters')).toHaveTextContent('275 pins'));
     const pinsToggle = screen.getByRole('button', { name: /Pin array/ });
     await user.click(pinsToggle);
     await user.click(screen.getByRole('button', { name: 'Reset parameters' }));
-    await waitFor(() => expect(screen.getByTestId('preview-parameters')).toHaveTextContent('357 pins'));
+    await waitFor(() => expect(screen.getByTestId('preview-parameters')).toHaveTextContent('775 pins'));
     expect(screen.getByLabelText('Base width')).toHaveValue('120 mm');
     expect(pinsToggle).toHaveAttribute('aria-expanded', 'false');
   });

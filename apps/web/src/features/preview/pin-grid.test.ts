@@ -19,13 +19,13 @@ describe('pin instance placement', () => {
     expect(mesh.count).toBe(2);
     const matrix = new Matrix4();
     mesh.getMatrixAt(0, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([7.5, 0, 7]);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([5.25, 0, 7]);
     expect(new Vector3(0, -.5, 0).applyMatrix4(matrix).z).toBeCloseTo(3);
     expect(new Vector3(0, .5, 0).applyMatrix4(matrix).z).toBeCloseTo(11);
     const radial = new Vector3(.5, 0, 0).applyMatrix4(matrix).sub(new Vector3().setFromMatrixPosition(matrix));
     expect(radial.x).toBeCloseTo(0); expect(radial.y).toBeCloseTo(1);
     mesh.getMatrixAt(1, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([-2.5, 0, 5]);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([-1.75, 0, 5]);
     updatePinInstances(mesh, parameters, undefined, [0]);
     mesh.getMatrixAt(0, matrix);
     expect(matrix.elements[0]).toBeCloseTo(2);
@@ -36,8 +36,8 @@ describe('pin instance placement', () => {
     const last = new Matrix4();
     mesh.getMatrixAt(0, first);
     mesh.getMatrixAt(3, last);
-    expect(new Vector3().setFromMatrixPosition(first).toArray()).toEqual([-2.5, -2.5, 13]);
-    expect(new Vector3().setFromMatrixPosition(last).toArray()).toEqual([2.5, 2.5, 13]);
+    expect(new Vector3().setFromMatrixPosition(first).toArray()).toEqual([-1.75, -1.75, 13]);
+    expect(new Vector3().setFromMatrixPosition(last).toArray()).toEqual([1.75, 1.75, 13]);
     expect(new Vector3(0, -0.5, 0).applyMatrix4(first).z).toBeCloseTo(3);
     expect(new Vector3(0, 0.5, 0).applyMatrix4(first).z).toBeCloseTo(23);
   });

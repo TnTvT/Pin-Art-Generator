@@ -38,7 +38,7 @@ export default function App() {
   const [pendingDesign, setPendingDesign] = useState<{ job: object; design: GeneratedDesign; settings: GenerationSettings } | null>(null);
   const image = useSourceImage(true);
   const imagePlacement = useImagePlacement(image.source);
-  const [minimum, setMinimum] = useState(2);
+  const [minimum, setMinimum] = useState(10);
   const [inverted, setInverted] = useState(false);
   const [mode, setMode] = useState<MappingMode>('height');
   const [sampling, setSampling] = useState<ImageSampling>(DEFAULT_IMAGE_SAMPLING);
@@ -105,7 +105,7 @@ export default function App() {
     setShape(DEFAULT_SHAPE);
     setResetVersion(version => version + 1);
     setDraft({ ...DEFAULTS });
-    setMinimum(2);
+    setMinimum(10);
     setInverted(false);
   }
 

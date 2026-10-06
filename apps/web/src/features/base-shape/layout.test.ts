@@ -5,8 +5,8 @@ import { DEFAULT_SHAPE, generateLayout, regionIndex, samePins, traceImage, type 
 describe('shape-owned layouts', () => {
   it('fills the default rectangle deterministically with wall padding', () => {
     const first = generateLayout(DEFAULTS, DEFAULT_SHAPE);
-    expect(first.layout.pins).toHaveLength(357);
-    expect(first.layout.pins[0]).toEqual({ id: 'g:-8:-10', x: -50, y: -40 });
+    expect(first.layout.pins).toHaveLength(775);
+    expect(first.layout.pins[0]).toEqual({ id: 'g:-12:-15', x: -52.5, y: -42 });
     expect(first.layout.pins.every(pin => Math.abs(pin.x) + 1 + 5 <= 60 && Math.abs(pin.y) + 1 + 5 <= 50)).toBe(true);
     expect(samePins(first.layout, generateLayout(DEFAULTS, DEFAULT_SHAPE).layout)).toBe(true);
   });
@@ -33,7 +33,7 @@ describe('shape-owned layouts', () => {
     const result = generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, preset });
     expect(result.layout.pins.length).toBeGreaterThan(0);
     expect(result.layout.regions[0].outer.length).toBeGreaterThanOrEqual(64);
-    expect(result.layout.pins.every(pin => pin.x % 5 === 0 && pin.y % 5 === 0)).toBe(true);
+    expect(result.layout.pins.every(pin => pin.x % DEFAULTS.spacing === 0 && pin.y % DEFAULTS.spacing === 0)).toBe(true);
   });
   it.each(['round', 'square', 'triangle'] as const)('preserves zero-pin and complexity guards for %s', pinShape => {
     const parameters = { ...DEFAULTS, pinShape };
@@ -49,7 +49,7 @@ describe('shape-owned layouts', () => {
       if (foreground) image.pixels.set([255, 0, 0, 255], (vertical * 12 + horizontal) * 4);
     }
     const shape = { ...DEFAULT_SHAPE, source: 'image' as const, padding: 0 };
-    const result = generateLayout(DEFAULTS, shape, image);
+    const result = generateLayout({ ...DEFAULTS, spacing: 5 }, shape, image);
     expect(result.layout.regions).toHaveLength(2);
     expect(result.layout.regions.flatMap(region => region.holes)).toHaveLength(0);
     expect(result.depth).toBeCloseTo(70);
@@ -58,7 +58,7 @@ describe('shape-owned layouts', () => {
     expect(fits(-25, 0, 1)).toBe(true);
     expect(result.layout.pins.some(pin => pin.x === -25 && pin.y === 0)).toBe(true);
     expect(result.layout.imageBounds).toEqual([0, 0, 12, 7]);
-    expect(samePins(result.layout, generateLayout(DEFAULTS, shape, image).layout)).toBe(true);
+    expect(samePins(result.layout, generateLayout({ ...DEFAULTS, spacing: 5 }, shape, image).layout)).toBe(true);
   });
   it.each(['transparency', 'background'] as const)('uses only the outer silhouette for %s detection, without overlapping nested islands', detection => {
     const image: ShapeImage = { width: 11, height: 11, pixels: new Uint8ClampedArray(11 * 11 * 4) };
@@ -66,7 +66,7 @@ describe('shape-owned layouts', () => {
       const foreground = horizontal < 2 || horizontal > 8 || vertical < 2 || vertical > 8 || horizontal === 5 && vertical === 5;
       image.pixels.set(foreground ? [255, 0, 0, 255] : [255, 255, 255, detection === 'background' ? 255 : 0], (vertical * 11 + horizontal) * 4);
     }
-    const result = generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, source: 'image', padding: 0, detection }, image);
+    const result = generateLayout({ ...DEFAULTS, spacing: 5 }, { ...DEFAULT_SHAPE, source: 'image', padding: 0, detection }, image);
     expect(result.layout.regions).toHaveLength(1);
     expect(result.layout.regions[0].holes).toEqual([]);
     expect(result.layout.pins.some(pin => pin.x === 0 && pin.y === 0)).toBe(true);

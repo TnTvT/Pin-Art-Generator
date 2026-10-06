@@ -112,7 +112,7 @@ describe('print validation', () => {
     expect(validateExport({ ...DEFAULTS, thickness: 2.9 }, undefined, options)).toMatch(/floor/i);
     expect(validateExport({ ...DEFAULTS, spacing: 2.9 }, undefined, options)).toMatch(/wall/i);
     expect(validateExport({ ...DEFAULTS, spacing: 3 }, undefined, options)).toBeNull();
-    expect(validateExport({ ...DEFAULTS, width: 98 }, undefined, options)).toMatch(/edge/i);
+    expect(validateExport({ ...DEFAULTS, width: 69.5 }, undefined, options)).toMatch(/edge/i);
     expect(validateExport({ ...DEFAULTS, thickness: 0.5 }, undefined, DEFAULT_EXPORT_OPTIONS)).toBeNull();
   });
 

@@ -49,7 +49,7 @@ export const DEFAULTS: Parameters = {
   thickness: 3,
   columns: 20,
   rows: 16,
-  spacing: 5,
+  spacing: 3.5,
   diameter: 2,
   extension: 20,
 };

@@ -166,14 +166,14 @@ describe('preview camera projection', () => {
     const color = new Color(); square.getColorAt(1, color);
     expect(color.getHexString()).toBe('ff0088');
     const matrix = new Matrix4(); square.getMatrixAt(1, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([7.5, 0, 7]);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([5.25, 0, 7]);
     const maskScene = renderer.render.mock.calls.slice().reverse().find(([scene]) => (scene as Scene).children?.some(child => child.name === 'Selected pin outline mask'))![0] as Scene;
     const masks = maskScene.children as InstancedMesh[];
     expect(masks).toHaveLength(3);
     expect(masks.reduce((sum, mask) => sum + mask.count, 0)).toBe(3);
     const squareMask = masks.find(mask => mask.geometry === square.geometry)!;
     expect(squareMask.count).toBe(1); squareMask.getMatrixAt(0, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).x).toBe(7.5);
+    expect(new Vector3().setFromMatrixPosition(matrix).x).toBe(5.25);
     const removed = groups.filter(group => group !== square);
     const disposal = removed.map(group => [vi.spyOn(group, 'dispose'), vi.spyOn(group.geometry, 'dispose')]);
     const maskDisposal = masks.filter(mask => mask !== squareMask).map(mask => vi.spyOn(mask, 'dispose'));

@@ -3,7 +3,7 @@ import { DEFAULTS, getMetrics, getPinPositions, getWarnings } from './model';
 
 describe('pin grid measurements', () => {
   it('includes the outer pin diameter in the default footprint', () => {
-    expect(getMetrics(DEFAULTS)).toEqual({ count: 320, width: 97, depth: 77, clearance: 3 });
+    expect(getMetrics(DEFAULTS)).toEqual({ count: 320, width: 68.5, depth: 54.5, clearance: 1.5 });
   });
 
   it('gives a single pin a footprint equal to its diameter', () => {
@@ -33,7 +33,7 @@ describe('pin grid measurements', () => {
 
   it('resolves legacy positions in existing row-major order and IDs', () => {
     expect(getPinPositions({ ...DEFAULTS, rows: 1, columns: 2 })).toEqual([
-      { id: 'R1:C1', x: -2.5, y: 0 }, { id: 'R1:C2', x: 2.5, y: 0 },
+      { id: 'R1:C1', x: -1.75, y: 0 }, { id: 'R1:C2', x: 1.75, y: 0 },
     ]);
   });
 
@@ -69,7 +69,7 @@ describe('layout warnings', () => {
     expect(getWarnings({ ...DEFAULTS, width: 4, depth: 4, columns: 2, rows: 2, spacing: 2 })).toEqual([]);
   });
 
-  it.each([{ width: 96 }, { depth: 76 }])('warns when either footprint dimension exceeds the base: %o', (dimensions) => {
+  it.each([{ width: 68 }, { depth: 54 }])('warns when either footprint dimension exceeds the base: %o', (dimensions) => {
     expect(getWarnings({ ...DEFAULTS, ...dimensions })).toEqual([expect.stringContaining('beyond the base')]);
   });
 

@@ -47,13 +47,13 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 | Base thickness | 3 mm | Positive Z thickness |
 | Corner radius | 10 mm | Rounded rectangle only; 0 to half the shorter side |
 | Edge padding | 5 mm | Minimum gap from pin outer wall to the outer silhouette boundary; nonnegative |
-| Pin spacing | 5 mm | Equal X/Y center spacing, never adjusted automatically |
+| Pin spacing | 3.5 mm | Equal X/Y center spacing, never adjusted automatically |
 | Pin shape | Round | Generation default: Round, Square, or equilateral Triangle; selected pins can override it |
 | Pin size | 2 mm | Positive circumscribed diameter; square diagonal, triangle circumdiameter |
 | Pin rotation | 0° | Polygon-only numeric input/slider, 0–360° counterclockwise around +Z; round remembers but ignores it |
 | Generated pin height | 20 mm | Visible height above base; manual heights may exceed it |
 | Map image to pins | On | Off allows image-only base shaping without height/color generation |
-| Min height / Max height | 2 / 20 mm | One dual-thumb Height range with linked positive, ordered inputs |
+| Min height / Max height | 10 / 20 mm | One dual-thumb Height range with linked positive, ordered inputs |
 | Invert mapping | Off | Height only: dark-tall vs light-tall |
 
 - Generate lattice coordinates at integer multiples of spacing from the base center; sort actual pins by Y then X. Stable IDs encode integer grid coordinates.
@@ -104,7 +104,7 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Lowering the maximum below the current minimum also lowers the minimum. Equal endpoints produce a flat array.
 - Inversion also affects white margins and transparent areas, making them tall in light-tall mode.
 - On preset bases, removing an image restores uniform generated heights and the default pin preset, retaining manual overrides and applying the same atomic material-limit validation.
-- **Reset parameters** restores geometry defaults, minimum 2 mm, and inversion off while retaining the source image. Camera changes remain separate from parameter resets.
+- **Reset parameters** restores geometry defaults, minimum 10 mm, and inversion off while retaining the source image. Camera changes remain separate from parameter resets.
 
 This is brightness mapping, not inference of an object's physical depth from a photograph.
 
