@@ -8,8 +8,9 @@ import manifold3d
 import numpy as np
 
 from .layout import plan_layout
-from .cross_sections import CIRCULAR_SEGMENTS, PinShape, polygon_vertices, socket_footprint
+from .cross_sections import CIRCULAR_SEGMENTS, PinShape, polygon_vertices
 from .schemas import ExportRequest
+from .sliding import guide_base, sliding_pin
 
 
 PIN_CACHE_KEY = "pin-cylinder-64"
@@ -30,6 +31,7 @@ class Part:
 class Plate:
     index: int
     parts: list[Part]
+    separate: bool = False
 
 
 @lru_cache(maxsize=1)
@@ -75,38 +77,9 @@ def build_plates(request: ExportRequest) -> list[Plate]:
     base_key = f"base:{parameters.width!r}:{parameters.depth!r}:{parameters.thickness!r}"
     if request.layout:
         base_key += hashlib.sha256(request.layout.model_dump_json().encode()).hexdigest()
-    if request.mode == "detachable":
-        socket_diameter = parameters.diameter + request.socket.clearance
-        floor = parameters.thickness - request.socket.insertion_depth
-        sockets = {}
-        cutters = []
-        socket_identity = []
-        for pin_index, geometry in enumerate(geometries):
-            if request.layout:
-                horizontal, vertical = request.layout.pins[pin_index].x, request.layout.pins[pin_index].y
-            else:
-                row, column = divmod(pin_index, parameters.columns)
-                horizontal = (column - (parameters.columns - 1) / 2) * parameters.spacing
-                vertical = (row - (parameters.rows - 1) / 2) * parameters.spacing
-            socket_identity.append((geometry.shape, geometry.rotation, horizontal, vertical))
-            if geometry.shape == "round":
-                transform = _transform(
-                    horizontal, vertical,
-                    floor, socket_diameter, request.socket.insertion_depth + 1,
-                )
-                cutters.append(_unit_cylinder().transform(transform[:3]))
-            else:
-                key = (geometry.shape, geometry.rotation)
-                if key not in sockets:
-                    footprint = socket_footprint(geometry.shape, parameters.diameter, geometry.rotation, request.socket.clearance)
-                    socket = manifold3d.CrossSection([np.asarray(footprint.exterior.coords[:-1])], manifold3d.FillRule.EvenOdd).extrude(request.socket.insertion_depth + 1)
-                    _check_solid(socket)
-                    sockets[key] = socket
-                socket = sockets[key]
-                cutters.append(socket.translate((horizontal, vertical, floor)))
-        base = manifold3d.Manifold.batch_boolean([base, *cutters], manifold3d.OpType.Subtract)
-        base_key += f":sockets:{parameters.columns}:{parameters.rows}:{parameters.spacing!r}:{socket_diameter!r}:{request.socket.insertion_depth!r}:64"
-        base_key += f":geometry:{parameters.diameter!r}:{request.socket.clearance!r}:" + hashlib.sha256(repr(socket_identity).encode()).hexdigest()
+    if request.mode == "print-in-place":
+        base = guide_base(request, layouts[0].parts[1:])
+        base_key += f":sliding:{request.sliding.model_dump_json()}:" + hashlib.sha256(repr((parameters.diameter, geometries, layouts[0].parts)).encode()).hexdigest()
     _check_solid(base)
     pins = {geometry.shape: _unit_pin(geometry.shape) for geometry in geometries}
     for pin in pins.values():
@@ -124,14 +97,16 @@ def build_plates(request: ExportRequest) -> list[Plate]:
                 pin_key = PIN_CACHE_KEY if geometry.shape == "round" else f"pin-{geometry.shape}"
                 length = request.heights[pin_index]
                 bottom = parameters.thickness
-                if request.mode == "detachable":
-                    length += request.socket.insertion_depth
-                    bottom = 0
+                diameter = parameters.diameter
+                if request.mode == "print-in-place":
+                    pin = sliding_pin(geometry.shape, diameter, parameters.thickness, length, request.sliding.clearance, request.sliding.head_flare)
+                    pin_key = f"sliding:{geometry.shape}:{diameter!r}:{parameters.thickness!r}:{length!r}:{request.sliding.clearance!r}:{request.sliding.head_flare!r}"
+                    diameter, length, bottom = 1, 1, 0
                 parts.append(Part(
                     placement.name, pin, request.pin_materials[pin_index],
-                    _transform(placement.x, placement.y, bottom, parameters.diameter, length, geometry.rotation), pin_key, pin_index,
+                    _transform(placement.x, placement.y, bottom, diameter, length, geometry.rotation), pin_key, pin_index,
                 ))
-        plates.append(Plate(layout.index, parts))
+        plates.append(Plate(layout.index, parts, request.mode == "print-in-place"))
     return plates
 
 
@@ -184,7 +159,7 @@ def plate_stl(plate: Plate) -> bytes:
         transformed = part.solid.transform(transform[:3])
         _check_solid(transformed)
         transformed_solids.append(transformed)
-    union = manifold3d.Manifold.batch_boolean(transformed_solids, manifold3d.OpType.Add)
+    union = manifold3d.Manifold.compose(transformed_solids) if plate.separate else manifold3d.Manifold.batch_boolean(transformed_solids, manifold3d.OpType.Add)
     _check_solid(union)
     mesh = union.to_mesh64()
     with np.errstate(over="ignore", invalid="ignore"):

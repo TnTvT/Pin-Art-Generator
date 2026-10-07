@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import re
 import zipfile
 from xml.etree import ElementTree as ET
 
@@ -57,25 +58,36 @@ def plate_origin(index: int, count: int, width: float, depth: float) -> np.ndarr
 
 
 def precise_package(data: bytes, components: dict, builds: dict) -> bytes:
-    namespace = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+    object_pattern = re.compile(rb'(<(?:\w+:)?object\b[^>]*\bid="(\d+)"[^>]*>)(.*?)(</(?:\w+:)?object>)', re.DOTALL)
+    component_pattern = re.compile(rb'<(?:\w+:)?component\b[^>]*>')
+    item_pattern = re.compile(rb'<(?:\w+:)?item\b[^>]*\bobjectid="(\d+)"[^>]*>')
+    transform_pattern = re.compile(rb'\btransform="[^"]*"')
+
+    def with_transform(element, matrix):
+        attribute = b'transform="' + " ".join(format(float(value), ".17g") for value in matrix[:3, :].T.flatten()).encode() + b'"'
+        if transform_pattern.search(element):
+            return transform_pattern.sub(lambda _: attribute, element, count=1)
+        return element[:-2] + b' ' + attribute + b'/>' if element.endswith(b'/>') else element[:-1] + b' ' + attribute + b'>'
+
+    def transform_object(match):
+        matrices = components.get(match[2].decode())
+        if matrices is None:
+            return match[0]
+        iterator = iter(matrices)
+        content, count = component_pattern.subn(lambda element: with_transform(element[0], next(iterator)), match[3])
+        if count != len(matrices):
+            raise ValueError("Assembly component transforms must match generated resources")
+        return match[1] + content + match[4]
+
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(data)) as source, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as target:
         for entry in source.infolist():
             content = source.read(entry)
             if entry.filename == "3D/3dmodel.model":
-                parser = ET.iterparse(io.BytesIO(content), events=("start-ns",))
-                for _, (prefix, uri) in parser:
-                    ET.register_namespace(prefix, uri)
-                root = parser.root
-                for object_entry in root.findall(f"{namespace}resources/{namespace}object"):
-                    matrices = components.get(object_entry.attrib["id"], [])
-                    elements = object_entry.findall(f"{namespace}components/{namespace}component")
-                    for element, matrix in zip(elements, matrices, strict=True):
-                        element.set("transform", " ".join(format(float(value), ".17g") for value in matrix[:3, :].T.flatten()))
-                for item in root.findall(f"{namespace}build/{namespace}item"):
-                    matrix = builds[item.attrib["objectid"]]
-                    item.set("transform", " ".join(format(float(value), ".17g") for value in matrix[:3, :].T.flatten()))
-                content = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                content = object_pattern.sub(transform_object, content)
+                content, count = item_pattern.subn(lambda item: with_transform(item[0], builds[item[1].decode()]), content)
+                if count != len(builds):
+                    raise ValueError("Build transforms must match generated resources")
             target.writestr(entry, content)
     return output.getvalue()
 
@@ -137,13 +149,9 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
         build_matrix = np.eye(4)
         build_matrix[:3, 3] = origin
         object_ids = []
-        if request.mode == "fixed":
-            build_matrix[:2, 3] += [BED_WIDTH / 2, BED_DEPTH / 2]
-            object_ids.append(assembly(plate.parts, "Fixed pin sculpture", build_matrix))
-        else:
-            build_matrix[:2, 3] += [(BED_WIDTH - request.plate.width) / 2, (BED_DEPTH - request.plate.depth) / 2]
-            for part in plate.parts:
-                object_ids.append(assembly([part], part.name, build_matrix))
+        build_matrix[:2, 3] += [BED_WIDTH / 2, BED_DEPTH / 2]
+        name = "Fixed pin sculpture" if request.mode == "fixed" else "Print-in-place pin art"
+        object_ids.append(assembly(plate.parts, name, build_matrix))
         for object_id in object_ids:
             instance = ET.SubElement(plate_config, "model_instance")
             metadata(instance, "object_id", object_id)

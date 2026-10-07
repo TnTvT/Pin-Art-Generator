@@ -311,11 +311,11 @@ describe('preview editing toolbar', () => {
     expect(screen.getByText('32,20')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Apply height' }));
     expect(screen.getByText('32,32')).toBeInTheDocument();
-    await user.click(screen.getByText('Offset height', { exact: true }));
+    await user.click(screen.getByText('Offset extension', { exact: true }));
     fireEvent.change(screen.getByLabelText('Height offset'), { target: { value: '3' } });
-    await user.click(screen.getByText('Set height', { exact: true }));
+    await user.click(screen.getByText('Set extension', { exact: true }));
     expect(screen.getByLabelText('Selected height')).toHaveValue('32 mm');
-    await user.click(screen.getByText('Offset height', { exact: true }));
+    await user.click(screen.getByText('Offset extension', { exact: true }));
     expect(screen.getByLabelText('Height offset')).toHaveValue('3 mm');
     await user.click(screen.getByRole('button', { name: 'Use selected height' }));
     expect(screen.getByLabelText('Height offset')).toHaveValue('0 mm');

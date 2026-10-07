@@ -26,17 +26,17 @@ describe('shape export snapshots', () => {
     expect(request.pinMaterials).toHaveLength(parameters.layout.pins.length);
     expect(request.layout?.pins).toEqual(parameters.layout.pins);
   });
-  it('validates socket walls against actual curved boundaries', () => {
+  it('validates guide walls against actual curved boundaries', () => {
     const parameters = { ...DEFAULTS, ...generateLayout(DEFAULTS, { ...DEFAULT_SHAPE, preset: 'circle', padding: 0 }) };
-    expect(validateExport(parameters, undefined, { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' })).toMatch(/Socket edges/);
+    expect(validateExport(parameters, undefined, { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' })).toMatch(/edge wall/);
   });
-  it('checks actual socket neighbours rather than the spacing of absent grid positions', () => {
+  it('checks actual guide neighbours rather than the spacing of absent grid positions', () => {
     const parameters = { ...DEFAULTS, spacing: 2, ...generateLayout({ ...DEFAULTS, spacing: 2 }, DEFAULT_SHAPE) };
     parameters.layout.pins = [{ id: 'g:0:-10', x: -20, y: 0 }, { id: 'g:0:10', x: 20, y: 0 }];
-    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const };
+    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
     expect(validateExport(parameters, undefined, options, '3mf')).toBeNull();
     parameters.layout.pins[1] = { id: 'g:0:-9', x: -18, y: 0 };
-    expect(validateExport(parameters, undefined, options, '3mf')).toMatch(/Socket walls between pins/);
+    expect(validateExport(parameters, undefined, options, '3mf')).toMatch(/Guide walls/);
   });
   it('requires confirmation for historical pin edits even after undo, but not base-only changes', () => {
     let state = createEditorState(2);

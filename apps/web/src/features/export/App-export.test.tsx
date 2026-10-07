@@ -17,6 +17,7 @@ vi.mock('../base-shape/shape-worker', async () => {
   const { generateLayout } = await import('../base-shape/layout');
   return { startShapeJob: vi.fn(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() })) };
 });
+vi.mock('../mechanics/mechanical-worker', () => ({ startMechanicalJob: vi.fn(() => ({ promise: Promise.resolve({ positions: new Float32Array(), elapsedMs: 1 }), cancel: vi.fn() })) }));
 vi.mock('../image-mapping/color-worker', () => ({ startColorMapping: vi.fn() }));
 vi.mock('../preview/ModelPreview', () => ({
   default: ({ colors, pinColors, heights, editing, toolbar, parameters }: { toolbar?: ReactNode; colors: ModelColors; pinColors?: string[]; heights: Float32Array; editing: PreviewEditing; parameters: Parameters }) => <div>
@@ -101,7 +102,7 @@ describe('app export integration', () => {
       expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"square","rotation":0}]');
     }
   }, 10000);
-  it.each(['fixed', 'detachable'] as const)('exports a selected shape in %s without moving pins or altering height and material', async exportMode => {
+  it.each(['fixed', 'print-in-place'] as const)('exports a selected shape in %s without moving pins or altering height and material', async exportMode => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
@@ -117,7 +118,7 @@ describe('app export integration', () => {
     expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"triangle","rotation":30},{"shape":"round","rotation":0}]');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
-    if (exportMode === 'detachable') await user.click(screen.getByRole('radio', { name: 'Detachable' }));
+    if (exportMode === 'print-in-place') await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: 'triangle', rotation: 30 }, { shape: 'round', rotation: 0 }]);
@@ -129,7 +130,7 @@ describe('app export integration', () => {
     expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"round","rotation":0},{"shape":"round","rotation":0}]');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
   }, 10000);
-  it.each(['fixed', 'detachable'] as const)('exports the resolved Pixel snapshot in %s mode while preserving edits and placement', async exportMode => {
+  it.each(['fixed', 'print-in-place'] as const)('exports the resolved Pixel snapshot in %s mode while preserving edits and placement', async exportMode => {
     const actual = await vi.importActual<typeof import('../image-mapping/image-mapping')>('../image-mapping/image-mapping');
     const rgba = new Uint8ClampedArray([0,0,0,255, 255,255,255,255]);
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: rgba }) } as unknown as CanvasRenderingContext2D);
@@ -164,7 +165,7 @@ describe('app export integration', () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
     expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
-    if (exportMode === 'detachable') await user.click(screen.getByRole('radio', { name: 'Detachable' }));
+    if (exportMode === 'print-in-place') await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     const parameters = { ...request.parameters, layout: request.layout };
@@ -284,7 +285,7 @@ describe('app export integration', () => {
     }));
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
-    expect(screen.queryByLabelText('Generated pin height')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Generated pin extension')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Mapping max height')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Min height'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('Max height'), { target: { value: '30' } });
@@ -310,14 +311,14 @@ describe('app export integration', () => {
     expect(request.heights[1]).toBeCloseTo(30.1);
     await user.click(screen.getByText('Color', { exact: true }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
-    expect(screen.getByLabelText('Generated pin height')).toHaveValue('30.1 mm');
+    expect(screen.getByLabelText('Generated pin extension')).toHaveValue('30.1 mm');
     expect(screen.queryByRole('slider', { name: 'Minimum mapped height' })).not.toBeInTheDocument();
     await user.click(within(screen.getByRole('region', { name: 'Image mapping' })).getByText('Height', { exact: true }));
     expect(screen.getByLabelText('Min height')).toHaveValue('4.9 mm');
     expect(screen.getByLabelText('Max height')).toHaveValue('30.1 mm');
   });
 
-  it.each(['fixed', 'detachable'] as const)('exports image-mapped colors and original-image heights in %s mode', async mode => {
+  it.each(['fixed', 'print-in-place'] as const)('exports image-mapped colors and original-image heights in %s mode', async mode => {
     const user = userEvent.setup();
     vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
     vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(775).fill(4), minimum: 4, maximum: 4 });
@@ -327,7 +328,7 @@ describe('app export integration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
     expect(screen.getByTestId('preview-colors')).toHaveTextContent('#8e9089 #ffffff');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('10,14.517');
-    if (mode === 'detachable') await user.click(screen.getByText('Detachable', { exact: true }));
+    if (mode === 'print-in-place') await user.click(screen.getByText('Print-in-place', { exact: true }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.mode).toBe(mode);
@@ -339,7 +340,7 @@ describe('app export integration', () => {
     expect(request).not.toHaveProperty('image');
   });
 
-  it.each(['fixed', 'detachable'] as const)('exports a recolored generated group without rematching or losing manual heights in %s mode', async mode => {
+  it.each(['fixed', 'print-in-place'] as const)('exports a recolored generated group without rematching or losing manual heights in %s mode', async mode => {
     const user = userEvent.setup();
     vi.mocked(useSourceImage).mockReturnValue(imageState({ source }));
     vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(775).fill(4), minimum: 4, maximum: 4 });
@@ -362,7 +363,7 @@ describe('app export integration', () => {
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('388 pins');
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('→ Ivory White');
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    if (mode === 'detachable') await user.click(screen.getByText('Detachable', { exact: true }));
+    if (mode === 'print-in-place') await user.click(screen.getByText('Print-in-place', { exact: true }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.mode).toBe(mode);
@@ -513,7 +514,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Toggle second pin' }));
     expect(screen.getByText(/Height: Mixed/)).toBeInTheDocument();
     await openEditor(user, 'Height');
-    await user.click(screen.getByText('Offset height', { exact: true }));
+    await user.click(screen.getByText('Offset extension', { exact: true }));
     fireEvent.change(screen.getByLabelText('Height offset'), { target: { value: '2' } });
     await user.click(screen.getByRole('button', { name: 'Apply height' }));
     await openEditor(user, 'Material');
@@ -679,6 +680,6 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.heights).toEqual(Array.from(heights));
-    expect(Object.keys(payload)).toEqual(['format', 'mode', 'parameters', 'pinGeometries', 'layout', 'heights', 'materials', 'filamentProfiles', 'baseMaterial', 'pinMaterials', 'socket', 'plate']);
+    expect(Object.keys(payload)).toEqual(['format', 'mode', 'parameters', 'pinGeometries', 'layout', 'heights', 'materials', 'filamentProfiles', 'baseMaterial', 'pinMaterials', 'sliding']);
   });
 });

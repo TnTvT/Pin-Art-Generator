@@ -1,5 +1,6 @@
 import { DEFAULT_MODEL_MATERIALS, materialKey, type MaterialSelection } from '../filaments/materials';
 export { materialKey } from '../filaments/materials';
+import { validateMechanics } from '../mechanics/model';
 import { pinCount, type Parameters } from '../pin-design/model';
 import { resolvePinGeometries, validateResolvedGeometry, type PinGeometry } from '../pin-shape/geometry';
 
@@ -65,7 +66,15 @@ export function validateMaterials(count: number, overrides: Map<number, PinOverr
   if (used.size > 16) throw new Error('Use at most 16 materials including the base. Replace an existing material or reset some pin colors first.');
 }
 
+export function validateEditedMechanics(parameters: Parameters, overrides: ReadonlyMap<number, PinOverride>, generated?: Float32Array) {
+  if (parameters.construction?.mode !== 'print-in-place') return;
+  const heights = generated?.slice() ?? new Float32Array(pinCount(parameters)).fill(parameters.extension);
+  for (const [index, value] of overrides) if (value.height !== undefined && index < heights.length) heights[index] = value.height;
+  validateMechanics({ ...parameters, pinGeometries: resolveEditedGeometries(parameters, overrides) }, heights);
+}
+
 function commit(state: EditorState, overrides: Map<number, PinOverride>, base = state.base): EditorState {
+  if (state.parameters) validateEditedMechanics(state.parameters, overrides, state.generatedHeights);
   const deltas: Delta[] = [];
   for (const index of new Set([...state.overrides.keys(), ...overrides.keys()])) {
     const before = state.overrides.get(index);
@@ -109,7 +118,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     if (action.type === 'mapping-status') return { ...state, mappingPending: action.pending };
     if (action.type === 'generation') {
       const parameters = action.parameters ?? state.parameters;
-      if (parameters) validateGeometryOverrides(parameters, state.overrides);
+      if (parameters) { validateGeometryOverrides(parameters, state.overrides); validateEditedMechanics(parameters, state.overrides, action.heights); }
       validateMaterials(state.count, state.overrides, state.base, action.materials);
       if (action.heights && (action.heights.length !== state.count || action.heights.some(height => !Number.isFinite(height) || height <= 0))) throw new Error('Generated heights must match the grid and be finite and positive.');
       return { ...state, parameters, generatedMaterials: action.materials, generatedHeights: action.heights, mappingPending: false, error: null };
@@ -135,6 +144,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         else overrides.delete(delta.index);
       }
       const base = isUndo ? transaction.beforeBase : transaction.afterBase;
+      if (state.parameters) validateEditedMechanics(state.parameters, overrides, state.generatedHeights);
       validateMaterials(state.count, overrides, base, state.generatedMaterials);
       if (state.parameters && transaction.deltas.some(delta => delta.before?.geometry || delta.after?.geometry)) validateResolvedGeometry({ ...state.parameters, pinGeometries: resolveEditedGeometries(state.parameters, overrides) });
       return { ...state, overrides, base,

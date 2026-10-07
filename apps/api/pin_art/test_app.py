@@ -20,11 +20,42 @@ def test_api_rejects_invalid_design_with_structured_error():
         assert response.json()["error"]["message"]
 
 
+@pytest.mark.parametrize("extra", [{"mode": "detachable"}, {"socket": {"insertionDepth": 2}}, {"plate": {"width": 256}}])
+def test_removed_contract_fields_return_structured_422(extra):
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload(**extra))
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_DESIGN"
+        assert not app.state.export_lock.locked()
+
+
 def test_openapi_describes_the_design_snapshot():
     with TestClient(app) as client:
         schema = client.get("/openapi.json").json()
         assert "ExportRequest" in schema["components"]["schemas"]
         assert schema["paths"]["/api/exports"]["post"]["requestBody"]["required"]
+        schemas = schema["components"]["schemas"]
+        for field in ["heights", "pinMaterials", "pinGeometries"]:
+            specification = schemas["ExportRequest"]["properties"][field]
+            branches = specification.get("anyOf", [specification])
+            assert next(branch for branch in branches if branch["type"] == "array")["maxItems"] == 5000
+        assert schemas["ShapeLayout"]["properties"]["pins"]["maxItems"] == 5000
+
+
+@pytest.mark.parametrize("field", ["heights", "pinMaterials", "pinGeometries", "layout"])
+def test_api_rejects_five_thousand_and_one_pins(field):
+    payload = request_payload()
+    if field == "layout":
+        payload[field] = {"regions": [{"outer": [[-10, -10], [10, -10], [10, 10], [-10, 10]], "holes": []}],
+                          "pins": [{"id": f"pin:{index}", "x": 0, "y": 0} for index in range(5001)], "edgePadding": 0}
+    else:
+        value = 1 if field == "heights" else 0 if field == "pinMaterials" else {"shape": "round", "rotation": 0}
+        payload[field] = [value] * 5001
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=payload)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_DESIGN"
+        assert "5000" in response.json()["error"]["message"]
 
 
 def test_api_rejects_non_json_and_oversized_bodies():
@@ -37,18 +68,18 @@ def test_api_rejects_non_json_and_oversized_bodies():
         assert response.status_code == 400
 
 
-def test_api_downloads_fixed_and_detachable_models():
+def test_api_downloads_fixed_and_print_in_place_models():
     with TestClient(app) as client:
-        for mode, file_format, content_type in [("fixed", "3mf", "model/3mf"), ("fixed", "stl", "model/stl"), ("detachable", "stl", "application/zip")]:
+        for mode, file_format, content_type in [("fixed", "3mf", "model/3mf"), ("fixed", "stl", "model/stl"), ("print-in-place", "stl", "model/stl")]:
             response = client.post("/api/exports", json=request_payload(mode=mode, format=file_format))
             assert response.status_code == 200, response.text[:200]
             assert response.headers["Content-Type"] == content_type
-            assert response.headers["X-Plate-Count"] == ("2" if mode == "detachable" else "1")
+            assert response.headers["X-Plate-Count"] == "1"
             assert "attachment" in response.headers["Content-Disposition"]
             assert len(response.content) > 84
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_api_worker_preserves_selected_filament_profiles(mode):
     payload = request_payload(mode=mode, materials=["#FFFFFF", "#FFFFFF"], filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
     with TestClient(app) as client:

@@ -37,30 +37,30 @@ describe('resolved per-pin footprints', () => {
     }
     expect(minimumPinClearance(parameters, pins)).toBeCloseTo(expected, 10);
   });
-  it('validates and resolves a full 10,000-pin mixed layout without changing topology', () => {
-    const input = { ...DEFAULTS, width: 100.8, depth: 100.8, diameter: 1, spacing: 1, pinShape: 'triangle' as const, pinRotation: 45 };
+  it('validates and resolves a full 5,000-pin mixed layout without changing topology', () => {
+    const input = { ...DEFAULTS, width: 100.8, depth: 50.8, diameter: 1, spacing: 1, pinShape: 'triangle' as const, pinRotation: 45 };
     const parameters = { ...input, ...generateLayout(input, { ...DEFAULT_SHAPE, padding: 0 }) };
-    expect(parameters.layout.pins).toHaveLength(10000);
-    const pinGeometries: PinGeometry[] = parameters.layout.pins.map((pin, index) => Math.abs(pin.x) < 49 && Math.abs(pin.y) < 49
+    expect(parameters.layout.pins).toHaveLength(5000);
+    const pinGeometries: PinGeometry[] = parameters.layout.pins.map((pin, index) => Math.abs(pin.x) < 49 && Math.abs(pin.y) < 24
       ? { shape: (['round', 'square', 'triangle'] as const)[index % 3], rotation: index % 3 === 2 ? 45 : 0 }
       : { shape: 'square', rotation: 0 });
     const resolved = { ...parameters, pinGeometries };
     const start = performance.now();
     validateResolvedGeometry(resolved);
     const metrics = getMetrics(resolved);
-    expect(metrics.count).toBe(10000);
+    expect(metrics.count).toBe(5000);
     expect(metrics.clearance).toBeGreaterThanOrEqual(0);
     expect(resolved.layout.pins).toBe(parameters.layout.pins);
-    console.info(`10,000 mixed-pin validation + metrics: ${(performance.now() - start).toFixed(1)} ms`);
+    console.info(`5,000 mixed-pin validation + metrics: ${(performance.now() - start).toFixed(1)} ms`);
   });
   it('keeps dense overlapping uniform and mixed clearance queries indexed', () => {
-    const pins = Array.from({ length: 10000 }, (_, index) => ({ id: `p:${index}`, x: index % 100 * 0.01, y: Math.floor(index / 100) * 0.01 }));
+    const pins = Array.from({ length: 5000 }, (_, index) => ({ id: `p:${index}`, x: index % 100 * 0.01, y: Math.floor(index / 100) * 0.01 }));
     const pinGeometries: PinGeometry[] = pins.map(() => ({ shape: 'square', rotation: 0 }));
     const parameters = { ...DEFAULTS, diameter: 1, layout: { regions: [], edgePadding: 0, pins }, pinGeometries };
     const start = performance.now();
     expect(minimumPinClearance(parameters, pins)).toBeCloseTo(0.01 - Math.SQRT1_2);
-    pinGeometries[5000] = { shape: 'round', rotation: 0 };
+    pinGeometries[2500] = { shape: 'round', rotation: 0 };
     expect(minimumPinClearance(parameters, pins)).toBeCloseTo(0.01 - Math.SQRT1_2 / 2 - 0.5);
-    console.info(`10,000 dense uniform + mixed clearance: ${(performance.now() - start).toFixed(1)} ms`);
+    console.info(`5,000 dense uniform + mixed clearance: ${(performance.now() - start).toFixed(1)} ms`);
   });
 });

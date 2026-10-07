@@ -24,8 +24,7 @@ def request_payload(**overrides):
         "materials": ["#112233", "#AABBCC"],
         "baseMaterial": 0,
         "pinMaterials": [1, 0, 1, 0],
-        "socket": {"insertionDepth": 2, "clearance": 0.2},
-        "plate": {"width": 256, "depth": 256},
+        "sliding": {"clearance": 0.4, "headFlare": 0.4},
     }
     payload.update(overrides)
     return copy.deepcopy(payload)
@@ -36,7 +35,7 @@ def test_aliases_round_trip_frontend_payload():
     request = ExportRequest.model_validate(payload)
     assert request.base_material == 0
     assert request.pin_materials == [1, 0, 1, 0]
-    assert request.socket.insertion_depth == 2
+    assert request.sliding.head_flare == 0.4
     assert request.model_dump(by_alias=True, exclude_none=True) == payload
 
 
@@ -129,41 +128,6 @@ def test_fixed_accepts_exact_grid_fit_and_tangent_pins():
     ExportRequest.model_validate(payload)
 
 
-@pytest.mark.parametrize("parameter,value,message", [
-    ("thickness", 2.99, "floor"),
-    ("spacing", 2.99, "between"),
-    ("width", 8.79, "edge"),
-    ("depth", 8.79, "edge"),
-])
-def test_detachable_enforces_socket_floor_walls_and_edges(parameter, value, message):
-    payload = request_payload(mode="detachable")
-    payload["parameters"][parameter] = value
-    with pytest.raises(ValidationError, match=message):
-        ExportRequest.model_validate(payload)
-
-
-def test_detachable_accepts_exact_socket_constraint_boundaries():
-    payload = request_payload(mode="detachable")
-    payload["parameters"].update(width=6.8, depth=6.8, spacing=3)
-    ExportRequest.model_validate(payload)
-
-
-@pytest.mark.parametrize("section,field", [("socket", "insertionDepth"), ("plate", "width"), ("plate", "depth")])
-@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), True, "2"])
-def test_socket_and_plate_require_finite_positives(section, field, value):
-    payload = request_payload()
-    payload[section][field] = value
-    with pytest.raises(ValidationError):
-        ExportRequest.model_validate(payload)
-
-
-def test_oversized_detachable_base_is_rejected_with_print_margin():
-    payload = request_payload(mode="detachable")
-    payload["parameters"]["width"] = 246.01
-    with pytest.raises(ValidationError, match="plate"):
-        ExportRequest.model_validate(payload)
-
-
 def test_unknown_fields_and_enum_values_are_rejected():
     for updates in [{"format": "obj"}, {"mode": "assembled"}, {"other": 1}]:
         with pytest.raises(ValidationError):
@@ -171,23 +135,30 @@ def test_unknown_fields_and_enum_values_are_rejected():
 
 
 def test_finite_inputs_with_overflowing_derived_dimensions_are_rejected():
-    payload = request_payload(mode="detachable")
-    payload["socket"]["insertionDepth"] = 1e308
+    payload = request_payload()
     payload["parameters"]["thickness"] = 1e308
     payload["heights"][0] = 1e308
     with pytest.raises(ValidationError):
         ExportRequest.model_validate(payload)
 
 
-def test_stl_bed_setting_does_not_restrict_large_ten_thousand_pin_design():
-    payload = request_payload(format="stl", heights=[1] * 10000, pinMaterials=[0] * 10000, plate={"width": 10, "depth": 10})
-    payload["parameters"].update(columns=100, rows=100, width=500, depth=500)
-    assert len(ExportRequest.model_validate(payload).heights) == 10000
+def test_stl_bed_setting_does_not_restrict_large_five_thousand_pin_design():
+    payload = request_payload(format="stl", heights=[1] * 5000, pinMaterials=[0] * 5000)
+    payload["parameters"].update(columns=100, rows=50, width=500, depth=500)
+    assert len(ExportRequest.model_validate(payload).heights) == 5000
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed", "print-in-place"])
+def test_legacy_grid_cannot_bypass_five_thousand_pin_limit(mode):
+    payload = request_payload(mode=mode)
+    payload["parameters"].update(rows=51, columns=100, width=500, depth=500)
+    with pytest.raises(ValidationError, match="5,000"):
+        ExportRequest.model_validate(payload)
+
+
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_bambu_profile_blocks_oversized_base_and_print_height_only_for_3mf(mode):
-    payload = request_payload(mode=mode, plate={"width": 400, "depth": 400})
+    payload = request_payload(mode=mode)
     payload["parameters"]["width"] = 300
     with pytest.raises(ValidationError, match="X1C"):
         ExportRequest.model_validate(payload)
@@ -200,29 +171,6 @@ def test_bambu_profile_blocks_oversized_base_and_print_height_only_for_3mf(mode)
         ExportRequest.model_validate(payload)
     payload["format"] = "stl"
     assert ExportRequest.model_validate(payload).heights == [250] * 4
-
-
-def test_custom_bambu_usable_area_cannot_override_physical_printer_bed():
-    payload = request_payload(mode="detachable", plate={"width": 300, "depth": 256})
-    with pytest.raises(ValidationError, match="usable plate"):
-        ExportRequest.model_validate(payload)
-
-
-@pytest.mark.parametrize("clearance", [0, 0.2])
-def test_diametral_clearance_boundaries(clearance):
-    payload = request_payload(mode="detachable")
-    payload["socket"]["clearance"] = clearance
-    diameter = payload["parameters"]["diameter"] + clearance
-    payload["parameters"].update(spacing=diameter + 0.8, width=2 * diameter + 2.4, depth=2 * diameter + 2.4)
-    assert ExportRequest.model_validate(payload).socket.clearance == clearance
-
-
-@pytest.mark.parametrize("clearance", [-0.01, float("inf"), float("nan"), True, "0"])
-def test_clearance_is_a_finite_nonnegative_number(clearance):
-    payload = request_payload()
-    payload["socket"]["clearance"] = clearance
-    with pytest.raises(ValidationError):
-        ExportRequest.model_validate(payload)
 
 
 def test_manual_height_preserves_supplied_value():

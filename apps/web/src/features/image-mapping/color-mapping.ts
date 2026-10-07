@@ -1,4 +1,5 @@
 import { deltaE2000, Lab, sRGB, to } from 'colorjs.io/fn';
+import { MAX_PINS } from '../pin-design/limits';
 import { FILAMENT_CATALOG, getFilament, type FilamentColor } from '../filaments/catalog';
 import { materialKey, type MaterialSelection } from '../filaments/materials';
 
@@ -76,7 +77,7 @@ function refinePalette(chosen: number[], distances: Float64Array[], weights: num
 
 export function mapPinColors(request: ColorMappingRequest): ColorMappingResult {
   const count = request.rgb.length / 3;
-  if (!Number.isInteger(count) || count < 1 || count > 10000) throw new Error('Image colors must match 1–10,000 pins.');
+  if (!Number.isInteger(count) || count < 1 || count > MAX_PINS) throw new Error('Image colors must match 1–5,000 pins.');
   if (!Number.isInteger(request.maximum) || request.maximum < 1 || request.maximum > 16) throw new Error('Choose 1–16 maximum pin materials.');
   const candidates = paletteCandidates(request.source === 'manual' ? 'both' : request.family,
     request.source === 'manual' ? request.filamentIds : undefined);

@@ -149,16 +149,16 @@ describe('signed neighbour clearance', () => {
     ));
   });
 
-  it.each(['round', 'square', 'triangle'] as const)('indexes a 10,000-pin %s grid efficiently', pinShape => {
-    const allPins = Array.from({ length: 10000 }, (_, index) => ({ id: String(index), x: index % 100 * 5, y: Math.floor(index / 100) * 5 }));
+  it.each(['round', 'square', 'triangle'] as const)('indexes a 5,000-pin %s grid efficiently', pinShape => {
+    const allPins = Array.from({ length: 5000 }, (_, index) => ({ id: String(index), x: index % 100 * 5, y: Math.floor(index / 100) * 5 }));
     const started = performance.now();
     const expected = pinShape === 'round' ? 3 : pinShape === 'square' ? 5 - Math.SQRT2 : 5 - Math.sqrt(3);
     expect(minimumPinClearance({ ...DEFAULTS, pinShape }, allPins)).toBeCloseTo(expected);
     expect(performance.now() - started).toBeLessThan(2000);
   });
 
-  it('also indexes densely overlapping 10,000-pin layouts without scanning every pair', () => {
-    const allPins = Array.from({ length: 10000 }, (_, index) => ({ id: String(index), x: index % 100 * 0.001, y: Math.floor(index / 100) * 0.001 }));
+  it('also indexes densely overlapping 5,000-pin layouts without scanning every pair', () => {
+    const allPins = Array.from({ length: 5000 }, (_, index) => ({ id: String(index), x: index % 100 * 0.001, y: Math.floor(index / 100) * 0.001 }));
     const started = performance.now();
     expect(minimumPinClearance({ ...DEFAULTS, pinShape: 'square' }, allPins)).toBeCloseTo(0.001 - Math.SQRT2, 10);
     expect(performance.now() - started).toBeLessThan(2000);

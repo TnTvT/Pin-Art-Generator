@@ -16,7 +16,7 @@ const setModelColors = vi.fn();
 const dispose = vi.fn();
 
 beforeEach(() => {
-  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, setModelColors, setPinColors: vi.fn(), setEditing: vi.fn(), dispose });
+  vi.mocked(createPreview).mockReset().mockReturnValue({ update, setView, setColorScheme, setModelColors, setPinColors: vi.fn(), setEditing: vi.fn(), setTransparentBase: vi.fn(), dispose });
 });
 
 describe('preview integration', () => {
@@ -32,11 +32,11 @@ describe('preview integration', () => {
     expect(container.querySelector('.preview-tools')).toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
     expect(container.querySelector('.viewport')).toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
     expect(container.querySelector('.canvas-container')).not.toContainElement(screen.getByRole('button', { name: 'Edit tools' }));
-    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/actual guide holes/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Preview help' }));
-    expect(screen.getByText(/sockets.*not rendered/i)).toBeInTheDocument();
+    expect(screen.getByText(/actual guide holes/i)).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/actual guide holes/i)).not.toBeInTheDocument();
   });
   it('retains the canvas and camera when the floating editor opens or closes', () => {
     const { container, rerender } = renderWithProviders(<ModelPreview parameters={DEFAULTS} toolbar={<div data-expanded="false">Tools</div>} />);
@@ -56,7 +56,7 @@ describe('preview integration', () => {
     rerender(<ModelPreview parameters={DEFAULTS} colors={colors} />);
     expect(setModelColors).toHaveBeenLastCalledWith(colors);
     expect(createPreview).toHaveBeenCalledOnce();
-    expect(screen.queryByText(/sockets.*not rendered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/actual guide holes/i)).not.toBeInTheDocument();
   });
 
   it('updates the scene theme without recreating the preview or resetting the view', async () => {
@@ -72,11 +72,11 @@ describe('preview integration', () => {
 
   it('passes parameter and height changes to the scene and cleans it up on unmount', () => {
     const { rerender, unmount } = renderWithProviders(<ModelPreview parameters={DEFAULTS} />);
-    expect(update).toHaveBeenLastCalledWith(DEFAULTS, undefined);
+    expect(update).toHaveBeenLastCalledWith(DEFAULTS, undefined, undefined);
     const heights = new Float32Array([2, 10]);
     const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
     rerender(<ModelPreview parameters={parameters} heights={heights} />);
-    expect(update).toHaveBeenLastCalledWith(parameters, heights);
+    expect(update).toHaveBeenLastCalledWith(parameters, heights, undefined);
     expect(screen.getByText('Image-mapped heights')).toBeInTheDocument();
     unmount();
     expect(dispose).toHaveBeenCalledOnce();

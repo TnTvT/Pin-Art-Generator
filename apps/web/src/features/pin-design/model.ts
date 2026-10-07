@@ -1,4 +1,5 @@
 import { EPSILON, type Layout, type PinPosition } from '../base-shape/layout';
+import type { Construction } from '../mechanics/model';
 import { geometryParameters, minimumPinClearance, pinBounds, resolvePinGeometries, type PinGeometry, type PinShape } from '../pin-shape/geometry';
 
 export interface Parameters {
@@ -14,8 +15,9 @@ export interface Parameters {
   pinRotation?: number;
   pinGeometries?: readonly PinGeometry[];
   layout?: Layout;
+  construction?: Construction;
 }
-export type ParameterName = keyof Omit<Parameters, 'layout' | 'pinShape' | 'pinRotation' | 'pinGeometries'>;
+export type ParameterName = keyof Omit<Parameters, 'layout' | 'pinShape' | 'pinRotation' | 'pinGeometries' | 'construction'>;
 
 export function pinCount(parameters: Parameters) { return parameters.layout?.pins.length ?? parameters.columns * parameters.rows; }
 export function pinPosition(parameters: Parameters, index: number): PinPosition {

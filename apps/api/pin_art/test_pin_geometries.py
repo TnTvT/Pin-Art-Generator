@@ -74,18 +74,10 @@ def test_mixed_contact_is_exact_and_independent_of_global_defaults(format):
     ExportRequest.model_validate(payload)
 
 
-def test_mixed_socket_walls_use_true_shapes_and_outward_offset():
-    payload = pair_payload(mode="detachable", distance=1 + 1 / math.sqrt(2) + 0.2 + 0.8)
-    ExportRequest.model_validate(payload)
-    payload["layout"]["pins"][1]["x"] -= 0.0001
-    with pytest.raises(ValidationError, match="wall.*circle.*square"):
-        ExportRequest.model_validate(payload)
-
-
 @pytest.mark.parametrize("shape,rotation", [("round", 45), ("square", 30), ("triangle", 90)])
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 @pytest.mark.parametrize("boundary", ["outer", "hole"])
-def test_resolved_rotated_boundary_padding_and_socket_wall(shape, rotation, mode, boundary):
+def test_resolved_rotated_boundary_padding(shape, rotation, mode, boundary):
     from pin_art.cross_sections import local_bounds
 
     payload = mixed_payload(mode=mode)
@@ -93,7 +85,7 @@ def test_resolved_rotated_boundary_padding_and_socket_wall(shape, rotation, mode
     payload["layout"]["pins"] = [{"id": "edge", "x": 0, "y": 0}]
     payload["layout"]["edgePadding"] = 0.3
     extent = local_bounds(shape, 2, rotation)[2]
-    clearance = 0.9 if mode == "detachable" else 0.3
+    clearance = 0.3
     edge = 10
     if boundary == "hole":
         payload["layout"]["regions"][0]["holes"] = [[[2, -2], [3, -2], [3, 2], [2, 2]]]
@@ -119,21 +111,6 @@ def test_resolved_polygon_requires_complete_footprint_not_only_vertices(failure)
         ExportRequest.model_validate(payload)
 
 
-def test_round_polygon_corner_clearance_is_analytic_not_tessellated():
-    payload = pair_payload(mode="detachable")
-    direction = math.radians(17)
-    vertex = 1 / math.sqrt(2)
-    payload["layout"]["pins"] = [
-        {"id": "circle", "x": vertex + 2 * math.cos(direction), "y": vertex + 2 * math.sin(direction)},
-        {"id": "square", "x": 0, "y": 0},
-    ]
-    ExportRequest.model_validate(payload)
-    payload["layout"]["pins"][0]["x"] -= 0.00001 * math.cos(direction)
-    payload["layout"]["pins"][0]["y"] -= 0.00001 * math.sin(direction)
-    with pytest.raises(ValidationError, match="wall"):
-        ExportRequest.model_validate(payload)
-
-
 @pytest.mark.parametrize("shapes", [("round", "triangle"), ("square", "triangle"), ("triangle", "triangle"), ("round", "round")])
 def test_all_mixed_pair_types_and_contained_origins_are_checked(shapes):
     payload = pair_payload(distance=0.1)
@@ -155,14 +132,14 @@ def test_resolved_legacy_grid_fit_does_not_use_unused_global_footprint():
 
 
 @pytest.mark.parametrize("explicit", [False, True])
-def test_ten_thousand_mixed_pins_validate_with_spatial_index(explicit):
+def test_five_thousand_mixed_pins_validate_with_spatial_index(explicit):
     payload = mixed_payload(explicit=explicit, format="stl")
-    payload.update(heights=[1] * 10000, pinMaterials=[0] * 10000,
-                   pinGeometries=[payload["pinGeometries"][index % 4] for index in range(10000)])
+    payload.update(heights=[1] * 5000, pinMaterials=[0] * 5000,
+                   pinGeometries=[payload["pinGeometries"][index % 4] for index in range(5000)])
     payload["parameters"].update(width=500, depth=500)
     if explicit:
         payload["layout"]["regions"][0]["outer"] = [[-250, -250], [250, -250], [250, 250], [-250, 250]]
-        payload["layout"]["pins"] = [{"id": f"pin:{row}:{column}", "x": (column - 49.5) * 5, "y": (row - 49.5) * 5} for row in range(100) for column in range(100)]
+        payload["layout"]["pins"] = [{"id": f"pin:{row}:{column}", "x": (column - 49.5) * 5, "y": (row - 24.5) * 5} for row in range(50) for column in range(100)]
     else:
-        payload["parameters"].update(rows=100, columns=100)
-    assert len(ExportRequest.model_validate(payload).resolved_pin_geometries) == 10000
+        payload["parameters"].update(rows=50, columns=100)
+    assert len(ExportRequest.model_validate(payload).resolved_pin_geometries) == 5000

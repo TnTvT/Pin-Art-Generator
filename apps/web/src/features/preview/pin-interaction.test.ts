@@ -11,9 +11,9 @@ const cleanups: (() => void)[] = [];
 afterEach(() => cleanups.splice(0).forEach(cleanup => cleanup()));
 function fixture(perspective = false, dense = false, grouped = false) {
   const shapes: PinShape[] = ['round', 'square', 'triangle'];
-  const parameters = { ...DEFAULTS, columns: dense ? 100 : 2, rows: dense ? 100 : 2, spacing: dense ? 0.3 : 10, diameter: dense ? 0.1 : 2,
-    pinGeometries: grouped ? Array.from({ length: dense ? 10000 : 4 }, (_, index) => ({ shape: shapes[index % 3], rotation: index % 3 * 30 })) : undefined };
-  const heights = dense ? new Float32Array(10000).fill(10) : new Float32Array([5, 10, 15, 20]);
+  const parameters = { ...DEFAULTS, columns: dense ? 100 : 2, rows: dense ? 50 : 2, spacing: dense ? 0.3 : 10, diameter: dense ? 0.1 : 2,
+    pinGeometries: grouped ? Array.from({ length: dense ? 5000 : 4 }, (_, index) => ({ shape: shapes[index % 3], rotation: index % 3 * 30 })) : undefined };
+  const heights = dense ? new Float32Array(5000).fill(10) : new Float32Array([5, 10, 15, 20]);
   const container = document.createElement('div');
   const canvas = document.createElement('canvas'); container.append(canvas); document.body.append(container);
   const rectangle = { left: 0, top: 0, width: 400, height: 400 } as DOMRect;
@@ -79,17 +79,17 @@ describe('preview pointer interaction', () => {
     pointer(canvas, 'pointerdown', point.x, point.y); pointer(canvas, 'pointerup', point.x, point.y);
     expect(editing.onSelect).toHaveBeenLastCalledWith([], 'replace');
   });
-  it('maps the final grouped instance of a 10,000-pin grid to its canonical index', () => {
+  it('maps the final grouped instance of a 5,000-pin grid to its canonical index', () => {
     const { editing, pointer, canvas, camera, parameters, heights } = fixture(false, true, true);
-    const point = projectTip(pinTip(9999, parameters, heights), camera, { width: 400, height: 400 })!;
+    const point = projectTip(pinTip(4999, parameters, heights), camera, { width: 400, height: 400 })!;
     pointer(canvas, 'pointerdown', point.x, point.y); pointer(canvas, 'pointerup', point.x, point.y);
-    expect(editing.onSelect).toHaveBeenLastCalledWith([9999], 'replace');
+    expect(editing.onSelect).toHaveBeenLastCalledWith([4999], 'replace');
   });
-  it('picks the correct final instance in a 10,000-pin grid', () => {
+  it('picks the correct final instance in a 5,000-pin grid', () => {
     const { editing, pointer, canvas, camera, parameters, heights } = fixture(false, true);
-    const point = projectTip(pinTip(9999, parameters, heights), camera, { width: 400, height: 400 })!;
+    const point = projectTip(pinTip(4999, parameters, heights), camera, { width: 400, height: 400 })!;
     pointer(canvas, 'pointerdown', point.x, point.y); pointer(canvas, 'pointerup', point.x, point.y);
-    expect(editing.onSelect).toHaveBeenLastCalledWith([9999], 'replace');
+    expect(editing.onSelect).toHaveBeenLastCalledWith([4999], 'replace');
   });
   it.each([false, true])('picks instances in both projections and respects Shift toggles (perspective=%s)', perspective => {
     const { editing, pointer, canvas, camera, parameters, heights } = fixture(perspective);

@@ -5,6 +5,12 @@ import { FILAMENT_CATALOG } from '../filaments/catalog';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport } from './export-request';
 
 describe('export request mapping', () => {
+  it('rejects legacy and explicit layouts exceeding 5,000 pins', () => {
+    const parameters = { ...DEFAULTS, columns: 100, rows: 51, width: 500, depth: 500 };
+    expect(validateExport(parameters, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/5,000/);
+    const layout = { regions: [], edgePadding: 0, pins: Array.from({ length: 5001 }, (_, index) => ({ id: `pin:${index}`, x: index, y: 0 })) };
+    expect(validateExport({ ...DEFAULTS, layout }, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/5,000/);
+  });
   it.each(['square', 'triangle'] as const)('sends %s size, rotation, real heights and materials without numeric validation rejecting the enum', pinShape => {
     const parameters = { ...DEFAULTS, columns: 2, rows: 1, pinShape, pinRotation: 360 };
     const request = buildExportRequest(parameters, new Float32Array([4, 30]), DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf');
@@ -22,7 +28,7 @@ describe('export request mapping', () => {
       heights: Array(320).fill(20), materials: ['#8e9089', '#00b1b7'],
       filamentProfiles: ['bambu-pla-basic', 'bambu-pla-basic'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),
-      socket: { insertionDepth: 2, clearance: 0.2 }, plate: { width: 256, depth: 256 },
+      sliding: { clearance: 0.4, headFlare: 0.4 },
     });
   });
 
@@ -63,10 +69,10 @@ describe('print validation', () => {
     expect(validateExport({ ...parameters, depth: 2 }, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
   });
   it('uses actual square wall gaps rather than enclosing circles for overlap and sockets', () => {
-    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 2.5 };
-    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const };
+    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 3 };
+    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
     expect(validateExport(parameters, undefined, options, '3mf')).toBeNull();
-    expect(validateExport({ ...parameters, pinRotation: 45 }, undefined, options, '3mf')).toMatch(/Socket walls/);
+    expect(validateExport({ ...parameters, pinRotation: 45 }, undefined, options, '3mf')).toMatch(/Guide walls/);
     expect(validateExport({ ...parameters, pinRotation: 361 }, undefined, options)).toMatch(/rotation/i);
   });
   it('blocks tangent fixed STL while retaining compatible tangent round 3MF', () => {
@@ -81,8 +87,6 @@ describe('print validation', () => {
     const tall = { ...DEFAULTS, extension: 250 };
     expect(validateExport(tall, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toMatch(/250 mm/);
     expect(validateExport(tall, new Float32Array(320).fill(20), DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
-    const customBed = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const, plate: { width: 300, depth: 256 } };
-    expect(validateExport(DEFAULTS, undefined, customBed, '3mf')).toMatch(/256/);
     expect(() => buildExportRequest(large, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf')).toThrow(/X1C/);
   });
   it('blocks overlap and a grid outside the base', () => {
@@ -106,28 +110,22 @@ describe('print validation', () => {
     }
   });
 
-  it('validates detachable floor, socket walls and outer edges only in detachable mode', () => {
-    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const };
+  it('validates guides, heads and mouth walls for print-in-place', () => {
+    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
     expect(validateExport(DEFAULTS, undefined, options)).toBeNull();
-    expect(validateExport({ ...DEFAULTS, thickness: 2.9 }, undefined, options)).toMatch(/floor/i);
-    expect(validateExport({ ...DEFAULTS, spacing: 2.9 }, undefined, options)).toMatch(/wall/i);
-    expect(validateExport({ ...DEFAULTS, spacing: 3 }, undefined, options)).toBeNull();
-    expect(validateExport({ ...DEFAULTS, width: 69.5 }, undefined, options)).toMatch(/edge/i);
+    expect(validateExport({ ...DEFAULTS, thickness: 1.5 }, undefined, options)).toMatch(/Guide thickness/);
+    expect(validateExport({ ...DEFAULTS, spacing: 3.3 }, undefined, options)).toMatch(/wall/i);
     expect(validateExport({ ...DEFAULTS, thickness: 0.5 }, undefined, DEFAULT_EXPORT_OPTIONS)).toBeNull();
   });
-
-  it('requires a 5 mm bed margin only for detachable models', () => {
-    const options = { ...DEFAULT_EXPORT_OPTIONS, plate: { width: 129, depth: 256 } };
-    expect(validateExport(DEFAULTS, undefined, options)).toBeNull();
-    expect(validateExport(DEFAULTS, undefined, { ...options, mode: 'detachable' })).toMatch(/5 mm/i);
-    expect(validateExport(DEFAULTS, undefined, { ...options, mode: 'detachable', plate: { width: 130, depth: 110 } })).toBeNull();
-    const large = { ...DEFAULTS, columns: 100, rows: 100, width: 500, depth: 500 };
-    expect(validateExport(large, undefined, DEFAULT_EXPORT_OPTIONS)).toBeNull();
-  });
-
-  it('leaves automatic plate packing and the 36-plate limit to the server', () => {
-    const parameters = { ...DEFAULTS, columns: 6, rows: 6, width: 5.61, depth: 5.61, diameter: 0.001, spacing: 0.801 };
-    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'detachable' as const, socket: { insertionDepth: 2, clearance: 0 }, plate: { width: 15.61, depth: 15.61 } };
-    expect(validateExport(parameters, undefined, options)).toBeNull();
+  it('requires print-in-place 3MF margins but keeps STL printer-independent', () => {
+    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
+    const large = { ...DEFAULTS, width: 247 };
+    expect(validateExport(large, undefined, options, '3mf')).toMatch(/5 mm/);
+    expect(validateExport(large, undefined, options, 'stl')).toBeNull();
+    const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, options, '3mf');
+    expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.4 });
+    expect(request.parameters).not.toHaveProperty('construction');
+    expect(request).not.toHaveProperty('socket');
+    expect(request).not.toHaveProperty('plate');
   });
 });

@@ -10,8 +10,8 @@ describe('pin grid measurements', () => {
     expect(getMetrics({ ...DEFAULTS, columns: 1, rows: 1 })).toEqual({ count: 1, width: 2, depth: 2, clearance: null });
   });
 
-  it('supports the maximum 10,000-pin grid', () => {
-    expect(getMetrics({ ...DEFAULTS, columns: 100, rows: 100 }).count).toBe(10000);
+  it('supports the maximum 5,000-pin grid', () => {
+    expect(getMetrics({ ...DEFAULTS, columns: 100, rows: 50 }).count).toBe(5000);
   });
 
   it('measures actual rotated polygon bounds for legacy positions', () => {

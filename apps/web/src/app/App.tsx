@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Accordion, Alert, Badge, Button, Group, Modal, NumberInput } from '@mantine/core';
+import ConstructionControls from '../features/mechanics/ConstructionControls';
+import { DEFAULT_CONSTRUCTION, mechanicalWarnings } from '../features/mechanics/model';
 import ThemeToggle from './ThemeToggle';
 import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
@@ -76,8 +78,11 @@ export default function App() {
   const materialSelections = useMemo(() => [editor.state.base, ...editor.committed.pinSelections], [editor.state.base, editor.committed.pinSelections]);
   const materialsCount = useMemo(() => new Set(materialSelections.map(materialKey)).size, [materialSelections]);
   const resolvedParameters = useMemo(() => ({ ...parameters, pinGeometries: editor.committed.pinGeometries }), [parameters, editor.committed.pinGeometries]);
+  const mechanical = applied.current.design?.mechanical;
+  const displayedGeometries = applied.current.design?.pinGeometries;
+  const previewParameters = useMemo(() => parameters.construction?.mode === 'print-in-place' && displayedGeometries ? { ...parameters, pinGeometries: displayedGeometries } : resolvedParameters, [parameters, displayedGeometries, resolvedParameters]);
   const metrics = useMemo(() => getMetrics(resolvedParameters), [resolvedParameters]);
-  const warnings = useMemo(() => getWarnings(resolvedParameters, metrics), [resolvedParameters, metrics]);
+  const warnings = useMemo(() => [...getWarnings(resolvedParameters, metrics), ...mechanicalWarnings(resolvedParameters)], [resolvedParameters, metrics]);
   const exportBlockedReason = editor.isDragging ? 'Finish or cancel the height drag before exporting.' : mapping.error || (updating
     ? 'Design processing is still running. Wait before exporting.'
     : image.error
@@ -186,6 +191,7 @@ export default function App() {
             {image.error && !image.source && <Button variant="subtle" size="xs" onClick={image.remove}>Clear image error and use uniform pins</Button>}
             <section className="controls-panel" aria-label="Parameters">
               <div className="controls-heading"><h2>Parameters</h2><span>01 / DESIGN</span></div>
+              <ConstructionControls value={requested.construction ?? DEFAULT_CONSTRUCTION} disabled={editor.isDragging || pendingDesign !== null} onChange={construction => setRequested(current => ({ ...current, construction }))} />
               <Accordion multiple defaultValue={['base', 'pins']} order={3} className="parameter-accordion">
                 <Accordion.Item value="base">
                   <Accordion.Control><span className="section-heading"><span>Base plate</span><span>Foundation</span></span></Accordion.Control>
@@ -204,11 +210,11 @@ export default function App() {
                   <Accordion.Control><span className="section-heading"><span>Pin array</span><Badge color="teal" variant="light" size="sm">{metrics.count.toLocaleString('en-US')} pins</Badge></span></Accordion.Control>
                   <Accordion.Panel>
                     <PinShapeControls key={`pin-shape-${resetVersion}`} parameters={requested} disabled={editor.isDragging} onChange={value => setRequested(current => ({ ...current, ...value }))} />
-                    <div className="parameter-info"><InfoPopover label="Grid and height help"><p>Pins use a centered square grid inside the contour. Spacing is center to center. Edge padding measures from the pin's outer wall to every boundary. Layout changes require confirmation when pins have manual edits.</p></InfoPopover></div>
+                    <div className="parameter-info"><InfoPopover label="Grid and height help"><p>Pins use a centered square grid inside the contour. Spacing is center to center. Extension measures from the base top to the pin top, including the retaining head in Print-in-place. Edge padding measures from the pin's outer wall (retaining head in Print-in-place) to every boundary. Layout changes require confirmation when pins have manual edits.</p></InfoPopover></div>
                     <ShapeNumberField key={resetVersion} label="Edge padding" value={shape.padding} onChange={padding => setShape(current => ({ ...current, padding }))} />
                     {field('spacing', 'Pin spacing', false, 20)}
                     {field('diameter', 'Pin size', false, 10)}
-                    {(!image.source || !enabled || mode === 'color') && field('extension', 'Generated pin height', false, 80)}
+                    {(!image.source || !enabled || mode === 'color') && field('extension', 'Generated pin extension', false, 80)}
                   </Accordion.Panel>
                 </Accordion.Item>
               </Accordion>
@@ -217,7 +223,7 @@ export default function App() {
             <ExportPanel parameters={resolvedParameters} heights={editor.committed.heights} materials={modelMaterials} pinSelections={editor.committed.pinSelections} blockedReason={exportBlockedReason} />
           </aside>
           <div className="preview-column">
-            <ModelPreview parameters={resolvedParameters} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
+            <ModelPreview parameters={previewParameters} mechanical={mechanical} heights={editor.heights} colors={modelColors} pinColors={pinColors} materialSelections={materialSelections}
               heightLabel={editor.state.overrides.size ? 'Edited pin design' : applied.current.settings.source && applied.current.settings.enabled ? mappingLabels[applied.current.settings.mode] : 'Uniform pin height'}
               toolbar={<PinEditorToolbar editor={editor} parameters={parameters} />}
               editing={{ heightMode: editor.heightMode, selection: editor.state.selection, active: editor.state.active,

@@ -12,14 +12,14 @@ from pin_art.test_pin_geometries import mixed_payload, pair_payload
 
 
 @pytest.mark.parametrize("explicit", [False, True])
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 @pytest.mark.parametrize("format", ["stl", "3mf"])
 def test_api_worker_exports_complete_mixed_geometry_snapshot(explicit, mode, format):
     payload = mixed_payload(mode=mode, explicit=explicit, format=format)
     with TestClient(app) as client:
         response = client.post("/api/exports", json=payload)
     assert response.status_code == 200, response.text[:200]
-    assert response.headers["X-Plate-Count"] == ("1" if mode == "fixed" else "2")
+    assert response.headers["X-Plate-Count"] == ("1")
     if format == "stl" and mode == "fixed":
         solid = read_stl(response.content)
         assert len(solid.decompose()) == 1
@@ -61,10 +61,10 @@ def test_api_does_not_trust_frontend_clearance():
 
 def test_extra_geometry_array_counts_toward_request_size_limit():
     payload = mixed_payload(explicit=False, format="stl")
-    payload["parameters"].update(rows=100, columns=100, width=500, depth=500)
-    payload.update(heights=[1] * 10000, pinMaterials=[0] * 10000,
-                   pinGeometries=[payload["pinGeometries"][index % 4] for index in range(10000)])
-    body = json.dumps(payload).replace('"shape"', ' ' * 220 + '"shape"')
+    payload["parameters"].update(rows=50, columns=100, width=500, depth=500)
+    payload.update(heights=[1] * 5000, pinMaterials=[0] * 5000,
+                   pinGeometries=[payload["pinGeometries"][index % 4] for index in range(5000)])
+    body = json.dumps(payload).replace('"shape"', ' ' * 450 + '"shape"')
     assert len(body) > MAX_BODY_BYTES
     with TestClient(app) as client:
         response = client.post("/api/exports", content=body, headers={"Content-Type": "application/json"})

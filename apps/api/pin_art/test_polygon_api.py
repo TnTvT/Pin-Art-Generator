@@ -12,7 +12,7 @@ from pin_art.test_writer import read_model
 
 
 @pytest.mark.parametrize("shape", ["square", "triangle"])
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 @pytest.mark.parametrize("format", ["stl", "3mf"])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_api_worker_accepts_shape_aliases_in_explicit_and_legacy_exports(shape, mode, format, explicit, tmp_path):
@@ -21,7 +21,7 @@ def test_api_worker_accepts_shape_aliases_in_explicit_and_legacy_exports(shape, 
     with TestClient(app) as client:
         response = client.post("/api/exports", json=payload)
     assert response.status_code == 200, response.text[:200]
-    assert response.headers["X-Plate-Count"] == ("1" if mode == "fixed" else "2")
+    assert response.headers["X-Plate-Count"] == ("1")
     if format == "3mf":
         assert response.headers["Content-Type"] == "model/3mf"
         path = tmp_path / "worker.3mf"
@@ -36,15 +36,9 @@ def test_api_worker_accepts_shape_aliases_in_explicit_and_legacy_exports(shape, 
         assert len(pin_meshes) == 2
         assert all(len(mesh.findall(f"{namespace}mesh/{namespace}vertices/{namespace}vertex")) == (8 if shape == "square" else 6) for mesh in pin_meshes)
         assert all(shape in entry.attrib["value"] and "30deg" in entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='name']") if entry.attrib["value"] != "base")
-    elif mode == "fixed":
+    else:
         assert response.headers["Content-Type"] == "model/stl"
         assert len(read_stl(response.content).decompose()) == 1
-    else:
-        assert response.headers["Content-Type"] == "application/zip"
-        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-            for name in archive.namelist():
-                if name.endswith(".stl"):
-                    assert read_stl(archive.read(name)).bounding_box()[2] == 0
 
 
 @pytest.mark.parametrize("field,value", [("pinShape", "hexagon"), ("pinShape", None), ("pinRotation", -1), ("pinRotation", 361), ("pinRotation", "30")])
@@ -58,17 +52,17 @@ def test_api_shape_parameter_errors_remain_structured(field, value):
     assert field in response.json()["error"]["message"]
 
 
-@pytest.mark.parametrize("failure", ["overlap", "padding", "floor", "socket-wall", "bed"])
-def test_api_polygon_geometry_errors_are_actionable_and_do_not_start_export(failure):
-    payload = polygon_payload(mode="detachable" if failure in ["floor", "socket-wall"] else "fixed")
+@pytest.mark.parametrize("mode,failure", [("fixed", "overlap"), ("fixed", "padding"), ("fixed", "bed"), ("print-in-place", "guide-wall"), ("print-in-place", "short-extension")])
+def test_api_geometry_errors_are_actionable_and_do_not_start_export(mode, failure):
+    payload = polygon_payload(mode=mode)
     if failure == "overlap":
         payload["layout"]["pins"][1].update(x=-2.4)
     elif failure == "padding":
         payload["layout"]["pins"][0].update(x=-9.9)
-    elif failure == "floor":
-        payload["parameters"]["thickness"] = 2.9
-    elif failure == "socket-wall":
+    elif failure == "guide-wall":
         payload["layout"]["pins"][1].update(x=-0.9)
+    elif failure == "short-extension":
+        payload["heights"][0] = 0.5
     else:
         payload = polygon_payload(explicit=False)
         payload["parameters"]["width"] = 257

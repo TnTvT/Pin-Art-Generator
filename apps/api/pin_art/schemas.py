@@ -1,4 +1,4 @@
-from math import isclose, isfinite
+from math import isfinite
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -7,6 +7,7 @@ from pin_art.bambu_profile import BED_DEPTH, BED_WIDTH, PRINTABLE_HEIGHT
 from pin_art.cross_sections import PinShape, local_bounds
 
 
+MAX_PINS = 5000
 PositiveNumber = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 NonnegativeNumber = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 GridCount = Annotated[int, Field(ge=1, le=100, strict=True)]
@@ -47,14 +48,9 @@ class Parameters(DomainModel):
         return value % 360
 
 
-class SocketParameters(DomainModel):
-    insertion_depth: PositiveNumber = Field(default=2, alias="insertionDepth")
-    clearance: NonnegativeNumber = 0.2
-
-
-class PlateParameters(DomainModel):
-    width: PositiveNumber = 256
-    depth: PositiveNumber = 256
+class SlidingParameters(DomainModel):
+    clearance: PositiveNumber = 0.4
+    head_flare: PositiveNumber = Field(default=0.4, alias="headFlare")
 
 
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]
@@ -75,23 +71,22 @@ class PinPosition(DomainModel):
 
 class ShapeLayout(DomainModel):
     regions: list[BaseRegion] = Field(min_length=1, max_length=6666)
-    pins: list[PinPosition] = Field(min_length=1, max_length=10000)
+    pins: list[PinPosition] = Field(min_length=1, max_length=MAX_PINS)
     edge_padding: NonnegativeNumber = Field(alias="edgePadding")
 
 
 class ExportRequest(DomainModel):
     format: Literal["stl", "3mf"]
-    mode: Literal["fixed", "detachable"]
+    mode: Literal["fixed", "print-in-place"]
     parameters: Parameters
     layout: ShapeLayout | None = Field(default=None, exclude_if=lambda value: value is None)
-    heights: list[PositiveNumber] = Field(max_length=10000)
+    heights: list[PositiveNumber] = Field(max_length=MAX_PINS)
     materials: list[HexRGB] = Field(min_length=1, max_length=16)
     filament_profiles: list[FilamentProfile] | None = Field(default=None, alias="filamentProfiles", min_length=1, max_length=16)
     base_material: MaterialIndex = Field(alias="baseMaterial")
-    pin_materials: list[MaterialIndex] = Field(alias="pinMaterials", max_length=10000)
-    pin_geometries: list[PinGeometry] | None = Field(default=None, alias="pinGeometries", min_length=1, max_length=10000, exclude_if=lambda value: value is None)
-    socket: SocketParameters = Field(default_factory=SocketParameters)
-    plate: PlateParameters = Field(default_factory=PlateParameters)
+    pin_materials: list[MaterialIndex] = Field(alias="pinMaterials", max_length=MAX_PINS)
+    pin_geometries: list[PinGeometry] | None = Field(default=None, alias="pinGeometries", min_length=1, max_length=MAX_PINS, exclude_if=lambda value: value is None)
+    sliding: SlidingParameters = Field(default_factory=SlidingParameters)
 
     @field_validator("pin_geometries", mode="before")
     @classmethod
@@ -114,6 +109,8 @@ class ExportRequest(DomainModel):
         if self.layout is None and (parameters.columns is None or parameters.rows is None):
             raise ValueError("rows and columns are required for legacy requests without layout")
         count = len(self.layout.pins) if self.layout else parameters.columns * parameters.rows
+        if count > MAX_PINS:
+            raise ValueError("Use at most 5,000 pins; increase spacing or reduce the base")
         if self.pin_geometries is not None and len(self.pin_geometries) != count:
             raise ValueError("pinGeometries length must match the grid count or layout pins and heights")
         if self.filament_profiles is not None and len(self.filament_profiles) != len(self.materials):
@@ -123,8 +120,6 @@ class ExportRequest(DomainModel):
         if self.base_material >= len(self.materials) or any(index >= len(self.materials) for index in self.pin_materials):
             raise ValueError("material indices must reference the palette")
         diameter = parameters.diameter
-        if self.mode == "detachable":
-            diameter += self.socket.clearance
         grid_width = parameters.width if self.layout else (parameters.columns - 1) * parameters.spacing + diameter
         grid_depth = parameters.depth if self.layout else (parameters.rows - 1) * parameters.spacing + diameter
         polygon = parameters.pin_shape != "round" or self.pin_geometries is not None
@@ -147,9 +142,9 @@ class ExportRequest(DomainModel):
         if self.format == "3mf":
             if parameters.width > BED_WIDTH or parameters.depth > BED_DEPTH:
                 raise ValueError("Bambu X1C 3MF base must fit the 256 × 256 mm bed; reduce the base or export STL")
-            if self.mode == "detachable" and (self.plate.width > BED_WIDTH or self.plate.depth > BED_DEPTH):
-                raise ValueError("Bambu X1C 3MF usable plate dimensions must not exceed 256 × 256 mm; reduce the bed area or export STL")
-            height = max(parameters.thickness, max(self.heights) + self.socket.insertion_depth) if self.mode == "detachable" else parameters.thickness + max(self.heights)
+            if self.mode == "print-in-place" and (parameters.width > BED_WIDTH - 10 or parameters.depth > BED_DEPTH - 10):
+                raise ValueError("Print-in-place 3MF must fit the bed with 5 mm margins")
+            height = parameters.thickness + max(self.heights)
             if height > PRINTABLE_HEIGHT:
                 raise ValueError("Bambu X1C 3MF parts must fit the profile's 250 mm printable height; reduce height or export STL")
         if self.mode == "fixed":
@@ -160,22 +155,11 @@ class ExportRequest(DomainModel):
             if any(not isfinite(parameters.thickness + height) for height in self.heights):
                 raise ValueError("assembled heights must be finite")
             return self
-        floor = parameters.thickness - self.socket.insertion_depth
-        if floor < 1 and not isclose(floor, 1, rel_tol=0, abs_tol=1e-12):
-            raise ValueError("socket floor must be at least 1 mm")
-        wall = parameters.spacing - diameter
-        if not self.layout and not polygon and count > 1 and wall < 0.8 and not isclose(wall, 0.8, rel_tol=0, abs_tol=1e-12):
-            raise ValueError("wall between sockets must be at least 0.8 mm")
-        for extent, dimension in ([] if self.layout or polygon else [(grid_width, parameters.width), (grid_depth, parameters.depth)]):
-            edge_wall = (dimension - extent) / 2
-            if edge_wall < 0.8 and not isclose(edge_wall, 0.8, rel_tol=0, abs_tol=1e-12):
-                raise ValueError("socket edge wall must be at least 0.8 mm")
-        if any(not isfinite(height + self.socket.insertion_depth) for height in self.heights):
+        from pin_art.sliding import validate_sliding
+        from pin_art.shape_validation import _base_shape
+        from shapely import box
+        base = _base_shape(self) if self.layout else box(-parameters.width / 2, -parameters.depth / 2, parameters.width / 2, parameters.depth / 2)
+        validate_sliding(self, base)
+        if any(not isfinite(parameters.thickness + height) for height in self.heights):
             raise ValueError("printed pin lengths must be finite")
-        if parameters.width > self.plate.width - 10 or parameters.depth > self.plate.depth - 10:
-            raise ValueError("base must fit the plate with 5 mm margins")
-        for geometry in self.resolved_pin_geometries:
-            bounds = local_bounds(geometry.shape, parameters.diameter, geometry.rotation)
-            if bounds[2] - bounds[0] > self.plate.width - 10 or bounds[3] - bounds[1] > self.plate.depth - 10:
-                raise ValueError("pin must fit the plate with 5 mm margins")
         return self

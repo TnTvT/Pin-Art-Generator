@@ -8,13 +8,18 @@ const selected = () => editorReducer(createEditorState(4), { type: 'select', ids
 
 describe('pin editing transactions', () => {
   it('enforces the encoded delta memory budget for dense editing histories', () => {
-    let state = createEditorState(10000);
-    state = editorReducer(state, { type: 'select', ids: Array.from({ length: 10000 }, (_, index) => index), operation: 'replace' });
-    const heights = new Float32Array(10000).fill(20);
-    for (let value = 1; value <= 35; value++) state = editorReducer(state, { type: 'height', heights, value, mode: 'set' });
+    let state = createEditorState(5000);
+    state.overrides = new Map(Array.from({ length: 5000 }, (_, index) => [index, {
+      height: 20,
+      geometry: { shape: 'triangle' as const, rotation: 30 },
+      material: { color: '#00b1b7', filamentId: 'basic-903' },
+    }]));
+    state = editorReducer(state, { type: 'select', ids: Array.from({ length: 5000 }, (_, index) => index), operation: 'replace' });
+    const heights = new Float32Array(5000).fill(20);
+    for (let value = 1; value <= 50; value++) state = editorReducer(state, { type: 'height', heights, value, mode: 'set' });
     expect(state.historyBytes).toBeLessThanOrEqual(16 * 1024 * 1024);
-    expect(state.past.length).toBeLessThan(35);
-    expect(state.overrides.size).toBe(10000);
+    expect(state.past.length).toBeLessThan(50);
+    expect(state.overrides.size).toBe(5000);
   });
 
   it('rejects overflow, underflow and invalid colors without replacing valid edits', () => {

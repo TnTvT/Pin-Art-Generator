@@ -5,7 +5,7 @@ import { updatePinInstances } from './pin-grid';
 
 const geometry = new CylinderGeometry(0.5, 0.5, 1, 16);
 const material = new MeshBasicMaterial();
-const mesh = new InstancedMesh(geometry, material, 10000);
+const mesh = new InstancedMesh(geometry, material, 5000);
 
 afterEach(() => { mesh.count = 0; });
 
@@ -52,8 +52,8 @@ describe('pin instance placement', () => {
   });
 
   it('updates count and bounds when switching between large and small grids', () => {
-    updatePinInstances(mesh, { ...DEFAULTS, columns: 100, rows: 100 });
-    expect(mesh.count).toBe(10000);
+    updatePinInstances(mesh, { ...DEFAULTS, columns: 100, rows: 50 });
+    expect(mesh.count).toBe(5000);
     updatePinInstances(mesh, { ...DEFAULTS, columns: 1, rows: 1 });
     expect(mesh.count).toBe(1);
     expect(mesh.boundingBox?.min.x).toBeCloseTo(-1);

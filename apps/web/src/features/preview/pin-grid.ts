@@ -1,15 +1,18 @@
+import type { PinRole } from '../mechanics/preview-geometry';
 import { InstancedMesh, Object3D } from 'three';
 import { pinCount, pinPosition, type Parameters } from '../pin-design/model';
 import { effectivePinRotation, type PinShape } from '../pin-shape/geometry';
 
 export interface PinInstanceGroup {
   shape: PinShape;
+  role?: PinRole;
+  geometryKey?: string;
   mesh: InstancedMesh;
   indices: readonly number[];
   canonicalToLocal: ReadonlyMap<number, number>;
 }
 
-export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, heights?: Float32Array, indices?: readonly number[]) {
+export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, heights?: Float32Array, indices?: readonly number[], role?: PinRole) {
   const instance = new Object3D();
   pins.count = indices?.length ?? pinCount(parameters);
   for (let localIndex = 0; localIndex < pins.count; localIndex++) {
@@ -21,6 +24,12 @@ export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, 
     const extension = heights?.[index] ?? parameters.extension;
     instance.scale.set(parameters.diameter, extension, parameters.diameter);
     instance.position.set(position.x, position.y, parameters.thickness + extension / 2);
+    if (role && parameters.construction?.mode === 'print-in-place') {
+      const flare = parameters.construction.sliding.headFlare, length = parameters.thickness + extension;
+      instance.rotation.set(0, 0, rotation * Math.PI / 180);
+      instance.scale.set(1, 1, role === 'shaft' ? length - 2 * flare : 1);
+      instance.position.z = role === 'shaft' ? flare : role === 'bottom-head' ? 0 : length - flare;
+    }
     instance.updateMatrix();
     pins.setMatrixAt(localIndex, instance.matrix);
   }

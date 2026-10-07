@@ -1,6 +1,8 @@
+import { createMechanicalPinGeometry, geometryFromMesh, type MechanicalMesh, type PinRole } from '../mechanics/preview-geometry';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { DEFAULT_MODEL_COLORS, pinCount, type ModelColors, type Parameters } from '../pin-design/model';
+import { MAX_PINS } from '../pin-design/limits';
 import { updatePinInstances, type PinInstanceGroup } from './pin-grid';
 import { fitCameraToBounds } from './camera-fit';
 import { PREVIEW_COLORS, type PreviewColorScheme } from './appearance';
@@ -16,7 +18,8 @@ export type { PreviewEditing } from './pin-interaction';
 export type ViewAction = 'reset' | 'top' | 'fit';
 
 export interface Preview {
-  update: (parameters: Parameters, heights?: Float32Array) => void;
+  update: (parameters: Parameters, heights?: Float32Array, mechanical?: MechanicalMesh) => void;
+  setTransparentBase: (transparent: boolean) => void;
   setView: (action: ViewAction) => void;
   setColorScheme: (colorScheme: PreviewColorScheme) => void;
   setModelColors: (colors: ModelColors) => void;
@@ -54,6 +57,7 @@ export function createPreview(container: HTMLDivElement): Preview {
   let baseGeometry: THREE.BufferGeometry = new THREE.BoxGeometry(1, 1, 1);
   let lastLayout: Layout | undefined;
   let lastThickness = 0;
+  let lastMechanical: MechanicalMesh | undefined;
   const baseMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.base, roughness: 0.7, metalness: 0.15 });
   const base = new THREE.Mesh(baseGeometry, baseMaterial);
   scene.add(base);
@@ -64,7 +68,7 @@ export function createPreview(container: HTMLDivElement): Preview {
 
   const pinMaterial = new THREE.MeshStandardMaterial({ color: DEFAULT_MODEL_COLORS.pins, roughness: 0.32, metalness: 0.28 });
   function createGroup(shape: PinShape): PinInstanceGroup {
-    const mesh = new THREE.InstancedMesh(createPinGeometry(shape), pinMaterial, 10000);
+    const mesh = new THREE.InstancedMesh(createPinGeometry(shape), pinMaterial, MAX_PINS);
     mesh.count = 0;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(mesh);
@@ -116,18 +120,23 @@ export function createPreview(container: HTMLDivElement): Preview {
       const indices = indicesByShape.get(shape) ?? [];
       indices.push(index); indicesByShape.set(shape, indices);
     }
-    const available = pinGroups.filter(group => !indicesByShape.has(group.shape));
+    const sliding = parameters.construction?.mode === 'print-in-place' ? parameters.construction.sliding : undefined;
+    const roles: (PinRole | undefined)[] = sliding ? ['shaft', 'bottom-head', 'top-head'] : [undefined];
+    const wanted = new Set([...indicesByShape.keys()].flatMap(shape => roles.map(role => `${shape}:${role ?? 'fixed'}`)));
+    const available = pinGroups.filter(group => !wanted.has(`${group.shape}:${group.role ?? 'fixed'}`));
     const nextGroups: PinInstanceGroup[] = [];
-    for (const [shape, indices] of indicesByShape) {
-      const group = pinGroups.find(candidate => candidate.shape === shape) ?? available.shift() ?? createGroup(shape);
-      if (group.shape !== shape) {
+    for (const [shape, indices] of indicesByShape) for (const role of roles) {
+      const group = pinGroups.find(candidate => candidate.shape === shape && candidate.role === role) ?? available.shift() ?? createGroup(shape);
+      const geometryKey = sliding ? `${shape}:${role}:${parameters.diameter}:${sliding.headFlare}` : `${shape}:fixed`;
+      if (group.shape !== shape || group.role !== role || sliding && group.geometryKey !== geometryKey) {
         group.mesh.geometry.dispose();
-        group.mesh.geometry = createPinGeometry(shape);
+        group.mesh.geometry = sliding && role ? createMechanicalPinGeometry(shape, parameters.diameter, sliding.headFlare, role) : createPinGeometry(shape);
         group.shape = shape;
       }
+      group.role = role; group.geometryKey = geometryKey;
       group.indices = indices;
       group.canonicalToLocal = new Map(indices.map((index, localIndex) => [index, localIndex]));
-      updatePinInstances(group.mesh, parameters, heights, indices);
+      updatePinInstances(group.mesh, parameters, heights, indices, role);
       nextGroups.push(group);
     }
     for (const group of available) {
@@ -201,16 +210,17 @@ export function createPreview(container: HTMLDivElement): Preview {
     requestRender();
   }
 
-  function update(parameters: Parameters, heights?: Float32Array) {
-    if (parameters.layout !== lastLayout || parameters.layout && parameters.thickness !== lastThickness) {
+  function update(parameters: Parameters, heights?: Float32Array, mechanical?: MechanicalMesh) {
+    if (pinCount(parameters) > MAX_PINS) throw new Error('Preview supports at most 5,000 pins.');
+    if (parameters.layout !== lastLayout || parameters.layout && parameters.thickness !== lastThickness || mechanical !== lastMechanical) {
       baseGeometry.dispose(); edgesGeometry.dispose();
-      baseGeometry = parameters.layout ? createBaseGeometry(parameters.layout, parameters.thickness) : new THREE.BoxGeometry(1, 1, 1);
+      baseGeometry = mechanical ? geometryFromMesh(mechanical) : parameters.layout ? createBaseGeometry(parameters.layout, parameters.thickness) : new THREE.BoxGeometry(1, 1, 1);
       edgesGeometry = new THREE.EdgesGeometry(baseGeometry);
       base.geometry = baseGeometry; baseEdges.geometry = edgesGeometry;
-      lastLayout = parameters.layout; lastThickness = parameters.thickness;
+      lastLayout = parameters.layout; lastThickness = parameters.thickness; lastMechanical = mechanical;
     }
-    base.scale.set(parameters.layout ? 1 : parameters.width, parameters.layout ? 1 : parameters.depth, parameters.layout ? 1 : parameters.thickness);
-    base.position.z = parameters.layout ? 0 : parameters.thickness / 2;
+    base.scale.set(parameters.layout || mechanical ? 1 : parameters.width, parameters.layout || mechanical ? 1 : parameters.depth, parameters.layout || mechanical ? 1 : parameters.thickness);
+    base.position.z = parameters.layout || mechanical ? 0 : parameters.thickness / 2;
     updateGroups(parameters, heights);
     interaction.update(parameters, heights);
     updateHighlights();
@@ -251,6 +261,14 @@ export function createPreview(container: HTMLDivElement): Preview {
   return {
     update,
     setView,
+    setTransparentBase(transparent) {
+      baseMaterial.transparent = transparent;
+      baseMaterial.opacity = transparent ? 0.45 : 1;
+      baseMaterial.depthWrite = !transparent;
+      baseMaterial.needsUpdate = true;
+      baseEdges.visible = !transparent;
+      requestRender();
+    },
     setColorScheme(colorScheme) {
       const nextColors = PREVIEW_COLORS[colorScheme];
       background.set(nextColors.background);

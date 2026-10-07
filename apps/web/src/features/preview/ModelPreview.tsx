@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Group, useComputedColorScheme } from '@mantine/core';
+import { Alert, Button, Group, Switch, useComputedColorScheme } from '@mantine/core';
+import type { MechanicalMesh } from '../mechanics/preview-geometry';
 import { createPreview, type Preview, type PreviewEditing, type ViewAction } from './preview';
 import { DEFAULT_MODEL_COLORS, type ModelColors, type Parameters } from '../pin-design/model';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
@@ -8,6 +9,7 @@ import type { MaterialSelection } from '../filaments/materials';
 
 interface ModelPreviewProps {
   parameters: Parameters;
+  mechanical?: MechanicalMesh;
   heights?: Float32Array;
   colors?: ModelColors;
   pinColors?: readonly string[];
@@ -17,9 +19,10 @@ interface ModelPreviewProps {
   toolbar?: ReactNode;
 }
 
-export default function ModelPreview({ parameters, heights, colors = DEFAULT_MODEL_COLORS, pinColors, materialSelections, editing, heightLabel, toolbar }: ModelPreviewProps) {
+export default function ModelPreview({ parameters, mechanical, heights, colors = DEFAULT_MODEL_COLORS, pinColors, materialSelections, editing, heightLabel, toolbar }: ModelPreviewProps) {
   const container = useRef<HTMLDivElement>(null);
   const preview = useRef<Preview | null>(null);
+  const [transparent, setTransparent] = useState(false);
   const [error, setError] = useState(false);
   const colorScheme = useComputedColorScheme('light', { getInitialValueInEffect: false });
 
@@ -37,8 +40,9 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
   }, []);
 
   useEffect(() => {
-    preview.current?.update(parameters, heights);
-  }, [parameters, heights]);
+    preview.current?.update(parameters, heights, mechanical);
+  }, [parameters, heights, mechanical]);
+  useEffect(() => { preview.current?.setTransparentBase?.(transparent && parameters.construction?.mode === 'print-in-place'); }, [transparent, parameters.construction?.mode]);
 
   useEffect(() => {
     preview.current?.setColorScheme(colorScheme);
@@ -64,10 +68,11 @@ export default function ModelPreview({ parameters, heights, colors = DEFAULT_MOD
           <h2>3D preview</h2>
           <InfoPopover label="Preview help">
             <p>Click a pin to select. Drag to rotate. Shift-click toggles pins; Shift-drag adds pins in a box. Scroll to zoom; right-drag to pan.</p>
-            <p>Assembled conceptual preview. Detachable sockets and print-plate layout are not rendered.</p>
+            <p>Print-in-place shows the actual guide holes, tapered retaining heads and clearance in the initial printing position. Extension includes the top head. Use Transparent base to inspect the structure; no motion simulation is applied.</p>
           </InfoPopover>
         </div>
         <Group gap="xs" className="view-actions">
+          {parameters.construction?.mode === 'print-in-place' && <Switch label="Transparent base" size="xs" checked={transparent} onChange={event => setTransparent(event.currentTarget.checked)} disabled={error} />}
           <Button variant="default" size="xs" onClick={() => setView('top')} disabled={error}>Top view</Button>
           <Button variant="default" size="xs" onClick={() => setView('fit')} disabled={error}>Fit model</Button>
           <Button variant="subtle" color="gray" size="xs" onClick={() => setView('reset')} disabled={error}>Reset view</Button>

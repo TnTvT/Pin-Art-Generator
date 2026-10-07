@@ -23,12 +23,12 @@ def shape_request(mode="fixed"):
     }
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_shape_exports_keep_holes_positions_and_plates(mode, tmp_path):
     request = ExportRequest.model_validate(shape_request(mode))
     plates = build_plates(request)
-    assert len(plates) == (1 if mode == "fixed" else 2)
-    assert plates[0].parts[0].solid.volume() == pytest.approx((800 - 36) * 3 - (2 * 3.141592653589793 * 1.1 ** 2 * 2 if mode == "detachable" else 0), rel=0.001)
+    assert len(plates) == (1)
+    assert plates[0].parts[0].solid.volume() == pytest.approx((800 - 36) * 3 - (0), rel=0.001)
     assert len(plate_stl(plates[0])) > 84
     path = tmp_path / "shape.3mf"
     path.write_bytes(export_3mf(request, plates))
@@ -53,7 +53,7 @@ def test_layout_validation_rejects_invalid_snapshots(failure):
     with pytest.raises(ValidationError): ExportRequest.model_validate(payload)
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_disconnected_regions_preserve_assembly_coordinates_and_closed_solids(mode):
     payload = shape_request(mode)
     payload["layout"]["regions"] = [
@@ -64,21 +64,11 @@ def test_disconnected_regions_preserve_assembly_coordinates_and_closed_solids(mo
     plates = build_plates(request)
     assert len(plates[0].parts[0].solid.decompose()) == 2
     assert len(plate_stl(plates[0])) > 84
-    if mode == "fixed":
-        assert tuple(plates[0].parts[1].transform[:3, 3]) == (-10, 0, 3)
-        assert tuple(plates[0].parts[2].transform[:3, 3]) == (10, 0, 3)
-    else:
-        payload["format"] = "stl"
-        output, name, mime, plate_count = generate_export(ExportRequest.model_validate(payload))
-        assert plate_count == 2
-        with zipfile.ZipFile(io.BytesIO(output)) as archive:
-            manifest = json.loads(archive.read("manifest.json"))
-            assert manifest["layout"]["pins"][0] == {"id": "left", "x": -10, "y": 0}
-            assert "left" in manifest["plates"][1]["parts"][0]["name"]
-            assert "12.000 mm" in manifest["plates"][1]["parts"][0]["name"]
+    assert tuple(plates[0].parts[1].transform[:3, 3]) == (-10, 0, 3)
+    assert tuple(plates[0].parts[2].transform[:3, 3]) == (10, 0, 3)
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_curved_contours_survive_strict_3mf_read_back(mode, tmp_path):
     payload = shape_request(mode)
     outer = [[20 * math.cos(index * math.pi / 32), 10 * math.sin(index * math.pi / 32)] for index in range(64)]
@@ -93,24 +83,4 @@ def test_curved_contours_survive_strict_3mf_read_back(mode, tmp_path):
     reader.SetStrictModeActive(True)
     reader.ReadFromFile(str(path))
     assert reader.GetWarningCount() == 0
-    assert count == (1 if mode == "fixed" else 2)
-
-
-@pytest.mark.parametrize("failure", ["wall", "hole-wall", "floor", "bounds", "vertices", "overlapping-regions"])
-def test_detachable_shape_validation_does_not_repair_or_remove_pins(failure):
-    payload = shape_request("detachable")
-    if failure == "wall":
-        payload["layout"]["pins"][1].update(x=-7.5)
-    if failure == "hole-wall":
-        payload["layout"]["pins"][0].update(x=-4.5)
-        payload["layout"]["edgePadding"] = 0
-    if failure == "floor":
-        payload["parameters"]["thickness"] = 2.5
-    if failure == "bounds":
-        payload["parameters"]["width"] = 41
-    if failure == "vertices":
-        payload["layout"]["regions"][0]["holes"] = [[[-1,-1], [-1,1], [1,1], [1,-1]]] * 5000
-    if failure == "overlapping-regions":
-        payload["layout"]["regions"].append(payload["layout"]["regions"][0])
-    with pytest.raises(ValidationError):
-        ExportRequest.model_validate(payload)
+    assert count == (1)

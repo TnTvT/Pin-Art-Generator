@@ -10,8 +10,12 @@ import { prepareSamplingSource } from '../image-mapping/sampling-source';
 import { DEFAULT_SHAPE, generateLayout } from './layout';
 import { startShapeJob } from './shape-worker';
 import useDesignGeneration, { type GenerationSettings } from './useDesignGeneration';
+import { startMechanicalJob } from '../mechanics/mechanical-worker';
+import { DEFAULT_CONSTRUCTION } from '../mechanics/model';
+import type { MechanicalMesh } from '../mechanics/preview-geometry';
 
 vi.mock('./shape-worker', () => ({ startShapeJob: vi.fn() }));
+vi.mock('../mechanics/mechanical-worker', () => ({ startMechanicalJob: vi.fn() }));
 vi.mock('../image-mapping/image-mapping', async importOriginal => ({ ...await importOriginal<typeof import('../image-mapping/image-mapping')>(), mapImageToPins: vi.fn(), sampleImagePixels: vi.fn() }));
 vi.mock('../image-mapping/color-worker', () => ({ startColorMapping: vi.fn() }));
 vi.mock('../image-mapping/sampling-source', () => ({ prepareSamplingSource: vi.fn(async source => source) }));
@@ -19,12 +23,35 @@ const committed = { ...DEFAULTS, ...generateLayout(DEFAULTS, DEFAULT_SHAPE) };
 const settings: GenerationSettings = { parameters: DEFAULTS, shape: DEFAULT_SHAPE, source: null, enabled: true, minimum: 2, inverted: false, mode: 'height', options: DEFAULT_COLOR_MAPPING };
 const editor = { state: { base: DEFAULT_MODEL_MATERIALS.base, overrides: new Map([[0, { height: 30 }]]) } } as unknown as PinEditor;
 beforeEach(() => {
+  vi.mocked(startMechanicalJob).mockReset().mockImplementation(() => ({ promise: Promise.resolve({ positions: new Float32Array(), elapsedMs: 1 }), cancel: vi.fn() }));
   vi.mocked(prepareSamplingSource).mockReset().mockImplementation(async source => source);
   vi.mocked(startColorMapping).mockReset();
   vi.mocked(startShapeJob).mockReset();
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('publishes mechanics atomically, cancels stale geometry and recovers without replacing valid settings on failure', async () => {
+    let finish!: (mesh: MechanicalMesh) => void;
+    const cancel = vi.fn(), latest = { positions: new Float32Array([1, 2, 3]), elapsedMs: 2 };
+    vi.mocked(startMechanicalJob).mockImplementationOnce(() => ({ promise: new Promise(resolve => { finish = resolve; }), cancel }))
+      .mockImplementation(() => ({ promise: Promise.resolve(latest), cancel: vi.fn() }));
+    const input = { ...settings, parameters: { ...DEFAULTS, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } } };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(startMechanicalJob).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true); expect(result.current.design).toBeUndefined();
+    const next = { ...input, parameters: { ...input.parameters, thickness: 4 } };
+    rerender({ input: next });
+    await waitFor(() => expect(result.current.design?.mechanical).toBe(latest));
+    expect(cancel).toHaveBeenCalledOnce();
+    await act(async () => finish({ positions: new Float32Array([99]), elapsedMs: 99 }));
+    expect(result.current.design?.mechanical).toBe(latest);
+    vi.mocked(startMechanicalJob).mockImplementationOnce(() => ({ promise: Promise.reject(new Error('Triangulation failed')), cancel: vi.fn() }));
+    rerender({ input: { ...next, parameters: { ...next.parameters, thickness: 5 } } });
+    await waitFor(() => expect(result.current.error).toContain('Current settings have not been applied'));
+    expect(result.current.design).toBeUndefined();
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.design?.mechanical).toBe(latest));
+  });
   it('rejects same-position settings that invalidate retained geometry without silently dropping edits', async () => {
     const input = { ...settings, parameters: { ...DEFAULTS, width: 3, depth: 3, diameter: 2, columns: 1, rows: 1, pinShape: 'square' as const }, shape: { ...DEFAULT_SHAPE, padding: 0 } };
     const applied = { ...input.parameters, ...generateLayout(input.parameters, input.shape) };

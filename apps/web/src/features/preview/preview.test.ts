@@ -4,6 +4,8 @@ import { DEFAULTS, DEFAULT_MODEL_COLORS } from '../pin-design/model';
 import { createPreview, type Preview } from './preview';
 import { PREVIEW_COLORS } from './appearance';
 import { pinTip, projectTip } from './pin-selection';
+import { buildMechanicalBase } from '../mechanics/preview-geometry';
+import { DEFAULT_CONSTRUCTION } from '../mechanics/model';
 
 const renderer = vi.hoisted(() => ({ render: vi.fn(), dispose: vi.fn(), forceContextLoss: vi.fn() }));
 const OriginalResizeObserver = window.ResizeObserver;
@@ -81,6 +83,48 @@ afterEach(() => {
 });
 
 describe('preview camera projection', () => {
+  it('renders nine mixed mechanical groups with fixed-size heads, canonical picking and display-only transparency', () => {
+    const parameters = { ...DEFAULTS, columns: 3, rows: 1, spacing: 5,
+      construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const },
+      pinGeometries: [{ shape: 'round' as const, rotation: 0 }, { shape: 'square' as const, rotation: 45 }, { shape: 'triangle' as const, rotation: 30 }] };
+    const heights = new Float32Array([5, 10, 20]), onSelect = vi.fn();
+    preview.setPinColors(['#ff0000', '#00ff00', '#0000ff']);
+    preview.setEditing({ heightMode: 'set', selection: new Set([1]), active: 1,
+      onSelect, onDragStart: () => true, onDragDelta: vi.fn(), onDragEnd: vi.fn(), onDragCancel: vi.fn() });
+    preview.update(parameters, heights, buildMechanicalBase(parameters));
+    preview.setView('top');
+    const camera = renderedCamera();
+    const groups = renderedScene().children.filter(child => child instanceof InstancedMesh) as InstancedMesh[];
+    expect(groups).toHaveLength(9);
+    const matrix = new Matrix4(), color = new Color();
+    groups.forEach((group, index) => {
+      const shapeIndex = Math.floor(index / 3), role = index % 3;
+      group.getMatrixAt(0, matrix); group.getColorAt(0, color);
+      expect(color.getHexString()).toBe(['ff0000', '00ff00', '0000ff'][shapeIndex]);
+      expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(role === 0 ? 0.4 : role === 1 ? 0 : 3 + heights[shapeIndex] - 0.4);
+      expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(role === 0 ? 3 + heights[shapeIndex] - 0.8 : 1);
+    });
+    const base = renderedScene().children.find(child => child instanceof Mesh && !(child instanceof InstancedMesh) && child.material instanceof MeshStandardMaterial) as Mesh;
+    const material = base.material as MeshStandardMaterial, originalColor = material.color.getHexString();
+    preview.setTransparentBase(true); preview.setColorScheme('dark');
+    expect(material.opacity).toBe(0.45); expect(material.depthWrite).toBe(false);
+    expect(material.color.getHexString()).toBe(originalColor);
+    expect(renderedCamera()).toBe(camera);
+    preview.setTransparentBase(false); expect(material.opacity).toBe(1); expect(material.depthWrite).toBe(true);
+    vi.spyOn(canvas, 'getBoundingClientRect').mockImplementation(() => ({ ...size, left: 0, top: 0 } as DOMRect));
+    canvas.setPointerCapture = vi.fn(); canvas.releasePointerCapture = vi.fn();
+    renderedScene().updateMatrixWorld();
+    const point = projectTip(pinTip(2, parameters, heights), camera, size)!;
+    for (const type of ['pointerdown', 'pointerup']) canvas.dispatchEvent(new PointerEvent(type, { pointerId: 1, button: 0, clientX: point.x, clientY: point.y, bubbles: true }));
+    expect(onSelect).toHaveBeenLastCalledWith([2], 'replace');
+    preview.setView('fit');
+    const fitted = renderedCamera();
+    groups.forEach(group => [group.boundingBox!.min, group.boundingBox!.max].forEach(corner => {
+      const point = corner.clone().project(fitted); expect(Math.abs(point.x)).toBeLessThan(1); expect(Math.abs(point.y)).toBeLessThan(1);
+    }));
+    preview.update(DEFAULTS); renderedCamera();
+    expect(renderedScene().children.filter(child => child instanceof InstancedMesh)).toHaveLength(1);
+  });
   it('recolors canonical pins after mixed-to-mixed regrouping without replacing shape geometry', () => {
     const parameters = { ...DEFAULTS, columns: 3, rows: 1, pinGeometries: [
       { shape: 'round' as const, rotation: 0 }, { shape: 'square' as const, rotation: 45 }, { shape: 'triangle' as const, rotation: 15 },

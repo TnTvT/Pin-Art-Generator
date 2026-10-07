@@ -2,7 +2,6 @@ from math import cos, radians, sin, sqrt
 from typing import Literal
 
 import numpy as np
-from shapely import Point, Polygon
 
 
 PinShape = Literal["round", "square", "triangle"]
@@ -32,12 +31,3 @@ def local_bounds(shape: PinShape, diameter: float, rotation: float = 0) -> tuple
         return (-radius, -radius, radius, radius)
     vertices = polygon_vertices(shape, diameter, rotation)
     return (*vertices.min(axis=0), *vertices.max(axis=0))
-
-
-def socket_footprint(shape: PinShape, diameter: float, rotation: float, clearance: float) -> Polygon:
-    if shape == "round":
-        return Point(0, 0).buffer((diameter + clearance) / 2, quad_segs=CIRCULAR_SEGMENTS // 4)
-    polygon = Polygon(polygon_vertices(shape, diameter, rotation))
-    if clearance == 0:
-        return polygon
-    return polygon.buffer(clearance / 2, quad_segs=CIRCULAR_SEGMENTS // 4, join_style="round")

@@ -1,0 +1,17 @@
+[
+  {
+    "shape": "round",
+    "baseVolume": 1185.111849831542,
+    "pinVolume": 41.91265196300187
+  },
+  {
+    "shape": "square",
+    "baseVolume": 1188.9898397791953,
+    "pinVolume": 27.038922748848734
+  },
+  {
+    "shape": "triangle",
+    "baseVolume": 1191.442895417019,
+    "pinVolume": 17.852698947254392
+  }
+]

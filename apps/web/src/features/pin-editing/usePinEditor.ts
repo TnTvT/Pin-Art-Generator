@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { validateMechanics } from '../mechanics/model';
 import { pinCount, type Parameters } from '../pin-design/model';
 import type { MaterialSelection } from '../filaments/materials';
 import { createEditorState, editorReducer, heightBatch, resolveDesign, type EditorAction, type HeightMode, type SelectionOperation } from './model';
@@ -58,6 +59,7 @@ export default function usePinEditor(parameters: Parameters, generated?: Float32
     const value = snapshot.mode === 'set' ? Math.round((snapshot.activeHeight + delta) * 10) / 10 : delta;
     try {
       const heights = heightBatch(snapshot.heights, snapshot.selected, value, snapshot.mode);
+      validateMechanics({ ...parameters, pinGeometries: committed.pinGeometries }, heights);
       snapshot.value = value;
       setTransient(heights);
       setDragError(null);

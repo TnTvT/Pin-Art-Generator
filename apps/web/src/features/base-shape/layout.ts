@@ -2,6 +2,7 @@ import { contours } from 'd3-contour';
 import RBush from 'rbush';
 import { deltaE2000, Lab, sRGB, to } from 'colorjs.io/fn';
 import type { Parameters } from '../pin-design/model';
+import { MAX_PINS } from '../pin-design/limits';
 import { createPinContainment, pinBounds, validatePinGeometry } from '../pin-shape/geometry';
 
 export type Point = [number, number];
@@ -145,16 +146,18 @@ export function generateLayout(parameters: Parameters, shape: ShapeOptions, imag
   } else regions = [presetRegion(width, depth, shape)];
   if (regions.reduce((count, region) => count + region.outer.length + region.holes.reduce((total, ring) => total + ring.length, 0), 0) > 20000) throw new Error('Contours exceed 20,000 vertices. Use a cleaner image or adjust background tolerance.');
   const bounds = pinBounds(parameters);
-  const firstColumn = Math.ceil((-width / 2 + shape.padding - bounds.minX - EPSILON) / parameters.spacing);
-  const lastColumn = Math.floor((width / 2 - shape.padding - bounds.maxX + EPSILON) / parameters.spacing);
-  const firstRow = Math.ceil((-depth / 2 + shape.padding - bounds.minY - EPSILON) / parameters.spacing);
-  const lastRow = Math.floor((depth / 2 - shape.padding - bounds.maxY + EPSILON) / parameters.spacing);
+  const sliding = parameters.construction?.mode === 'print-in-place' ? parameters.construction.sliding : undefined;
+  const padding = sliding ? Math.max(shape.padding + sliding.headFlare, sliding.clearance / 2 + 0.8, sliding.clearance / 2 + sliding.headFlare + 0.2) : shape.padding;
+  const firstColumn = Math.ceil((-width / 2 + padding - bounds.minX - EPSILON) / parameters.spacing);
+  const lastColumn = Math.floor((width / 2 - padding - bounds.maxX + EPSILON) / parameters.spacing);
+  const firstRow = Math.ceil((-depth / 2 + padding - bounds.minY - EPSILON) / parameters.spacing);
+  const lastRow = Math.floor((depth / 2 - padding - bounds.maxY + EPSILON) / parameters.spacing);
   if (Math.max(0, lastColumn - firstColumn + 1) * Math.max(0, lastRow - firstRow + 1) > 1000000) throw new Error('Layout exceeds 1,000,000 candidate positions. Increase spacing or reduce the base.');
   const fits = createPinContainment(regions, parameters), pins: PinPosition[] = [];
   for (let row = firstRow; row <= lastRow; row++) for (let column = firstColumn; column <= lastColumn; column++) {
     const horizontal = column * parameters.spacing, vertical = row * parameters.spacing;
-    if (fits(horizontal, vertical, shape.padding)) pins.push({ id: `g:${row}:${column}`, x: horizontal === 0 ? 0 : horizontal, y: vertical === 0 ? 0 : vertical });
-    if (pins.length > 10000) throw new Error('The shape contains more than 10,000 pins. Increase spacing or padding, or reduce the base.');
+    if (fits(horizontal, vertical, padding)) pins.push({ id: `g:${row}:${column}`, x: horizontal === 0 ? 0 : horizontal, y: vertical === 0 ? 0 : vertical });
+    if (pins.length > MAX_PINS) throw new Error('The shape contains more than 5,000 pins. Increase spacing or padding, or reduce the base.');
   }
   if (!pins.length) throw new Error('No pins fit inside the base. Reduce padding or pin size, or enlarge the base.');
   const layout: Layout = { regions, pins, edgePadding: shape.padding, ...(imageBounds ? { imageBounds } : {}) };

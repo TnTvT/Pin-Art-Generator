@@ -100,21 +100,23 @@ def test_round_bounds_ignore_rotation(angle):
 
 @pytest.mark.parametrize("shape", ["square", "triangle"])
 @pytest.mark.parametrize("angle", [0, 30, 45, 90])
-@pytest.mark.parametrize("clearance", [0, 0.2])
-def test_socket_is_uniform_rounded_outward_offset_not_circumdiameter_scale(shape, angle, clearance):
-    from pin_art.cross_sections import polygon_vertices, socket_footprint
+@pytest.mark.parametrize("offset", [0, 0.2, 0.4, 0.6])
+def test_sliding_profiles_are_uniform_rounded_outward_offsets(shape, angle, offset):
+    from pin_art.cross_sections import polygon_vertices
+    from pin_art.sliding import profile_points
+    from shapely.affinity import rotate
 
     pin = Polygon(polygon_vertices(shape, 2, angle))
-    socket = socket_footprint(shape, 2, angle, clearance)
-    assert socket.covers(pin)
-    if clearance == 0:
-        assert socket.equals(pin)
+    profile = rotate(Polygon(profile_points(shape, 2, offset)), angle, origin=(0, 0))
+    if offset == 0:
+        assert profile.symmetric_difference(pin).area < 1e-12
         return
+    assert profile.covers(pin)
     for first, second in zip(pin.exterior.coords[:-1], pin.exterior.coords[1:], strict=True):
         from shapely import Point
 
         midpoint = Point((first[0] + second[0]) / 2, (first[1] + second[1]) / 2)
-        assert midpoint.distance(socket.boundary) == pytest.approx(clearance / 2)
-    expected_area = pin.area + pin.length * clearance / 2 + math.pi * (clearance / 2) ** 2
-    assert socket.area == pytest.approx(expected_area, abs=0.00006)
-    assert len(socket.exterior.coords) > len(pin.exterior.coords)
+        assert midpoint.distance(profile.boundary) == pytest.approx(offset)
+    expected_area = pin.area + pin.length * offset + math.pi * offset ** 2
+    assert profile.area == pytest.approx(expected_area, abs=0.0019)
+    assert len(profile.exterior.coords) > len(pin.exterior.coords)

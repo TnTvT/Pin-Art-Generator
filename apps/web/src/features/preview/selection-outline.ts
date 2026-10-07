@@ -1,6 +1,7 @@
 import { BufferGeometry, Color, DynamicDrawUsage, InstancedMesh, Matrix4, MeshBasicMaterial, Scene, ShaderMaterial, Vector2, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import type { PinInstanceGroup } from './pin-grid';
+import { MAX_PINS } from '../pin-design/limits';
 
 export function createSelectionOutline(renderer: WebGLRenderer, geometry: BufferGeometry) {
   const scene = new Scene();
@@ -8,7 +9,7 @@ export function createSelectionOutline(renderer: WebGLRenderer, geometry: Buffer
   const material = new MeshBasicMaterial({ color: '#ffffff', toneMapped: false });
   const masks = new Map<InstancedMesh, InstancedMesh>();
   function createMask(geometry: BufferGeometry) {
-    const mask = new InstancedMesh(geometry, material, 10000);
+    const mask = new InstancedMesh(geometry, material, MAX_PINS);
     mask.name = 'Selected pin outline mask';
     mask.count = 0;
     mask.matrixAutoUpdate = false;

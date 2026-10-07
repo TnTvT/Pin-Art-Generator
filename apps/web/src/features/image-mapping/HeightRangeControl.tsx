@@ -1,3 +1,4 @@
+import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import { useState } from 'react';
 import { NumberInput, RangeSlider } from '@mantine/core';
 import { formatDimension } from '../pin-design/model';
@@ -32,7 +33,7 @@ export default function HeightRangeControl({ minimum, maximum, onChange }: Heigh
 
   return (
     <fieldset className="mapping-height-range">
-      <legend>Height range <span>{formatDimension(minimum)}–{formatDimension(maximum)} mm</span></legend>
+      <legend>Height range <InfoPopover label="Mapped extension help"><p>These values are pin extensions measured from the base top to the pin top in the initial printing position. Print-in-place includes the top retaining head; total pin length also includes base thickness. Invert only changes height mapping.</p></InfoPopover> <span>{formatDimension(minimum)}–{formatDimension(maximum)} mm</span></legend>
       <RangeSlider
         value={[minimum, maximum]}
         onChange={range => { setDraft(range); onChange(range); }}

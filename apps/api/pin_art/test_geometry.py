@@ -58,7 +58,7 @@ def test_fixed_parts_are_actual_base_and_shared_native_unit_cylinders():
         assert pin.transform[2, 3] == 3
 
 
-@pytest.mark.parametrize("mode", ["fixed", "detachable"])
+@pytest.mark.parametrize("mode", ["fixed"])
 def test_manual_pin_heights_and_materials_drive_exact_geometry(mode):
     payload = request_payload(mode=mode)
     payload.update(heights=[30, 5, 40, 12], materials=["#FFFFFF", "#FF0000", "#0000FF"], pinMaterials=[1, 2, 0, 1])
@@ -68,8 +68,8 @@ def test_manual_pin_heights_and_materials_drive_exact_geometry(mode):
     assert [pin.material for pin in pins] == [1, 2, 0, 1]
     for index, pin in enumerate(pins):
         bounds = placed_solid(pin).bounding_box()
-        bottom = request.parameters.thickness if mode == "fixed" else 0
-        length = request.heights[index] + (request.socket.insertion_depth if mode == "detachable" else 0)
+        bottom = request.parameters.thickness
+        length = request.heights[index] + (0)
         assert bounds[2] == pytest.approx(bottom)
         assert bounds[5] == pytest.approx(bottom + length)
         assert pin.solid.status() == manifold3d.Error.NoError
@@ -93,46 +93,6 @@ def test_fixed_stl_is_one_true_union_with_expected_volume():
     np.testing.assert_allclose(solid.bounding_box(), [-10, -10, 0, 10, 10, 10])
 
 
-@pytest.mark.parametrize("clearance", [0, 0.2])
-def test_blind_sockets_have_exact_diametral_clearance_depth_and_floor(clearance):
-    payload = request_payload(mode="detachable")
-    payload["socket"]["clearance"] = clearance
-    request = ExportRequest.model_validate(payload)
-    plate = build_plates(request)[0]
-    base = plate.parts[0].solid
-    hole_area = polygon_area(2 + clearance)
-    assert base.volume() == pytest.approx(20 * 20 * 3 - 4 * hole_area * 2)
-    assert base.slice(0.5).area() == pytest.approx(400)
-    assert base.slice(2).area() == pytest.approx(400 - 4 * hole_area)
-    probe = manifold3d.Manifold.cylinder(3, 0.1, circular_segments=64).translate((-2.5, -2.5, 0))
-    assert (base ^ probe).volume() == pytest.approx(polygon_area(0.2))
-
-
-def test_detachable_parts_print_upright_at_zero_with_insertion_added():
-    request = ExportRequest.model_validate(request_payload(mode="detachable", plate={"width": 30, "depth": 30}))
-    plates = build_plates(request)
-    assert len(plates) == 2
-    assert [part.name for part in plates[0].parts] == ["base"]
-    pins = plates[1].parts
-    for index, pin in enumerate(pins):
-        bounds = placed_solid(pin).bounding_box()
-        assert bounds[2] == 0
-        assert bounds[5] == request.heights[index] + request.socket.insertion_depth
-        assert pin.transform[2, 3] == 0
-        assert pin.transform[0, 0] == 2
-        row, column = divmod(index, request.parameters.columns)
-        assert pin.name == f"Pin R{row + 1:02d} C{column + 1:02d} {request.heights[index] + 2:.3f} mm"
-    for plate in plates:
-        solid = read_stl(plate_stl(plate))
-        assert len(solid.decompose()) == len(plate.parts)
-        bounds = solid.bounding_box()
-        assert bounds[0] >= 5
-        assert bounds[1] >= 5
-        assert bounds[3] <= 25
-        assert bounds[4] <= 25
-        assert bounds[2] == 0
-
-
 def test_pin_resource_is_reused_across_requests_and_base_keys_are_geometry_specific():
     first = build_plates(ExportRequest.model_validate(request_payload()))[0]
     payload = request_payload()
@@ -141,8 +101,8 @@ def test_pin_resource_is_reused_across_requests_and_base_keys_are_geometry_speci
     assert first.parts[1].cache_key == second.parts[1].cache_key
     assert first.parts[1].solid is second.parts[1].solid
     assert first.parts[0].cache_key == second.parts[0].cache_key
-    detachable = build_plates(ExportRequest.model_validate(request_payload(mode="detachable")))[0]
-    assert first.parts[0].cache_key != detachable.parts[0].cache_key
+    sliding = build_plates(ExportRequest.model_validate(request_payload(mode="print-in-place")))[0]
+    assert first.parts[0].cache_key != sliding.parts[0].cache_key
 
 
 def test_stl_applies_affine_matrix_exactly_once():
@@ -183,14 +143,6 @@ def test_stl_rejects_geometry_collapsed_by_float32_serialization():
     transform[0, 3] = 1e9
     with pytest.raises(ValueError, match="degenerate"):
         plate_stl(Plate(0, [Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")]))
-
-
-def test_printed_length_is_not_rounded_to_part_name_precision():
-    payload = request_payload(mode="detachable")
-    payload["heights"][0] = 4.1234567
-    pin = build_plates(ExportRequest.model_validate(payload))[1].parts[0]
-    assert pin.name.endswith("6.123 mm")
-    assert pin.transform[2, 2] == 6.1234567
 
 
 def test_strict_stl_guard_rejects_point_tangent_geometry_when_called_directly():

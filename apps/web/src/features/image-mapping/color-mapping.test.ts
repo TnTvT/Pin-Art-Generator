@@ -20,15 +20,15 @@ describe('preset image color mapping', () => {
     const result = mapPinColors(request({ rgb: rgb(...ids) }));
     expect(result.materials.map(material => material.color)).toEqual(ids.map(id => getFilament(id)!.hex.toLowerCase()));
   });
-  it('maps 10,000 distinct pin samples within the material budget', () => {
-    const samples = new Uint8Array(30000);
-    for (let index = 0; index < 10000; index++) samples.set([(index * 17) % 256, Math.floor(index / 256), (index * 31) % 256], index * 3);
+  it('maps 5,000 distinct pin samples within the material budget', () => {
+    const samples = new Uint8Array(15000);
+    for (let index = 0; index < 5000; index++) samples.set([(index * 17) % 256, Math.floor(index / 256), (index * 31) % 256], index * 3);
     const start = performance.now();
     const result = mapPinColors(request({ rgb: samples }));
-    console.info(`10,000-pin preset matching: ${Math.round(performance.now() - start)} ms`);
-    expect(result.materials).toHaveLength(10000);
+    console.info(`5,000-pin preset matching: ${Math.round(performance.now() - start)} ms`);
+    expect(result.materials).toHaveLength(5000);
     expect(result.palette.length).toBeLessThanOrEqual(4);
-    expect(result.palette.reduce((total, entry) => total + entry.count, 0)).toBe(10000);
+    expect(result.palette.reduce((total, entry) => total + entry.count, 0)).toBe(5000);
   });
   it('matches exact and nearby colors to actual catalog materials', () => {
     const result = mapPinColors(request({ source: 'manual', rgb: new Uint8Array([...white.rgb, 1, 176, 184]) }));

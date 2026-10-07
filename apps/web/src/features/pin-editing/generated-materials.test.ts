@@ -55,15 +55,15 @@ describe('generated material baselines', () => {
     expect(rejected.overrides).toBe(before.overrides);
     expect(rejected.past).toHaveLength(0);
   });
-  it('updates a 10,000-pin group in one reversible transaction', () => {
-    let state = editorReducer(createEditorState(10000), { type: 'generation', materials: Array(10000).fill(white) });
+  it('updates a 5,000-pin group in one reversible transaction', () => {
+    let state = editorReducer(createEditorState(5000), { type: 'generation', materials: Array(5000).fill(white) });
     state = editorReducer(state, { type: 'material-group', source: white, material: custom });
-    expect(state.overrides.size).toBe(10000);
+    expect(state.overrides.size).toBe(5000);
     expect(state.past).toHaveLength(1);
-    expect(state.past[0].deltas).toHaveLength(10000);
+    expect(state.past[0].deltas).toHaveLength(5000);
     state = editorReducer(state, { type: 'undo' });
     expect(state.overrides.size).toBe(0);
-    expect(state.generatedMaterials?.[9999]).toEqual(white);
+    expect(state.generatedMaterials?.[4999]).toEqual(white);
   });
   it('regenerates without history and restores to the latest generator, not the original colors', () => {
     let state = editorReducer(createEditorState(2), { type: 'generation', materials: [white, white] });

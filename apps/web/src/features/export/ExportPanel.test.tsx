@@ -44,43 +44,34 @@ describe('export panel', () => {
     expect(screen.queryByRole('link', { name: /PLA Matte source/ })).not.toBeInTheDocument();
   });
 
-  it('defaults to printable colors and fixed mode, hiding detachable fields', () => {
+  it('leaves construction settings to Parameters', () => {
     renderWithProviders(<Panel />);
-    expect(screen.getByRole('radio', { name: 'Fixed' })).toBeChecked();
+    expect(screen.queryByRole('radio', { name: 'Fixed sculpture' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Insertion depth')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Bed width')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
   });
 
-  it('uses last-valid numeric drafts and keeps supplied colors through theme changes', async () => {
+  it('uses committed construction settings and colors through theme changes', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<Panel />);
-    await user.click(screen.getByRole('radio', { name: 'Detachable' }));
-    fireEvent.change(screen.getByLabelText('Insertion depth'), { target: { value: '1.5' } });
-    fireEvent.change(screen.getByLabelText('Insertion depth'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '240' } });
-    fireEvent.change(screen.getByLabelText('Bed width'), { target: { value: '' } });
+    const parameters = { ...DEFAULTS, construction: { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4 } } };
+    renderWithProviders(<Panel parameters={parameters} />);
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(payload.mode).toBe('detachable');
-    expect(payload.socket).toEqual({ insertionDepth: 1.5, clearance: 0.2 });
-    expect(payload.plate).toEqual({ width: 240, depth: 256 });
+    expect(payload.mode).toBe('print-in-place');
+    expect(payload.sliding).toEqual(parameters.construction.sliding);
     expect(payload.materials).toEqual(['#8e9089', '#00b1b7']);
   });
 
-  it('blocks invalid sockets and beds while keeping oversized fixed STL available', async () => {
-    const user = userEvent.setup();
-    const { rerender } = renderWithProviders(<Panel parameters={{ ...DEFAULTS, thickness: 2 }} />);
-    await user.click(screen.getByRole('radio', { name: 'Detachable' }));
+  it('blocks invalid guides while keeping oversized fixed STL available', () => {
+    const construction = { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4 } };
+    const { rerender } = renderWithProviders(<Panel parameters={{ ...DEFAULTS, thickness: 1, construction }} />);
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
-    expect(screen.getByText(/Socket floor/)).toBeInTheDocument();
+    expect(screen.getByText(/Guide thickness/)).toBeInTheDocument();
     rerender(<Panel parameters={{ ...DEFAULTS, width: 500, depth: 500 }} />);
-    expect(screen.getByText(/5 mm margin on every side/)).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: 'Fixed' }));
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
-    expect(screen.getByText(/3MF blocked: Bambu X1C/)).toBeInTheDocument();
   });
 
   it('explains blocked image processing and blocks unsafe geometry', () => {
@@ -121,10 +112,10 @@ describe('export panel', () => {
 
   it('shows readable service errors, retries and clears errors', async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'TOO_MANY_PLATES', message: 'Increase bed size: at most 36 plates.' } }), { status: 422 }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'INVALID_DESIGN', message: 'Increase spacing for the guide walls.' } }), { status: 422 }));
     renderWithProviders(<Panel />);
     await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Increase bed size: at most 36 plates. (TOO_MANY_PLATES)');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Increase spacing for the guide walls. (INVALID_DESIGN)');
     await user.click(screen.getByRole('button', { name: 'Retry export' }));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());

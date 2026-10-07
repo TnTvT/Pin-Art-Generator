@@ -40,7 +40,7 @@ describe('shape-owned layouts', () => {
     expect(() => generateLayout(parameters, { ...DEFAULT_SHAPE, padding: 100 })).toThrow(/No pins/);
     expect(() => generateLayout(parameters, { ...DEFAULT_SHAPE, preset: 'rounded', radius: 60 })).toThrow(/radius/);
     expect(() => generateLayout({ ...parameters, spacing: 0.001 }, DEFAULT_SHAPE)).toThrow(/candidate/);
-    expect(() => generateLayout({ ...parameters, spacing: 0.5 }, DEFAULT_SHAPE)).toThrow(/10,000/);
+    expect(() => generateLayout({ ...parameters, spacing: 0.5 }, DEFAULT_SHAPE)).toThrow(/5,000/);
   });
   it('fills transparent interior gaps while keeping separate outer contours and their foreground dimensions', () => {
     const image: ShapeImage = { width: 12, height: 7, pixels: new Uint8ClampedArray(12 * 7 * 4) };
