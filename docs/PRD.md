@@ -19,17 +19,17 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
-| Model downloads | STL, Bambu-compatible colored 3MF, detachable socket pins, multi-plate layout | Implemented; Bambu GUI/physical fit verification is user-owned |
+| Model downloads | STL, Bambu-compatible colored 3MF, Fixed sculpture and Print-in-place | Implemented; Bambu GUI/physical fit verification is user-owned |
 | Per-pin editing | Selection, Set/Offset heights, materials, shape/rotation overrides, transactional drag and undo/redo | Implemented |
 | Base shapes | Rectangle, rounded rectangle, circle, ellipse, solid image silhouettes/disconnected regions and automatic layout | Implemented |
-| Moving-pin hardware | Captive sliding pins, stops, and retainers | Deferred |
+| Moving-pin hardware | Captive sliding pins, through-guide base, retaining heads and true preview | Implemented; physical fit verification is user-owned |
 
 The initial request prioritized a quick demo without tests. A later explicit request added automated testing. That later requirement governs the current project.
 
 ## 3. User workflow
 
 1. Open the app and inspect the default uniform pin array.
-2. Choose a preset or image-derived contour. Set dimensions, edge padding, pin shape, size, rotation, spacing, and generated height.
+2. Choose a preset or image-derived contour. Set dimensions, edge padding, pin shape, size, rotation, spacing, generated extension and construction mode.
 3. Rotate, zoom, pan, or use camera buttons to inspect the geometry.
 4. Optionally upload an image or select **Try sample**.
 5. Use **Adjust image** to align and zoom the image over actual pin positions. Adjust the height range, inversion and palette to explore the relief.
@@ -46,12 +46,12 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 | Base width / Base depth | 120 / 100 mm | Positive dimensions; circle uses Base diameter; image dimensions preserve foreground aspect ratio |
 | Base thickness | 3 mm | Positive Z thickness |
 | Corner radius | 10 mm | Rounded rectangle only; 0 to half the shorter side |
-| Edge padding | 5 mm | Minimum gap from pin outer wall to the outer silhouette boundary; nonnegative |
+| Edge padding | 5 mm | Minimum outer-boundary gap from shaft (Fixed) or retaining head (Print-in-place); nonnegative |
 | Pin spacing | 3.5 mm | Equal X/Y center spacing, never adjusted automatically |
 | Pin shape | Round | Generation default: Round, Square, or equilateral Triangle; selected pins can override it |
 | Pin size | 2 mm | Positive circumscribed diameter; square diagonal, triangle circumdiameter |
 | Pin rotation | 0° | Polygon-only numeric input/slider, 0–360° counterclockwise around +Z; round remembers but ignores it |
-| Generated pin height | 20 mm | Visible height above base; manual heights may exceed it |
+| Generated pin extension | 20 mm | Base top to pin top including the Print-in-place head; not total length or travel |
 | Map image to pins | On | Off allows image-only base shaping without height/color generation |
 | Min height / Max height | 10 / 20 mm | One dual-thumb Height range with linked positive, ordered inputs |
 | Invert mapping | Off | Height only: dark-tall vs light-tall |
@@ -61,7 +61,7 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Square at 0° has sides parallel to X/Y; triangle has a vertex toward +Y. Square side is size / √2; triangle side is √3 × size / 2. Show dimensions/orientation help in an info popup. Normalize full-turn geometry/export to 0°.
 - Show actual rotated footprint bounds and the minimum physical wall gap, including diagonal neighbors; show no gap for a lone pin. Permit overlapping previews with warnings but block export. Preserve edits, selection and history only when pin IDs/coordinates stay unchanged; otherwise use the existing confirmation flow.
 - Curved presets use 64-point polygon approximations, with only duplicate/collinear points removed. Preview and export use identical regions.
-- Maximum 10,000 actual pins, 1,000,000 candidate positions and 20,000 total contour vertices. Empty or excessive layouts fail visibly without truncation.
+- Maximum 5,000 actual pins, 1,000,000 candidate positions and 20,000 total contour vertices. Empty or excessive layouts fail visibly without truncation.
 - Numeric drafts retain valid input; complete but invalid shape settings retain the applied design and block export. Never silently substitute a rectangular base.
 - Show Total pins, actual Pin footprint and minimum wall clearance using the resolved shapes/angles of each pin.
 - Actual footprint overlap can be inspected in generated previews with a warning but cannot be exported; geometry editing requires a valid non-overlapping candidate.
@@ -140,20 +140,39 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Verify orientation-helper alignment in Top view, rotation tracking, pan/zoom independence, and cleanup with the preview.
 - Theme switching and persistence are covered by tests, including camera and design preservation. Keep light-mode grid lines visibly distinct from the canvas background on first render and after switching back from dark mode. Check both themes and narrow-screen layouts in the browser.
 - `pnpm test`, `pnpm typecheck`, and `pnpm build` pass for behavior changes. The root test task runs both frontend and backend suites.
-- Use browser smoke checks for actual image decoding, WebGL rendering, the 10,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.
+- Use browser smoke checks for actual image decoding, WebGL rendering, the 5,000-pin case, and responsive layouts. DOM tests do not establish visual correctness or a guaranteed frame rate.
 
 ### Base-shape verification — October 4, 2026
 
 - 218 frontend tests and 210 backend tests pass; the frontend production build includes a passing TypeScript check. Strict lib3mf reads validate shape exports, including explicit API holes, independent regions, materials and plate assignments. Silhouette regression tests cover filled interior gaps, nested islands and both transparency/background detection; browser verification confirms a solid base with original-pixel height mapping.
 - Browser checks cover all four presets, real transparent/background-color uploads, linked dimensions, combined mapping, contour-only images, missing-image recovery, stable-ID picking, top-view height dragging/undo, layout-change cancellation, fixed/detachable downloads, both themes and a 390 × 844 viewport without horizontal overflow. The desktop preview remains fixed while controls scroll. Fresh runtime logs contain no errors or warnings.
+Historical measurements before the October 6 reduction to a 5,000-pin cap:
+
 - An exact 10,000-pin image layout remained editable: shape/layout generation measured 113 ms, cached height mapping 8 ms and combined height/color generation 66 ms locally. These include the generation pipeline, not guaranteed frame rates or full upload/decode latency.
 - A two-region 10,000-pin fixed 3MF request measured 452,890 JSON bytes, 0.21 s native validation and 1.19 s native export, with approximately 146 MiB peak process RSS and a 337 KB package. The local HTTP result also passed strict lib3mf read-back with zero warnings. Timing and memory are workload-specific; dense socket/STL workloads remain more expensive. Bambu GUI/slicing and physical printing are not verified here.
+
+### Print-in-place verification — October 6, 2026
+
+The current cap is **5,000 pins**, including legacy grids and every per-pin request array. Frontend generation rejects excessive layouts without truncation and retains the last applied design with editing/export blocked. API tests cover 5,001-element arrays and excessive legacy grids.
+
+Local native benchmarks used round pins, 3 mm bases and 20 mm extensions:
+
+| Pins | Base / pin size / spacing (mm) | Validation | 3MF generation / size | STL generation / size |
+| --- | --- | --- | --- | --- |
+| 775 | 120 × 100 / 2 / 3.5 | 0.13 s | 3.74 s / 3.86 MiB | 1.64 s / 37.99 MiB |
+| 5,000 | 245 × 128 / 0.8 / 2.35 | 0.83 s | 40.83 s / 25.68 MiB | 20.53 s / 245.10 MiB |
+
+These are local direct-export measurements, not HTTP latency or guarantees. Both 3MF packages passed strict lib3mf read-back with zero warnings. The benchmark process high-water RSS reached 2,394 MiB after the 5,000-pin 3MF generation and 4,732 MiB after subsequent read-back/STL work; the latter includes retained native read-back data and earlier exports, **not an isolated STL peak**. Dense models remain memory-intensive despite the reduced cap; the 120-second isolated export timeout is unchanged.
+
+Browser checks exercised a 4,949-pin print-in-place design and Select all. Increasing it to 5,151 candidates produced the 5,000-pin error, retained the valid preview, and disabled exports. Small mixed-shape models verified real guide holes/heads, picking, extension rejection, transparency, Top view, theme/narrow layout and successful STL/3MF downloads. Shared fixtures and Boolean-reference tests verify frontend/backend profiles, volumes, closed solids and ideal travel/contact. Bambu slicing and physical release/fit remain unverified and user-owned.
+
+Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking and the production frontend build. Existing lib3mf Python deprecation warnings and the frontend large-chunk build warning remain; they are not new test failures.
 
 ## 8. Current boundaries and future work
 
 - Design state is in memory. Reloading the page resets the design; design save/load and persistence are not implemented. The appearance preference is saved locally.
 - A local Python backend handles model downloads; there is no authentication, design database, or public hosting.
-- The main preview represents the assembled design. Detachable downloads include blind sockets, insertion length, and separate printable parts; socket cutaways and print layouts are not rendered in the main canvas. Captive sliding pins and retainers remain deferred.
+- Construction mode controls the assembled preview and downloads together. Print-in-place shows real guide holes, clearances and retaining heads; Transparent base is display-only. No motion slider, pressing simulation, locks, springs or print-success guarantee.
 - Offer Bambu Lab PLA Basic and Matte presets before a Custom color fallback for both the base and pins. Bundle the catalog locally with brand, material, type, color name, product code, hex, RGB, source links, and snapshot date. Retain provenance in the catalog and documentation, without a catalog reference/date disclaimer or family source links in the export panel footer. Preserve distinct records with identical RGB values, and let users search names, codes, families, and hex values. Keep Custom color available for an unmatched search.
 - The editor displays preset material/type and RGB. Apply material commits selected-pin colors; base selection commits independently. Retain catalog identity in application state and export Basic/Matte as the corresponding X1C system filament preset. Custom color offers swatches, a color picker, and hex entry, preserving the last valid color for incomplete drafts; it explicitly clears catalog identity and uses Generic PLA for 3MF, even when RGB is unchanged. Preserve selections through theme changes. Submitted exports are immutable snapshots; downloads are disabled during transient height drags. Do not assign physical AMS slots; reference RGB values are not calibrated printed-color promises.
 - Image cropping, contrast controls, mixed-filament dithering, and calibrated manufacturing guarantees require separate product decisions.
@@ -161,20 +180,29 @@ This is brightness mapping, not inference of an object's physical depth from a p
 
 ## 9. Printable models and colors
 
-- Provide independent base and selected-pin material controls. Default the base to Bambu Lab PLA Basic Gray (10103, #8E9089) and pins to PLA Basic Turquoise (10605, #00B1B7), preserving catalog and official filament-profile identity. Preview and export use the same committed selected colors; theme changes affect surrounding presentation only.
-- Offer Fixed and Detachable modes with Download STL and Download 3MF. Snapshot the last valid parameters and resolved heights in the actual pin position order; never upload source images or silently alter geometry.
-- Fixed STL must be a watertight union. Fixed 3MF retains separate material regions within one assembled sculpture.
-- Fixed STL rejects zero-clearance tangent neighbors with an explanation; the model is not silently reshaped to repair point-contact geometry. Dense STL exports are memory-intensive and may take around a minute.
-- Detachable pins use blind sockets matching pin shape/rotation. Default insertion depth 2 mm and Socket clearance 0.2 mm, meaning a uniform outward wall offset of 0.1 mm. Round socket diameter equals pin size plus clearance; polygon offsets have rounded corners and are not circumdiameter scaling. Require a 1 mm floor and 0.8 mm socket/edge walls. Printed pin length equals visible extension plus insertion depth. This is not a sliding mechanism or universal fit guarantee.
-- Reserve plate 1 for the centered socket base; pack upright pins in actual position-list order (Y then X; legacy row-major) on centered pin-only plates starting with plate 2. Keep 5 mm margins and 4 mm part gaps. Default usable area 256 × 256 mm is editable; split automatically into at most 36 total plates. Reject oversized individual parts and invalid socket geometry.
-- Deliver one Bambu-compatible multi-plate 3MF with standard colors and matching logical filament/part/plate assignments. Deduplicate color + material-profile pairs and reusable geometry; matching RGB must not merge Basic with Matte or Generic PLA. Embed Bambu Lab X1 Carbon 0.4 nozzle identity and reference its 0.20mm Standard process and selected filament presets through system-preset inheritance. Preserve selected colors in the project palette, not by modifying system filament preset defaults; inherit temperature/flow settings without hardcoded overrides or physical AMS assignments. Align Bambu filament variant and one-based self-index arrays with the compacted used palette.
-- Extend the export snapshot with optional `filamentProfiles`, parallel to `materials`, accepting only `bambu-pla-basic`, `bambu-pla-matte`, and `generic-pla`. Validate palette alignment and reject unknown keys. Legacy omitted/null profiles resolve to Generic PLA, not an inferred Bambu product. Write aligned preset names, family IDs, vendors, PLA type, inheritance/difference groups, colors, and part extruder indices for the compacted used-material palette.
-- Use the physical X1C 256 × 256 mm bed and 1.2-bed-size multi-plate strides independently of a smaller custom packing area. Center each plate's contents, keep detached parts at Z=0, and keep fixed pins starting at the base top. Center reusable meshes in all axes and compensate component transforms so Bambu's shared-mesh recentering cannot displace repeated pins.
-- Block 3MF outside the X1C bed or its referenced profile's 250 mm printable height. Apply height limits to resolved edited heights, not the configured generator maximum. Manual heights must be finite and positive but may exceed generated heights. Keep STL available for valid designs intended for other printers.
-- Detachable STL downloads are ZIP archives containing numbered plate STLs and an indexed height/material/placement manifest. STL itself carries no colors.
-- Show pending/error/retry/download plate-count feedback and prevent duplicate exports. Limit requests to 2 MB/10,000 pins, isolate one worker at a time, terminate after 120 seconds, and clean temporary output.
-- Automated checks cover geometry, dimensions, winding, sockets, layout, metadata, strict lib3mf read-back, API errors/cleanup, and UI request snapshots. Benchmark 10,000-pin cases; retain frontend tests/build checks.
-- Bambu GUI inspection and slicing are left to the user. Check printer height/envelope, exclusion zones, brims, purge structures, and physical socket fit before printing. Opening a file successfully is not a manufacturing guarantee.
+- Keep independent base and selected-pin material controls. Default to PLA Basic Gray (10103, #8E9089) and Turquoise (10605, #00B1B7), preserving official profile identity. Theme changes never recolor printable parts.
+- Construction under Parameters offers Fixed sculpture (default) and Print-in-place. It controls geometry generation, preview and export, not just downloading. Snapshot committed contour, positions, extensions, geometry and materials; never upload images.
+- Fixed STL is a watertight Boolean union; fixed 3MF retains adjacent non-overlapping material regions in one assembly. Reject tangent fixed STL without silent repairs.
+- Print-in-place outputs independent closed guide-base/pin solids, with initial pin bottoms at Z = 0. Preserve assembly transforms, per-pin material and rotation; never independently re-ground pins.
+- Return one STL or one single-plate Bambu 3MF. Remove Detachable, blind sockets, insertion depth, plate dimensions/packing, multi-plate downloads and STL ZIP manifests.
+- Retain the X1C 0.4 nozzle / 0.20mm Standard profile, official Basic/Matte or Generic PLA identities, colors, logical filament routing and one-based material assignments. Compact actual RGB + profile pairs, not RGB alone; at most 16 including the base. Reuse identical geometry/material resources.
+- Print-in-place 3MF requires 5 mm margins within the 256 × 256 mm bed (246 × 246 usable) and B + max(E) ≤ 250 mm. Fixed keeps its existing profile-envelope checks. STL is printer-independent.
+- Show generating/error/retry/single-plate feedback; prevent duplicate downloads and release object URLs. Numeric incomplete drafts use last valid dimensions. Invalid generation blocks export while retaining the previous applied preview.
+- Cap actual pins and all per-pin arrays at 5,000, requests at 2 MB, and isolated single-worker exports at 120 seconds; clean up on failure, cancellation or timeout. Do not silently truncate arrays or reduce complexity.
+- Strict lib3mf read-back, geometry/transform/material tests and live browser checks are required. Bambu import/slicing and physical fit are verified by the user, not controlled automatically.
+
+### Print-in-place mechanics
+
+- Support Round, Square and Triangle, including mixed per-pin shapes/rotations. Advanced settings default to total Sliding clearance 0.4 mm and Head flare 0.4 mm (outward offset and taper height).
+- Extension E is base top to pin top including the upper head in its initial position, not total length or travel. Total pin length = B + E. UI uses Generated pin extension, Set extension and Offset extension; mapping/editor info popups define the measurement.
+- Shaft uses actual cross-section; rounded outward offsets define heads (+h), guide (+c) and mouths (+c+h), where c is half-clearance. Both heads and mouths have height-h tapers; round uses 64 segments.
+- Require finite positive dimensions, h−c ≥ 0.2 mm, B−2h ≥ 1 mm and E ≥ 2h. Guide walls/edges ≥ 0.8 mm, mouth walls/edges ≥ 0.2 mm and adjacent head gaps ≥ 0.2 mm. Warn when mouth lips are below 0.8 mm.
+- Edge padding measures from retaining head outer walls. Derive mechanical holes without changing user contours or image sampling. Never resize dimensions, change spacing or remove conflict pins to make an edit valid.
+- Validate complete height/shape/rotation edits and history replays atomically, against current mechanics and generated baselines. Keep position-change confirmation and preserve valid edits when actual IDs/XY are unchanged.
+- Build actual perforated/tapered plate geometry in a cancellable worker and publish construction/layout/mapping/mechanics together. Failures retain the applied design; pending generation blocks edits/downloads.
+- Render at most nine printable instance groups (three shapes × shaft/lower/upper heads), keeping retaining head dimensions independent of extension scaling. Picking, colors and outline masks use canonical pin indices.
+- Transparent base affects appearance only and survives camera/theme changes. Fit model includes complete head bounds. Keep the fixed canvas, scrolling sidebar and floating toolbar.
+- Ideal fixed-orientation travel −E−c to +c is checked geometrically, with contact beyond the endpoints; add no motion UI. Clearance requires a fit sample and is not a universal release, smooth-motion or position-holding guarantee. Keep slicer supports/brims/purge structures out of gaps. No automatic supports, locks, springs or manufacturing guarantee.
 
 ## 10. Engineering workspace
 
@@ -191,10 +219,10 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - Display distinct selected-pin RGB color counts and swatches, plus design-wide color counts including the base. Design swatches reveal hex, RGB, actual selected filament names/codes and families, and base/pin usage through hover or keyboard-focus tooltips. Normalize hex case; identical RGB from different filament profiles counts as one displayed color, not one export material, and its tooltip lists all used identities without inferring a preset from RGB alone.
 - Both views support direct click selection, Shift-click toggling, Shift-drag additive projected-tip marquee, all and clear selection, without Navigate/Select modes. An ordinary drag anywhere on the model or background rotates the camera and never changes selection, even if the pointer returns to its starting position. Empty clicks clear selection unless Shift is held. Scroll zooms; right-drag pans; height handles exclusively own height drags. Marquees include occluded pins but exclude tips outside the viewport or behind the camera.
 - Preserve selection across view/theme changes. Show selected count, single-pin stable ID and X/Y coordinates, and Mixed heights/materials. Highlight only exterior contours in yellow (#FFD43B) using an isolated instanced selection mask and a screen-space edge overlay. Do not fill/tint pin surfaces, change printable instance colors, or switch the main scene's color-processing pipeline when selecting pins. Outline rendering supports both projections and theme changes; selected silhouettes can be visible through occluding geometry.
-- Set height assigns one absolute value; Offset adds a signed amount while preserving differences. Apply/Enter commits a numeric batch; reject any nonpositive, nonfinite or unrepresentable result without changing any pins.
+- Set extension assigns one absolute value; Offset adds a signed amount while preserving differences. Apply/Enter commits a numeric batch; reject any nonpositive, nonfinite or unrepresentable result without changing any pins.
 - Shape changes one, multiple or all selected pins to Round, Square or Triangle and a finite 0–360° rotation. Mixed shape/angle needs explicit input; cache the reusable draft across selections, with Use selected shape to reload actual values. Round resolves to 0°, without erasing the cached polygon angle. Size remains shared. Reject invalid whole-design containment/padding/overlap atomically; keep positions, heights, materials, mapping and camera unchanged.
 - Store a complete shape/angle override separately from height/material overrides. Applying the current default remains an explicit override until Restore default shape removes it. Reset all edits removes every override, including geometry. Undo/redo validates geometry against the latest committed dimensions, defaults, positions and padding; reject invalid replay/reset without moving the history cursor or partially changing pins.
-- Same-position generation validates retained geometry before publication. A conflict retains the applied snapshot and blocks exports, but permits corrective editing, Undo and restoration against that snapshot; retry the requested settings after correction. Actual topology changes still require confirmation and clear all pin edits when accepted. Render at most three printable instance groups, with canonical pin identity and yellow outline masks across groups; both 2D overlays show actual per-pin shapes.
+- Same-position generation validates retained geometry before publication. A conflict retains the applied snapshot and blocks exports, but permits corrective editing, Undo and restoration against that snapshot; retry the requested settings after correction. Actual topology changes still require confirmation and clear all pin edits when accepted. Render at most three printable instance groups in Fixed and nine shaft/head groups in Print-in-place, with canonical pin identity and yellow outline masks across groups; both 2D overlays show actual per-pin shapes.
 - Remember separate Set/Offset numeric drafts and the last chosen material across selections, clearing selection, editor reopening and history changes, for the current page session only. Changing selection never applies cached values automatically. Keep actual/Mixed values in the selection summary; Use selected height/material explicitly reloads current selection values. Draft changes do not enter edit history.
 - Perspective height dragging uses a camera-facing plane containing the active pin's world-Z line. Top view uses vertical screen displacement scaled to orthographic mm. Show live mm; compute against starting heights; release commits once. Escape, pointer cancellation, blur or view changes restore the original committed heights. Invalid drag updates retain the last valid transient batch. Block export until release/cancellation.
 - Keep generated heights/materials separate from sparse position-indexed pin overrides. Image regeneration/removal and mapping mode changes preserve overrides. Geometry adjustments preserve them only when actual ID/XY positions remain unchanged. Restore generated heights/colors removes selected overrides and resolves the latest image generator, or defaults when absent. Reset all retains mapping settings and resets the base to its default.
@@ -202,18 +230,16 @@ This is brightness mapping, not inference of an object's physical depth from a p
 - History covers heights, materials, shape/rotation and resets, not selection/navigation/generation. Keep at most 50 transactions and 16 MiB of encoded sparse deltas; discard the oldest records first. New edits clear redo. Ignore undo shortcuts in text fields/dialogs.
 - Preserve color and catalog identity per pin. Compact the actually used RGB + filament-profile pairs for export, including the base, with at most 16 slots. Reject a seventeenth material even if introduced by restoring colors, undo or redo against a changed generator. Same RGB with different profiles remains distinct.
 - Fill existing API heights and pinMaterials from the shared committed design. No new endpoints, raw image transfers, physical AMS assignments, brush tools, AI depth/segmentation, project save/load or pin repositioning are introduced.
-- Verify both projections, cancellation and history, regeneration and topology confirmations, 10,000-pin editing, fixed/detachable actual heights, profile/color indices, strict lib3mf read-back, backend/frontend tests, typecheck and build. Bambu import/slicing remains user-owned.
+- Verify both projections, cancellation and history, regeneration and topology confirmations, 5,000-pin editing, fixed/print-in-place actual extensions, profile/color indices, strict lib3mf read-back, backend/frontend tests, typecheck and build. Bambu import/slicing remains user-owned.
 
 ## 12. Shape export contract and validation
 
-New clients send optional `layout` with `regions: [{outer, holes}]`, `pins: [{id, x, y}]` and `edgePadding`, all in mm. Heights and material indices follow that pin list. Do not send image bounds, pixels, or row/column parameters. Legacy requests without layout still require rows/columns and use rectangular grid geometry.
+Keep `POST /api/exports`; accept `mode: fixed | print-in-place` and optional `sliding: {clearance, headFlare}`, default 0.4/0.4. Removed mode/fields `detachable`, `socket` and `plate` return readable structured 422 errors; no silent conversion.
 
-Both paths accept optional `parameters.pinShape` (`round`, `square`, `triangle`) and `pinRotation` (finite 0–360°), defaulting to Round/0. `parameters.diameter` stays compatible and represents circumscribed size. Server validation independently checks actual footprints and offset socket walls. Geometry resource/cache identities distinguish cross-sections. Upright print packing uses actual rotated bounds, including the triangle's asymmetric centroid-to-bounding-box offset. Keep existing heights, material/profile identity, plate ownership and X1C metadata unchanged. See ADR-020.
+Optional `layout` sends regions (outer/holes), ordered stable pin IDs/XY and edgePadding in mm. Heights/materials/geometry follow the actual pin list. New clients omit rows/columns; legacy rectangular requests retain rows/columns within the same 5,000-pin cap. Omitted per-pin geometry inherits global Round/0 defaults; complete arrays retain shapes/rotations. `diameter` remains shared circumscribed size. Keep colors, profile keys and existing material semantics.
 
-New clients also send complete ordered `pinGeometries: [{shape, rotation}]`, resolving selected overrides over those global defaults. Its length must equal heights/material indices and actual layout pins (legacy row-major order when layout is absent). Validate entries before canonicalizing full-turn and round angles to 0; reject null, empty, malformed or incomplete arrays. Omission retains the legacy uniform path. Each socket and packed pin uses its own geometry; cache identities, names and STL manifest entries retain that identity. Keep existing endpoints, request/process/material limits and profiles unchanged. See ADR-023.
+UI image bases define solid external silhouettes; explicit API holes remain supported. Mechanical guide holes are derived separately and do not change sampling/contour detection.
 
-The current UI sends empty `holes` arrays: image recognition defines only solid outer silhouettes. The export contract retains explicit holes support for compatibility; the backend validates supplied contours as-is, rather than silently filling or repairing API input. Detachable sockets remain actual blind holes and are unaffected by this silhouette rule.
+Shapely independently rejects invalid/overlapping contours, nonfinite values, mismatched dimensions, duplicate IDs, boundary/padding violations, neighbor conflicts, material indices and complexity limits; no automatic polygon repairs. Native triangulation and ring-wall meshes produce guide bases efficiently; Boolean-reference and shared TypeScript/Python fixtures verify parity. Fixed STL unions pins/base; Print-in-place STL composes independent shells. 3MF retains material regions, names, compensated reuse transforms and centered initial assembly placement on one plate. Names contain stable ID, assembly XY, extension and shape/rotation.
 
-Shapely independently rejects invalid/overlapping contours, nonfinite values, incorrect dimensions/centering, duplicate IDs, padding/overlap violations, material indices and complexity limits. Do not repair invalid polygons. manifold3d CrossSection extrudes the validated regions and subtracts sockets at actual XY positions. Fixed STL unions connected pins into closed solids, allowing multiple independent regions. Fixed 3MF keeps non-overlapping base/pin material regions and the existing X1C profile. Detachable sockets require 1 mm floor and 0.8 mm walls to neighboring sockets and every outer/hole boundary. Keep all base regions together on plate 1 with original relative positions; pin-only plates start at plate 2. Names and STL manifests include stable IDs, assembled coordinates and total printed lengths.
-
-No SVG import, manual contours, AI cutout, hexagonal layout or automatic bridges. Bambu GUI and physical fit checks remain user-owned. See ADR-018 for architecture and compatibility.
+No SVG/manual contours, AI cutout, hexagonal layout, automatic bridges or mechanical simulation. See ADR-024 for replacement of the historical detachable contract.

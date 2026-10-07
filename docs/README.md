@@ -47,6 +47,7 @@ The experimental workspace and its dependencies were removed after evaluation. R
 | [ADR-021](decisions/021-image-placement-and-shared-sampling.md) | Mapping-only image translation/zoom, shared sampling and independent 2D adjustment |
 | [ADR-022](decisions/022-pixel-image-sampling.md) | Independent Smooth/Pixel sampling, original-Blob nearest resizing, shared raster ownership and unchanged export snapshots |
 | [ADR-023](decisions/023-per-pin-cross-section-editing.md) | Transactional selected geometry, canonical mixed instances, validated history/recovery and compatible individual sockets/exports |
+| [ADR-024](decisions/024-print-in-place-mechanics.md) | Captive headed pins, tapered guides, true mechanical preview, single-plate exports and a 5,000-pin cap |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 
