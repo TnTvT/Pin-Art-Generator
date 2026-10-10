@@ -4,12 +4,12 @@ import fixtureData from '../../../../../fixtures/sliding-profiles.json?raw';
 import solidData from '../../../../../fixtures/sliding-solids.json?raw';
 import { DEFAULTS } from '../pin-design/model';
 import { createEditorState, editorReducer } from '../pin-editing/model';
-import { DEFAULT_CONSTRUCTION, profilePoints } from './model';
+import { profilePoints } from './model';
 import { buildMechanicalBase, createMechanicalPinGeometry, geometryFromMesh } from './preview-geometry';
 import type { PinShape } from '../pin-shape/geometry';
 
 const fixtures = JSON.parse(fixtureData) as { shape: PinShape; diameter: number; offset: number; points: number[][] }[];
-const construction = { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const };
+const construction = { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4 } };
 const solids = JSON.parse(solidData) as { shape: PinShape; baseVolume: number; pinVolume: number }[];
 function signedVolume(geometry: ReturnType<typeof geometryFromMesh>) {
   const positions = geometry.getAttribute('position'), first = new Vector3(), second = new Vector3(), third = new Vector3();

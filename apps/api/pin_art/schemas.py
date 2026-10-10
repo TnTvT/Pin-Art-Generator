@@ -50,7 +50,7 @@ class Parameters(DomainModel):
 
 class SlidingParameters(DomainModel):
     clearance: PositiveNumber = 0.4
-    head_flare: PositiveNumber = Field(default=0.4, alias="headFlare")
+    head_flare: PositiveNumber = Field(default=0.6, alias="headFlare")
 
 
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]

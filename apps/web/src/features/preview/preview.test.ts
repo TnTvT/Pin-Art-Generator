@@ -101,8 +101,8 @@ describe('preview camera projection', () => {
       const shapeIndex = Math.floor(index / 3), role = index % 3;
       group.getMatrixAt(0, matrix); group.getColorAt(0, color);
       expect(color.getHexString()).toBe(['ff0000', '00ff00', '0000ff'][shapeIndex]);
-      expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(role === 0 ? 0.4 : role === 1 ? 0 : 3 + heights[shapeIndex] - 0.4);
-      expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(role === 0 ? 3 + heights[shapeIndex] - 0.8 : 1);
+      expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(role === 0 ? 0.6 : role === 1 ? 0 : 3 + heights[shapeIndex] - 0.6);
+      expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(role === 0 ? 3 + heights[shapeIndex] - 1.2 : 1);
     });
     const base = renderedScene().children.find(child => child instanceof Mesh && !(child instanceof InstancedMesh) && child.material instanceof MeshStandardMaterial) as Mesh;
     const material = base.material as MeshStandardMaterial, originalColor = material.color.getHexString();
@@ -210,14 +210,14 @@ describe('preview camera projection', () => {
     const color = new Color(); square.getColorAt(1, color);
     expect(color.getHexString()).toBe('ff0088');
     const matrix = new Matrix4(); square.getMatrixAt(1, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([5.25, 0, 7]);
+    expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([6, 0, 7]);
     const maskScene = renderer.render.mock.calls.slice().reverse().find(([scene]) => (scene as Scene).children?.some(child => child.name === 'Selected pin outline mask'))![0] as Scene;
     const masks = maskScene.children as InstancedMesh[];
     expect(masks).toHaveLength(3);
     expect(masks.reduce((sum, mask) => sum + mask.count, 0)).toBe(3);
     const squareMask = masks.find(mask => mask.geometry === square.geometry)!;
     expect(squareMask.count).toBe(1); squareMask.getMatrixAt(0, matrix);
-    expect(new Vector3().setFromMatrixPosition(matrix).x).toBe(5.25);
+    expect(new Vector3().setFromMatrixPosition(matrix).x).toBe(6);
     const removed = groups.filter(group => group !== square);
     const disposal = removed.map(group => [vi.spyOn(group, 'dispose'), vi.spyOn(group.geometry, 'dispose')]);
     const maskDisposal = masks.filter(mask => mask !== squareMask).map(mask => vi.spyOn(mask, 'dispose'));

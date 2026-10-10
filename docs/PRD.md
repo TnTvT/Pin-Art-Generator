@@ -47,7 +47,7 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 | Base thickness | 3 mm | Positive Z thickness |
 | Corner radius | 10 mm | Rounded rectangle only; 0 to half the shorter side |
 | Edge padding | 5 mm | Minimum outer-boundary gap from shaft (Fixed) or retaining head (Print-in-place); nonnegative |
-| Pin spacing | 3.5 mm | Equal X/Y center spacing, never adjusted automatically |
+| Pin spacing | 4 mm | Equal X/Y center spacing, never adjusted automatically |
 | Pin shape | Round | Generation default: Round, Square, or equilateral Triangle; selected pins can override it |
 | Pin size | 2 mm | Positive circumscribed diameter; square diagonal, triangle circumdiameter |
 | Pin rotation | 0° | Polygon-only numeric input/slider, 0–360° counterclockwise around +Z; round remembers but ignores it |
@@ -193,7 +193,7 @@ Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking 
 
 ### Print-in-place mechanics
 
-- Support Round, Square and Triangle, including mixed per-pin shapes/rotations. Advanced settings default to total Sliding clearance 0.4 mm and Head flare 0.4 mm (outward offset and taper height).
+- Support Round, Square and Triangle, including mixed per-pin shapes/rotations. Advanced settings default to total Sliding clearance 0.4 mm and Head flare 0.6 mm (outward offset and taper height). The ideal radial capture is 0.4 mm, matching the Medium reference STL's nominal retention margin. Default spacing is 4 mm in both modes and never changes on mode switches; larger/rotated pins must satisfy existing validation without automatic repair. Default rectangle counts are 621 Fixed / 567 Print-in-place. See ADR-025.
 - Extension E is base top to pin top including the upper head in its initial position, not total length or travel. Total pin length = B + E. UI uses Generated pin extension, Set extension and Offset extension; mapping/editor info popups define the measurement.
 - Shaft uses actual cross-section; rounded outward offsets define heads (+h), guide (+c) and mouths (+c+h), where c is half-clearance. Both heads and mouths have height-h tapers; round uses 64 segments.
 - Require finite positive dimensions, h−c ≥ 0.2 mm, B−2h ≥ 1 mm and E ≥ 2h. Guide walls/edges ≥ 0.8 mm, mouth walls/edges ≥ 0.2 mm and adjacent head gaps ≥ 0.2 mm. Warn when mouth lips are below 0.8 mm.
@@ -234,7 +234,7 @@ Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking 
 
 ## 12. Shape export contract and validation
 
-Keep `POST /api/exports`; accept `mode: fixed | print-in-place` and optional `sliding: {clearance, headFlare}`, default 0.4/0.4. Removed mode/fields `detachable`, `socket` and `plate` return readable structured 422 errors; no silent conversion.
+Keep `POST /api/exports`; accept `mode: fixed | print-in-place` and optional `sliding: {clearance, headFlare}`, default 0.4/0.6. Explicit dimensions remain unchanged and subject to validation. Removed mode/fields `detachable`, `socket` and `plate` return readable structured 422 errors; no silent conversion.
 
 Optional `layout` sends regions (outer/holes), ordered stable pin IDs/XY and edgePadding in mm. Heights/materials/geometry follow the actual pin list. New clients omit rows/columns; legacy rectangular requests retain rows/columns within the same 5,000-pin cap. Omitted per-pin geometry inherits global Round/0 defaults; complete arrays retain shapes/rotations. `diameter` remains shared circumscribed size. Keep colors, profile keys and existing material semantics.
 

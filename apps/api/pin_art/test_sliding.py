@@ -54,6 +54,41 @@ def test_sliding_geometry_and_travel(shape):
     assert pin.volume() == pytest.approx(fixture["pinVolume"], abs=1e-8)
 
 
+@pytest.mark.parametrize("format", ["stl", "3mf"])
+def test_default_heads_have_reference_retention_and_export_separate_closed_solids(format, tmp_path):
+    payload = sliding_payload(format=format)
+    payload.pop("sliding")
+    payload["parameters"]["spacing"] = 4
+    request = ExportRequest.model_validate(payload)
+    plate = build_plates(request)[0]
+    base, *pins = [placed_solid(part) for part in plate.parts]
+    head = profile_points("round", 2, request.sliding.head_flare)
+    guide = profile_points("round", 2, request.sliding.clearance / 2)
+    assert np.ptp(head[:, 0]) == pytest.approx(3.2)
+    assert np.ptp(guide[:, 0]) == pytest.approx(2.4)
+    assert (np.ptp(head[:, 0]) - np.ptp(guide[:, 0])) / 2 == pytest.approx(0.4)
+    for pin, extension in zip(pins, request.heights):
+        assert pin.status() == manifold3d.Error.NoError
+        assert pin.bounding_box()[2] == pytest.approx(0)
+        assert pin.bounding_box()[5] == pytest.approx(3 + extension)
+        assert pin.bounding_box()[3] - pin.bounding_box()[0] == pytest.approx(3.2)
+        assert (base ^ pin).volume() == pytest.approx(0, abs=1e-9)
+        assert (base ^ pin.translate((0, 0, 0.21))).volume() > 0
+    assert base.status() == manifold3d.Error.NoError
+    output, filename, mime, count = generate_export(request)
+    assert count == 1
+    if format == "stl":
+        assert len(read_stl(output).decompose()) == 5
+    else:
+        path = tmp_path / filename
+        path.write_bytes(output)
+        model = lib3mf.get_wrapper().CreateModel()
+        reader = model.QueryReader("3mf")
+        reader.SetStrictModeActive(True)
+        reader.ReadFromFile(str(path))
+        assert reader.GetWarningCount() == 0
+
+
 @pytest.mark.parametrize("settings", [{"clearance": 0}, {"headFlare": 0.3}, {"headFlare": 1.1}])
 def test_invalid_sliding_settings(settings):
     with pytest.raises(ValidationError):

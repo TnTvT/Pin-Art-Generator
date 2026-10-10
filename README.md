@@ -110,7 +110,7 @@ Sampling math and Three.js instance transforms run without a browser GPU. Canvas
 - Choose **Round**, **Square**, or equilateral **Triangle** as the generation default. **Shape** in the preview toolbar overrides one, several, or all selected pins without moving them. **Pin size** remains shared and is the circumscribed diameter: round diameter, square diagonal (side = size / √2), or triangle circumdiameter (side = √3 × size / 2). Default size is 2 mm.
 - Polygon **Pin rotation** accepts 0–360° counterclockwise in Top view. At 0°, square sides align with X/Y and a triangle vertex points toward +Y. Round ignores rotation but remembers it for switching back. Geometry/export treat 360° as 0°.
 - Layout filtering, the 2D/3D previews, footprint and minimum-neighbor clearance use actual rotated shapes, not their enclosing circles. A lone pin displays no clearance. Shape changes preserve edits/history/selection when actual positions are unchanged; otherwise confirm the layout change.
-- Defaults are 120 × 100 × 3 mm, spacing 3.5 mm, round size 2 mm, height 20 mm, rounded radius 10 mm. The default rectangle contains **775 pins**.
+- Defaults are 120 × 100 × 3 mm, spacing 4 mm, round size 2 mm, height 20 mm, rounded radius 10 mm. The default rectangle contains **621 pins** in Fixed mode.
 - Limit layouts to 5,000 actual pins, 1,000,000 candidates and 20,000 contour vertices. Empty/excessive layouts are errors, not truncated results. Overlapping pins remain visible but block exports.
 - **From image** shares the Image mapping upload. Auto uses alpha if any pixel is below 128; otherwise detect background with Color.js ΔE2000 (white, tolerance 10; 0–50). No AI. Keep separate outer silhouettes, fill enclosed gaps, and merge islands inside an already-filled silhouette. Pins can occupy those filled areas; height/color mapping still uses the original pixels. Image width/depth stay linked to foreground bounds.
 - A 2D applied contour preview shows actual pins and region count. Separate regions remain separate print pieces; padding does not create borders or bridges.
@@ -169,7 +169,9 @@ Selected colors live in the project's filament palette, not in modified system-p
 
 ### Print-in-place mechanics
 
-Select construction under **Parameters**, not Export: it controls generation, preview and downloads together. **Advanced settings** defaults to **Sliding clearance 0.4 mm** (total, half on each wall) and **Head flare 0.4 mm** (outward offset and tapered head height). Round profiles use 64 segments; polygon offsets use rounded corners and preserve every pin's rotation.
+Select construction under **Parameters**, not Export: it controls generation, preview and downloads together. **Advanced settings** defaults to **Sliding clearance 0.4 mm** (total, half on each wall) and **Head flare 0.6 mm** (outward offset and tapered head height). Round profiles use 64 segments; polygon offsets use rounded corners and preserve every pin's rotation.
+
+Default spacing is **4 mm** in both modes; switching construction never changes spacing. A default 2 mm round shaft has a 3.2 mm head and 2.4 mm guide bore, giving **0.4 mm ideal radial retention**. This matches the nominal capture margin measured in the user's Medium reference STL, not a physical print guarantee. Larger or rotated pins may require more spacing; invalid settings are rejected rather than silently resized. Print-in-place's head padding gives **567 pins** in the default rectangle. See [ADR-025](docs/decisions/025-reference-retention-defaults.md).
 
 **Extension E** always measures from the base top to the pin top, including its top head in the initial printing position. It is not total pin length or travel. With base thickness B, half-clearance c and flare h, total length is B + E and the initial pin bottom is Z = 0. The guide has straight offset c and tapered mouths expanding to c + h. Ideal fixed-orientation travel is −E−c to +c; there is no motion/demo UI.
 

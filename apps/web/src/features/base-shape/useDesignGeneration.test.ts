@@ -196,7 +196,7 @@ describe('atomic design generation', () => {
     rerender({ input: { ...settings, parameters: { ...DEFAULTS, extension: 25 } } });
     await waitFor(() => expect(result.current.design?.parameters.extension).toBe(25));
     expect(vi.mocked(startShapeJob)).toHaveBeenCalledTimes(initialCalls);
-    rerender({ input: { ...settings, parameters: { ...DEFAULTS, width: 121, diameter: 2.1, thickness: 4 } } });
+    rerender({ input: { ...settings, parameters: { ...DEFAULTS, width: 121, depth: 101, diameter: 2.1, thickness: 4 } } });
     await waitFor(() => expect(result.current.design?.changed).toBe(false));
     rerender({ input: { ...settings, parameters: { ...DEFAULTS, spacing: 6 } } });
     await waitFor(() => expect(result.current.design?.changed).toBe(true));

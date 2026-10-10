@@ -3,7 +3,7 @@ import { DEFAULTS, getMetrics, getPinPositions, getWarnings } from './model';
 
 describe('pin grid measurements', () => {
   it('includes the outer pin diameter in the default footprint', () => {
-    expect(getMetrics(DEFAULTS)).toEqual({ count: 320, width: 68.5, depth: 54.5, clearance: 1.5 });
+    expect(getMetrics(DEFAULTS)).toEqual({ count: 320, width: 78, depth: 62, clearance: 2 });
   });
 
   it('gives a single pin a footprint equal to its diameter', () => {
@@ -33,7 +33,7 @@ describe('pin grid measurements', () => {
 
   it('resolves legacy positions in existing row-major order and IDs', () => {
     expect(getPinPositions({ ...DEFAULTS, rows: 1, columns: 2 })).toEqual([
-      { id: 'R1:C1', x: -1.75, y: 0 }, { id: 'R1:C2', x: 1.75, y: 0 },
+      { id: 'R1:C1', x: -2, y: 0 }, { id: 'R1:C2', x: 2, y: 0 },
     ]);
   });
 

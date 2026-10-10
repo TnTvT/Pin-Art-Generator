@@ -28,7 +28,7 @@ describe('export request mapping', () => {
       heights: Array(320).fill(20), materials: ['#8e9089', '#00b1b7'],
       filamentProfiles: ['bambu-pla-basic', 'bambu-pla-basic'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),
-      sliding: { clearance: 0.4, headFlare: 0.4 },
+      sliding: { clearance: 0.4, headFlare: 0.6 },
     });
   });
 
@@ -68,8 +68,8 @@ describe('print validation', () => {
     expect(validateExport(parameters, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toMatch(/boundary/);
     expect(validateExport({ ...parameters, depth: 2 }, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
   });
-  it('uses actual square wall gaps rather than enclosing circles for overlap and sockets', () => {
-    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 3 };
+  it('uses actual square wall gaps rather than enclosing circles for guide mouths', () => {
+    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 3.4 };
     const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
     expect(validateExport(parameters, undefined, options, '3mf')).toBeNull();
     expect(validateExport({ ...parameters, pinRotation: 45 }, undefined, options, '3mf')).toMatch(/Guide walls/);
@@ -123,7 +123,7 @@ describe('print validation', () => {
     expect(validateExport(large, undefined, options, '3mf')).toMatch(/5 mm/);
     expect(validateExport(large, undefined, options, 'stl')).toBeNull();
     const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, options, '3mf');
-    expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.4 });
+    expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.6 });
     expect(request.parameters).not.toHaveProperty('construction');
     expect(request).not.toHaveProperty('socket');
     expect(request).not.toHaveProperty('plate');

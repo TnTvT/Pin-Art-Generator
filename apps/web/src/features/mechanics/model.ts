@@ -6,7 +6,7 @@ export interface Construction {
   mode: 'fixed' | 'print-in-place';
   sliding: { clearance: number; headFlare: number };
 }
-export const DEFAULT_CONSTRUCTION: Construction = { mode: 'fixed', sliding: { clearance: 0.4, headFlare: 0.4 } };
+export const DEFAULT_CONSTRUCTION: Construction = { mode: 'fixed', sliding: { clearance: 0.4, headFlare: 0.6 } };
 
 export function profilePoints(shape: PinShape, diameter: number, offset = 0): Point[] {
   if (shape === 'round') return pinVertices(shape, diameter + 2 * offset);

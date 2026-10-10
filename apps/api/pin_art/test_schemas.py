@@ -47,6 +47,14 @@ def test_filament_profiles_are_optional_and_round_trip_when_supplied():
     assert request.model_dump(by_alias=True) == payload
 
 
+def test_default_sliding_settings_increase_retention_not_clearance():
+    payload = request_payload(mode="print-in-place")
+    payload.pop("sliding")
+    request = ExportRequest.model_validate(payload)
+    assert request.sliding.clearance == 0.4
+    assert request.sliding.head_flare == 0.6
+
+
 def test_manual_heights_can_exceed_generator_extension():
     request = ExportRequest.model_validate(request_payload(heights=[25, 30, 40, 50]))
     assert request.heights == [25, 30, 40, 50]

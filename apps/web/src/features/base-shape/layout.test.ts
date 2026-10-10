@@ -5,8 +5,8 @@ import { DEFAULT_SHAPE, generateLayout, regionIndex, samePins, traceImage, type 
 describe('shape-owned layouts', () => {
   it('fills the default rectangle deterministically with wall padding', () => {
     const first = generateLayout(DEFAULTS, DEFAULT_SHAPE);
-    expect(first.layout.pins).toHaveLength(775);
-    expect(first.layout.pins[0]).toEqual({ id: 'g:-12:-15', x: -52.5, y: -42 });
+    expect(first.layout.pins).toHaveLength(621);
+    expect(first.layout.pins[0]).toEqual({ id: 'g:-11:-13', x: -52, y: -44 });
     expect(first.layout.pins.every(pin => Math.abs(pin.x) + 1 + 5 <= 60 && Math.abs(pin.y) + 1 + 5 <= 50)).toBe(true);
     expect(samePins(first.layout, generateLayout(DEFAULTS, DEFAULT_SHAPE).layout)).toBe(true);
   });
