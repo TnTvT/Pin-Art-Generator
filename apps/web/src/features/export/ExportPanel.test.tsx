@@ -28,6 +28,38 @@ beforeEach(() => {
 });
 
 describe('export panel', () => {
+  it('selects U1 without changing the design, keeps selection through theme changes and snapshots it', async () => {
+    const user = userEvent.setup();
+    const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
+    const heights = new Float32Array([4, 31]);
+    renderWithProviders(<Panel parameters={parameters} heights={heights} />);
+    await user.click(screen.getByRole('combobox', { name: 'Printer' }));
+    await user.click(screen.getByRole('option', { name: 'Snapmaker U1 · 0.4 mm' }));
+    expect(screen.getByText('2 / 4 materials for 3MF · Includes base')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
+    await user.click(screen.getByRole('button', { name: 'Download Snapmaker 3MF' }));
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.printer).toBe('snapmaker-u1');
+    expect(payload.parameters).toEqual(parameters);
+    expect(payload.heights).toEqual([4, 31]);
+    expect(payload.materials).toEqual(['#8e9089', '#00b1b7']);
+    expect(screen.getByRole('combobox', { name: 'Printer' })).toHaveValue('Snapmaker U1 · 0.4 mm');
+  });
+
+  it('blocks five used U1 materials but allows STL and switching back to X1C', async () => {
+    const user = userEvent.setup();
+    const pins = ['#111111', '#222222', '#333333', '#444444'].map(color => ({ color, filamentId: null }));
+    renderWithProviders(<ExportPanel parameters={{ ...DEFAULTS, columns: 4, rows: 1 }} materials={DEFAULT_MODEL_MATERIALS} pinSelections={pins} />);
+    await user.click(screen.getByRole('combobox', { name: 'Printer' }));
+    await user.click(screen.getByRole('option', { name: 'Snapmaker U1 · 0.4 mm' }));
+    expect(screen.getByRole('button', { name: 'Download Snapmaker 3MF' })).toBeDisabled();
+    expect(screen.getByText(/3MF blocked:.*4 materials including the base/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
+    await user.click(screen.getByRole('combobox', { name: 'Printer' }));
+    await user.click(screen.getByRole('option', { name: 'Bambu Lab X1 Carbon · 0.4 mm' }));
+    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('blocks tangent fixed STL before submitting while keeping round 3MF available', () => {
     renderWithProviders(<Panel parameters={{ ...DEFAULTS, spacing: DEFAULTS.diameter }} />);
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
@@ -95,6 +127,7 @@ describe('export panel', () => {
     fireEvent.click(button);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Printer' })).toBeDisabled();
     parameters.width = 10;
     heights[0] = 7;
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).heights).toEqual([2, 9]);

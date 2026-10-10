@@ -4,10 +4,11 @@ import { getMetrics, getPinPositions, getWarnings, pinCount, type Parameters } f
 import { resolveFilamentProfile, type FilamentProfile, type MaterialSelection, type ModelMaterials } from '../filaments/materials';
 import { type Layout, type Region } from '../base-shape/layout';
 import { effectivePinRotation, resolvePinGeometries, resolvedContainment, validatePinGeometry, type PinGeometry } from '../pin-shape/geometry';
+import { DEFAULT_PRINTER, PRINTER_PROFILES, validatePrinterMaterials, type PrinterId } from './printer-profiles';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = Construction['mode'];
-export type ExportOptions = Construction;
+export type ExportOptions = Construction & { printer?: PrinterId };
 
 export interface ExportRequest extends ExportOptions {
   format: ExportFormat;
@@ -22,8 +23,6 @@ export interface ExportRequest extends ExportOptions {
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = DEFAULT_CONSTRUCTION;
-
-export const BAMBU_PROFILE = { name: 'Bambu Lab X1 Carbon 0.4 nozzle', width: 256, depth: 256, height: 250 } as const;
 
 export function validateExport(parameters: Parameters, heights: Float32Array | undefined, options: ExportOptions, format?: ExportFormat, measurements?: ReturnType<typeof getMetrics>): string | null {
   const { layout } = parameters;
@@ -53,21 +52,19 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   try { validateMechanics({ ...parameters, construction: options }, heights); }
   catch (error) { return error instanceof Error ? error.message : 'Invalid print-in-place structure.'; }
   if (format === '3mf') {
-    if (parameters.width > BAMBU_PROFILE.width || parameters.depth > BAMBU_PROFILE.depth) {
-      return 'Bambu X1C 3MF requires a base within the 256 × 256 mm bed. Reduce the base or download STL.';
+    const profile = PRINTER_PROFILES[options.printer ?? DEFAULT_PRINTER];
+    if (parameters.width > profile.width || parameters.depth > profile.depth) {
+      return `${profile.shortName} 3MF requires a base within the ${profile.width} × ${profile.depth} mm bed. Reduce the base or download STL.`;
     }
-    if (options.mode === 'print-in-place' && (parameters.width > BAMBU_PROFILE.width - 10 || parameters.depth > BAMBU_PROFILE.depth - 10)) return 'Print-in-place 3MF must fit the bed with 5 mm margins. Reduce the base or download STL.';
+    if (options.mode === 'print-in-place' && (parameters.width > profile.width - 10 || parameters.depth > profile.depth - 10)) return 'Print-in-place 3MF must fit the bed with 5 mm margins. Reduce the base or download STL.';
     const maximum = heights ? Math.max(...heights) : parameters.extension;
     const printHeight = parameters.thickness + maximum;
-    if (printHeight > BAMBU_PROFILE.height) return 'Bambu X1C 3MF parts must fit the profile’s 250 mm printable height. Reduce height or download STL.';
+    if (printHeight > profile.height) return `${profile.shortName} 3MF parts must fit the profile’s ${profile.height} mm printable height. Reduce height or download STL.`;
   }
   return null;
 }
 
-export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, selections: ModelMaterials, options: ExportOptions, format: ExportFormat, pinSelections?: readonly MaterialSelection[]): ExportRequest {
-  const error = validateExport(parameters, heights, options, format);
-  if (error) throw new Error(error);
-  const count = pinCount(parameters);
+export function resolveExportMaterials(count: number, selections: ModelMaterials, pinSelections?: readonly MaterialSelection[]) {
   if (pinSelections && pinSelections.length !== count) throw new Error('Pin materials must match the grid count.');
   const selected = [selections.base, ...(pinSelections ?? Array<MaterialSelection>(count).fill(selections.pins))];
   const colorValues = selected.map((selection) => selection.color.toLowerCase());
@@ -88,9 +85,22 @@ export function buildExportRequest(parameters: Parameters, heights: Float32Array
     return materialIndex;
   });
   if (materials.length > 16) throw new Error('Use at most 16 materials including the base.');
+  return { materials, filamentProfiles, baseMaterial: indices[0], pinMaterials: indices.slice(1) };
+}
+
+export function buildExportRequest(parameters: Parameters, heights: Float32Array | undefined, selections: ModelMaterials, options: ExportOptions, format: ExportFormat, pinSelections?: readonly MaterialSelection[]): ExportRequest {
+  const error = validateExport(parameters, heights, options, format);
+  if (error) throw new Error(error);
+  const count = pinCount(parameters);
+  const palette = resolveExportMaterials(count, selections, pinSelections);
+  if (format === '3mf') {
+    const materialError = validatePrinterMaterials(options.printer ?? DEFAULT_PRINTER, palette.materials.length);
+    if (materialError) throw new Error(materialError);
+  }
   const { pinGeometries: unusedGeometry, construction: unusedConstruction, ...legacyParameters } = parameters;
   return {
     format, mode: options.mode,
+    ...(options.printer && options.printer !== DEFAULT_PRINTER ? { printer: options.printer } : {}),
     parameters: parameters.layout
       ? { width: parameters.width, depth: parameters.depth, thickness: parameters.thickness, spacing: parameters.spacing, diameter: parameters.diameter, extension: parameters.extension,
         ...(parameters.pinShape ? { pinShape: parameters.pinShape } : {}), ...(parameters.pinRotation !== undefined ? { pinRotation: effectivePinRotation(parameters) } : {}) }
@@ -98,8 +108,7 @@ export function buildExportRequest(parameters: Parameters, heights: Float32Array
     pinGeometries: resolvePinGeometries(parameters),
     ...(parameters.layout ? { layout: { regions: parameters.layout.regions, pins: parameters.layout.pins, edgePadding: parameters.layout.edgePadding } } : {}),
     heights: heights ? Array.from(heights) : Array<number>(count).fill(parameters.extension),
-    materials, filamentProfiles, baseMaterial: indices[0],
-    pinMaterials: indices.slice(1),
+    ...palette,
     sliding: { ...options.sliding },
   };
 }

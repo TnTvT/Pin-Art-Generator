@@ -49,6 +49,7 @@ The experimental workspace and its dependencies were removed after evaluation. R
 | [ADR-023](decisions/023-per-pin-cross-section-editing.md) | Transactional selected geometry, canonical mixed instances, validated history/recovery and compatible individual sockets/exports |
 | [ADR-024](decisions/024-print-in-place-mechanics.md) | Captive headed pins, tapered guides, true mechanical preview, single-plate exports and a 5,000-pin cap |
 | [ADR-025](decisions/025-reference-retention-defaults.md) | Reference-sized radial capture without widening clearance; shared 4 mm default spacing and no mode-based spacing changes |
+| [ADR-026](decisions/026-selectable-printer-profiles.md) | Selectable X1C/U1 targets, profile-aware envelopes, offset bed centering and actual material budgets |
 
 These records document the agreed requirements and implemented demo. They summarize accepted choices and engineering tradeoffs; they do not imply that every alternative was formally evaluated during development.
 

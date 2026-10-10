@@ -2,7 +2,7 @@
 
 **Status:** Current demo baseline
 
-**Last updated:** October 6, 2026
+**Last updated:** October 10, 2026
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Engineering foundation | Feature folders and automated unit/integration tests | Implemented |
 | Monorepo tooling | pnpm/Turborepo orchestration and uv-managed Python backend | Implemented |
 | Appearance | Light/dark themes with a locally saved preference | Implemented |
-| Model downloads | STL, Bambu-compatible colored 3MF, Fixed sculpture and Print-in-place | Implemented; Bambu GUI/physical fit verification is user-owned |
+| Model downloads | STL, X1C/U1 colored 3MF, Fixed sculpture and Print-in-place | Implemented; slicer GUI/physical fit verification is user-owned |
 | Per-pin editing | Selection, Set/Offset heights, materials, shape/rotation overrides, transactional drag and undo/redo | Implemented |
 | Base shapes | Rectangle, rounded rectangle, circle, ellipse, solid image silhouettes/disconnected regions and automatic layout | Implemented |
 | Moving-pin hardware | Captive sliding pins, through-guide base, retaining heads and true preview | Implemented; physical fit verification is user-owned |
@@ -184,9 +184,12 @@ Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking 
 - Construction under Parameters offers Fixed sculpture (default) and Print-in-place. It controls geometry generation, preview and export, not just downloading. Snapshot committed contour, positions, extensions, geometry and materials; never upload images.
 - Fixed STL is a watertight Boolean union; fixed 3MF retains adjacent non-overlapping material regions in one assembly. Reject tangent fixed STL without silent repairs.
 - Print-in-place outputs independent closed guide-base/pin solids, with initial pin bottoms at Z = 0. Preserve assembly transforms, per-pin material and rotation; never independently re-ground pins.
-- Return one STL or one single-plate Bambu 3MF. Remove Detachable, blind sockets, insertion depth, plate dimensions/packing, multi-plate downloads and STL ZIP manifests.
+- Return one STL or one single-plate 3MF targeting the selected printer's slicer. Remove Detachable, blind sockets, insertion depth, plate dimensions/packing, multi-plate downloads and STL ZIP manifests.
 - Retain the X1C 0.4 nozzle / 0.20mm Standard profile, official Basic/Matte or Generic PLA identities, colors, logical filament routing and one-based material assignments. Compact actual RGB + profile pairs, not RGB alone; at most 16 including the base. Reuse identical geometry/material resources.
-- Print-in-place 3MF requires 5 mm margins within the 256 × 256 mm bed (246 × 246 usable) and B + max(E) ≤ 250 mm. Fixed keeps its existing profile-envelope checks. STL is printer-independent.
+- Print export offers X1C · 0.4 mm (default) and Snapmaker U1 · 0.4 mm. Selection affects only 3MF validation, target preset references and bed placement, never design geometry/mapping. Keep selection across theme/design updates and disable changes while a download is generating.
+- X1C retains its current 256 × 256 × 250 mm envelope and official material profiles. U1 targets Snapmaker Orca's official machine/0.20mm Standard process, with a 270 × 270 mm bed and conservative 270 mm height limit. Reference installed system presets rather than embedding printer G-code or imposing temperature overrides. U1 Basic/Matte project materials inherit Generic PLA @System and retain family/vendor/colors; do not represent them as official U1-tuned Bambu filament presets.
+- Print-in-place 3MF requires 5 mm margins: 246 × 246 mm usable on X1C or 260 × 260 mm on U1. Fixed uses the full selected envelope. Center U1 assemblies at X=135.5, Y=136 mm accounting for the official bed origin; preserve all assembled Z coordinates. STL remains printer-independent.
+- Count actual RGB + profile pairs including the base: at most 16 on X1C, 4 on U1. Deduplicate identical pairs and ignore unused palette entries. Reject excess U1 3MF materials with actionable feedback in frontend/backend; do not alter the design, disable STL, substitute materials, blend colors or assign physical toolheads. Display used/available material counts.
 - Show generating/error/retry/single-plate feedback; prevent duplicate downloads and release object URLs. Numeric incomplete drafts use last valid dimensions. Invalid generation blocks export while retaining the previous applied preview.
 - Cap actual pins and all per-pin arrays at 5,000, requests at 2 MB, and isolated single-worker exports at 120 seconds; clean up on failure, cancellation or timeout. Do not silently truncate arrays or reduce complexity.
 - Strict lib3mf read-back, geometry/transform/material tests and live browser checks are required. Bambu import/slicing and physical fit are verified by the user, not controlled automatically.

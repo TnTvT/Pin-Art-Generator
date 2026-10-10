@@ -3,7 +3,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from pin_art.bambu_profile import BED_DEPTH, BED_WIDTH, PRINTABLE_HEIGHT
+from pin_art.printer_profiles import PRINTER_PROFILES, PrinterId
 from pin_art.cross_sections import PinShape, local_bounds
 
 
@@ -78,6 +78,7 @@ class ShapeLayout(DomainModel):
 class ExportRequest(DomainModel):
     format: Literal["stl", "3mf"]
     mode: Literal["fixed", "print-in-place"]
+    printer: PrinterId = Field(default="bambu-x1c", exclude_if=lambda value: value == "bambu-x1c")
     parameters: Parameters
     layout: ShapeLayout | None = Field(default=None, exclude_if=lambda value: value is None)
     heights: list[PositiveNumber] = Field(max_length=MAX_PINS)
@@ -140,13 +141,18 @@ class ExportRequest(DomainModel):
             from pin_art.shape_validation import validate_polygon_layout
             validate_polygon_layout(self)
         if self.format == "3mf":
-            if parameters.width > BED_WIDTH or parameters.depth > BED_DEPTH:
-                raise ValueError("Bambu X1C 3MF base must fit the 256 × 256 mm bed; reduce the base or export STL")
-            if self.mode == "print-in-place" and (parameters.width > BED_WIDTH - 10 or parameters.depth > BED_DEPTH - 10):
+            profile = PRINTER_PROFILES[self.printer]
+            if parameters.width > profile.width or parameters.depth > profile.depth:
+                raise ValueError(f"{profile.short_name} 3MF base must fit the {profile.width:g} × {profile.depth:g} mm bed; reduce the base or export STL")
+            if self.mode == "print-in-place" and (parameters.width > profile.width - 10 or parameters.depth > profile.depth - 10):
                 raise ValueError("Print-in-place 3MF must fit the bed with 5 mm margins")
             height = parameters.thickness + max(self.heights)
-            if height > PRINTABLE_HEIGHT:
-                raise ValueError("Bambu X1C 3MF parts must fit the profile's 250 mm printable height; reduce height or export STL")
+            if height > profile.height:
+                raise ValueError(f"{profile.short_name} 3MF parts must fit the profile's {profile.height:g} mm printable height; reduce height or export STL")
+            profiles = self.filament_profiles or ["generic-pla"] * len(self.materials)
+            used = {(self.materials[index].upper(), profiles[index]) for index in {self.base_material, *self.pin_materials}}
+            if len(used) > profile.max_materials:
+                raise ValueError(f"{profile.short_name} 3MF supports at most {profile.max_materials} materials including the base; merge materials, choose another printer or export STL")
         if self.mode == "fixed":
             if not self.layout and not polygon and count > 1 and parameters.spacing < parameters.diameter:
                 raise ValueError("fixed pins must not overlap")

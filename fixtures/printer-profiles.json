@@ -1,0 +1,4 @@
+[
+  { "id": "bambu-x1c", "width": 256, "depth": 256, "height": 250, "maxMaterials": 16, "center": [128, 128] },
+  { "id": "snapmaker-u1", "width": 270, "depth": 270, "height": 270, "maxMaterials": 4, "center": [135.5, 136] }
+]

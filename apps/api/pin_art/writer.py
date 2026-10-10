@@ -11,7 +11,7 @@ import lib3mf
 import numpy as np
 
 from pin_art.geometry import Part, Plate
-from pin_art.bambu_profile import BED_DEPTH, BED_WIDTH, project_profile
+from pin_art.printer_profiles import PRINTER_PROFILES, project_profile
 from pin_art.schemas import ExportRequest
 
 
@@ -96,8 +96,9 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
     wrapper = lib3mf.get_wrapper()
     model = wrapper.CreateModel()
     model.SetUnit(lib3mf.ModelUnit.MilliMeter)
+    printer = PRINTER_PROFILES[request.printer]
     group = model.GetMetaDataGroup()
-    group.AddMetaData("", "Application", "BambuStudio-02.04.00.70", "xs:string", False)
+    group.AddMetaData("", "Application", printer.application, "xs:string", False)
     group.AddMetaData("", "Title", "Pin Art Studio", "xs:string", False)
     profiles = request.filament_profiles or ["generic-pla"] * len(request.materials)
     materials = [(color.upper(), profile) for color, profile in zip(request.materials, profiles, strict=True)]
@@ -145,11 +146,11 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
         metadata(plate_config, "plater_id", plate_number + 1)
         metadata(plate_config, "plater_name", f"Pin Art · Plate {plate_number + 1}")
         metadata(plate_config, "locked", "false")
-        origin = plate_origin(plate_number, len(plates), BED_WIDTH, BED_DEPTH)
+        origin = plate_origin(plate_number, len(plates), printer.width, printer.depth)
         build_matrix = np.eye(4)
         build_matrix[:3, 3] = origin
         object_ids = []
-        build_matrix[:2, 3] += [BED_WIDTH / 2, BED_DEPTH / 2]
+        build_matrix[:2, 3] += printer.center
         name = "Fixed pin sculpture" if request.mode == "fixed" else "Print-in-place pin art"
         object_ids.append(assembly(plate.parts, name, build_matrix))
         for object_id in object_ids:
@@ -159,7 +160,7 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
             metadata(instance, "identify_id", object_id)
 
     project_settings = {
-        **project_profile([material[1] for material in palette]),
+        **project_profile(request.printer, [material[1] for material in palette]),
         "filament_colour": palette_colors,
         "filament_multi_colour": palette_colors,
     }

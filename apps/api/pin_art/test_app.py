@@ -79,6 +79,29 @@ def test_api_downloads_fixed_and_print_in_place_models():
             assert len(response.content) > 84
 
 
+@pytest.mark.parametrize("mode", ["fixed", "print-in-place"])
+def test_api_worker_keeps_selected_u1_printer(mode):
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload(printer="snapmaker-u1", mode=mode))
+        assert response.status_code == 200, response.text[:200]
+        assert response.headers["Content-Type"] == "model/3mf"
+        assert response.headers["X-Plate-Count"] == "1"
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            settings = json.loads(archive.read("Metadata/project_settings.config"))
+            assert settings["printer_model"] == "Snapmaker U1"
+            assert settings["filament_colour"] == ["#112233", "#AABBCC"]
+
+
+def test_api_rejects_u1_material_budget_and_unknown_printers_before_worker():
+    with TestClient(app) as client:
+        payload = request_payload(printer="snapmaker-u1", materials=["#000000", "#111111", "#222222", "#333333", "#444444"], pinMaterials=[1, 2, 3, 4])
+        for invalid in (payload, request_payload(printer="unknown")):
+            response = client.post("/api/exports", json=invalid)
+            assert response.status_code == 422
+            assert response.json()["error"]["code"] == "INVALID_DESIGN"
+            assert not app.state.export_lock.locked()
+
+
 @pytest.mark.parametrize("mode", ["fixed"])
 def test_api_worker_preserves_selected_filament_profiles(mode):
     payload = request_payload(mode=mode, materials=["#FFFFFF", "#FFFFFF"], filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
