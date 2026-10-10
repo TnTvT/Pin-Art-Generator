@@ -10,7 +10,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from pin_art.schemas import ExportRequest
-from pin_art.geometry import build_plates
+from pin_art.geometry import build_plate
 from pin_art.exporter import generate_export
 from pin_art.sliding import profile_points, guide_cutter
 import manifold3d
@@ -34,7 +34,7 @@ def test_sliding_geometry_and_travel(shape):
     payload["parameters"].update(columns=1, rows=1, pinShape=shape)
     payload.update(heights=[10], pinMaterials=[1])
     request = ExportRequest.model_validate(payload)
-    plate = build_plates(request)[0]
+    plate = build_plate(request)
     assert len(plate.parts) == 2
     base, pin = [part.solid.transform(part.transform[:3]) for part in plate.parts]
     assert pin.bounding_box()[2] == pytest.approx(0)
@@ -60,7 +60,7 @@ def test_default_heads_have_reference_retention_and_export_separate_closed_solid
     payload.pop("sliding")
     payload["parameters"]["spacing"] = 4
     request = ExportRequest.model_validate(payload)
-    plate = build_plates(request)[0]
+    plate = build_plate(request)
     base, *pins = [placed_solid(part) for part in plate.parts]
     head = profile_points("round", 2, request.sliding.head_flare)
     guide = profile_points("round", 2, request.sliding.clearance / 2)
@@ -118,7 +118,7 @@ def test_printed_pin_is_closed_and_preserves_shape_rotation_and_extension(shape,
     payload = sliding_payload(format="stl", heights=[extension] * 4)
     payload["parameters"].update(pinShape=shape, pinRotation=angle)
     request = ExportRequest.model_validate(payload)
-    plate = build_plates(request)[0]
+    plate = build_plate(request)
     assert plate.parts[1].solid is plate.parts[2].solid
     output, filename, mime, count = generate_export(request)
     assert (filename, mime, count) == ("pin-art-print-in-place.stl", "model/stl", 1)
@@ -135,7 +135,7 @@ def test_mixed_3mf_keeps_assembled_positions_colors_profiles_and_plate_ownership
     payload = mixed_payload(mode="print-in-place", explicit=explicit)
     payload.update(heights=[4, 9, 13, 13], filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
     request = ExportRequest.model_validate(payload)
-    plate = build_plates(request)[0]
+    plate = build_plate(request)
     output, filename, mime, count = generate_export(request)
     assert filename.endswith(".3mf") and mime == "model/3mf" and count == 1
     path = tmp_path / filename
@@ -194,13 +194,13 @@ def test_holes_multiple_regions_and_cache_identity():
 
     payload = shape_request("print-in-place")
     original = ExportRequest.model_validate(payload)
-    base = build_plates(original)[0].parts[0]
+    base = build_plate(original).parts[0]
     assert base.solid.slice(1.5).area() < 764
     payload["layout"]["regions"] = [
         {"outer": [[-20, -10], [-5, -10], [-5, 10], [-20, 10]], "holes": []},
         {"outer": [[5, -10], [20, -10], [20, 10], [5, 10]], "holes": []},
     ]
     request = ExportRequest.model_validate(payload)
-    assert len(build_plates(request)[0].parts[0].solid.decompose()) == 2
+    assert len(build_plate(request).parts[0].solid.decompose()) == 2
     payload["layout"]["pins"][0]["x"] += 0.1
-    assert build_plates(ExportRequest.model_validate(payload))[0].parts[0].cache_key != base.cache_key
+    assert build_plate(ExportRequest.model_validate(payload)).parts[0].cache_key != base.cache_key

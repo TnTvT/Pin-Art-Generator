@@ -85,9 +85,9 @@ pnpm-lock.yaml
 turbo.json
 ```
 
-The app composes the feature modules. Pin design owns geometry parameters and layout validation; image mapping owns decoding, sampling, and upload controls; preview owns Three.js rendering and its React integration. Tests live beside the code they verify. Shared test setup and the Mantine render wrapper live in `apps/web/src/test/`.
+The app composes the feature modules. Pin design owns geometry parameters and layout validation; image mapping owns decoding, sampling, and upload controls; base shape's `useDesignGeneration` coordinates the single atomic layout/mapping/mechanics pipeline; preview owns Three.js rendering and its React integration. Tests live beside the code they verify. Shared test setup and the Mantine render wrapper live in `apps/web/src/test/`.
 
-`apps/web/src/features/export/` owns export controls, request snapshots, validation, and the download client. `apps/api/pin_art/` owns API validation, process isolation, geometry, plate layout, STL/3MF generation, and colocated Python tests. pnpm manages JavaScript packages; uv manages the API's Python environment. The API's private `package.json` only exposes commands to Turbo. Shared packages and a Python workspace will be added only when there is an actual second consumer.
+`apps/web/src/features/export/` owns export controls, request snapshots, validation, and the download client. `apps/api/pin_art/` owns API validation, process isolation, geometry, single-plate part placement, STL/3MF generation, and colocated Python tests. Both construction modes build one `Plate` directly; multi-plate wrappers and packing are not retained. The HTTP response retains `X-Plate-Count: 1`, and legacy rows/columns requests remain supported. pnpm manages JavaScript packages; uv manages the API's Python environment. The API's private `package.json` only exposes commands to Turbo. Shared packages and a Python workspace will be added only when there is an actual second consumer.
 
 ## Tests
 

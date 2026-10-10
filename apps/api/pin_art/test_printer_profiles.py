@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from pin_art.geometry import build_plates
+from pin_art.geometry import build_plate
 from pin_art.printer_profiles import PRINTER_PROFILES
 from pin_art.schemas import ExportRequest
 from pin_art.test_schemas import request_payload
@@ -75,7 +75,7 @@ def test_u1_package_profile_colors_and_centered_assembly(mode, tmp_path):
     payload = request_payload(printer="snapmaker-u1", mode=mode, filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
     payload["pinGeometries"] = [{"shape": "round", "rotation": 0}, {"shape": "square", "rotation": 27}, {"shape": "triangle", "rotation": 145}, {"shape": "round", "rotation": 0}]
     request = ExportRequest.model_validate(payload)
-    data = export_3mf(request, build_plates(request))
+    data = export_3mf(request, build_plate(request))
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["printer_settings_id"] == "Snapmaker U1 (0.4 nozzle)"
@@ -115,7 +115,7 @@ def test_u1_compacts_palette_but_keeps_same_rgb_different_profiles():
     payload = request_payload(printer="snapmaker-u1", materials=["#FFFFFF"] * 4,
                               filamentProfiles=["bambu-pla-basic", "bambu-pla-matte", "generic-pla", "bambu-pla-basic"], pinMaterials=[1, 3, 1, 0])
     request = ExportRequest.model_validate(payload)
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plates(request)))) as archive:
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plate(request)))) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_colour"] == ["#FFFFFF", "#FFFFFF"]
         assert settings["filament_ids"] == ["GFA00", "GFA01"]

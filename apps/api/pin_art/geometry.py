@@ -29,7 +29,6 @@ class Part:
 
 @dataclass
 class Plate:
-    index: int
     parts: list[Part]
     separate: bool = False
 
@@ -63,8 +62,8 @@ def _check_solid(solid: manifold3d.Manifold) -> None:
         raise ValueError("geometry must have finite positive volume")
 
 
-def build_plates(request: ExportRequest) -> list[Plate]:
-    layouts = plan_layout(request)
+def build_plate(request: ExportRequest) -> Plate:
+    placements = plan_layout(request)
     parameters = request.parameters
     geometries = request.resolved_pin_geometries
     if request.layout:
@@ -78,36 +77,33 @@ def build_plates(request: ExportRequest) -> list[Plate]:
     if request.layout:
         base_key += hashlib.sha256(request.layout.model_dump_json().encode()).hexdigest()
     if request.mode == "print-in-place":
-        base = guide_base(request, layouts[0].parts[1:])
-        base_key += f":sliding:{request.sliding.model_dump_json()}:" + hashlib.sha256(repr((parameters.diameter, geometries, layouts[0].parts)).encode()).hexdigest()
+        base = guide_base(request, placements[1:])
+        base_key += f":sliding:{request.sliding.model_dump_json()}:" + hashlib.sha256(repr((parameters.diameter, geometries, placements)).encode()).hexdigest()
     _check_solid(base)
     pins = {geometry.shape: _unit_pin(geometry.shape) for geometry in geometries}
     for pin in pins.values():
         _check_solid(pin)
-    plates = []
-    for layout in layouts:
-        parts = []
-        for placement in layout.parts:
-            if placement.pin_index is None:
-                parts.append(Part("base", base, request.base_material, _transform(placement.x, placement.y, 0), base_key))
-            else:
-                pin_index = placement.pin_index
-                geometry = geometries[pin_index]
-                pin = pins[geometry.shape]
-                pin_key = PIN_CACHE_KEY if geometry.shape == "round" else f"pin-{geometry.shape}"
-                length = request.heights[pin_index]
-                bottom = parameters.thickness
-                diameter = parameters.diameter
-                if request.mode == "print-in-place":
-                    pin = sliding_pin(geometry.shape, diameter, parameters.thickness, length, request.sliding.clearance, request.sliding.head_flare)
-                    pin_key = f"sliding:{geometry.shape}:{diameter!r}:{parameters.thickness!r}:{length!r}:{request.sliding.clearance!r}:{request.sliding.head_flare!r}"
-                    diameter, length, bottom = 1, 1, 0
-                parts.append(Part(
-                    placement.name, pin, request.pin_materials[pin_index],
-                    _transform(placement.x, placement.y, bottom, diameter, length, geometry.rotation), pin_key, pin_index,
-                ))
-        plates.append(Plate(layout.index, parts, request.mode == "print-in-place"))
-    return plates
+    parts = []
+    for placement in placements:
+        if placement.pin_index is None:
+            parts.append(Part("base", base, request.base_material, _transform(placement.x, placement.y, 0), base_key))
+        else:
+            pin_index = placement.pin_index
+            geometry = geometries[pin_index]
+            pin = pins[geometry.shape]
+            pin_key = PIN_CACHE_KEY if geometry.shape == "round" else f"pin-{geometry.shape}"
+            length = request.heights[pin_index]
+            bottom = parameters.thickness
+            diameter = parameters.diameter
+            if request.mode == "print-in-place":
+                pin = sliding_pin(geometry.shape, diameter, parameters.thickness, length, request.sliding.clearance, request.sliding.head_flare)
+                pin_key = f"sliding:{geometry.shape}:{diameter!r}:{parameters.thickness!r}:{length!r}:{request.sliding.clearance!r}:{request.sliding.head_flare!r}"
+                diameter, length, bottom = 1, 1, 0
+            parts.append(Part(
+                placement.name, pin, request.pin_materials[pin_index],
+                _transform(placement.x, placement.y, bottom, diameter, length, geometry.rotation), pin_key, pin_index,
+            ))
+    return Plate(parts, request.mode == "print-in-place")
 
 
 def _check_mesh(vertices: np.ndarray, triangles: np.ndarray) -> np.ndarray:

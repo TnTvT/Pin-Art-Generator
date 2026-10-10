@@ -11,12 +11,6 @@ class LayoutPart:
     y: float
 
 
-@dataclass
-class LayoutPlate:
-    index: int
-    parts: list[LayoutPart]
-
-
 def _pin_name(request: ExportRequest, pin_index: int, geometry: PinGeometry) -> str:
     suffix = "" if geometry.shape == "round" and request.pin_geometries is None else f" {geometry.shape} {geometry.rotation:g}deg"
     length = request.heights[pin_index]
@@ -27,7 +21,7 @@ def _pin_name(request: ExportRequest, pin_index: int, geometry: PinGeometry) -> 
     return f"Pin R{row + 1:02d} C{column + 1:02d} {length:.3f} mm{suffix}"
 
 
-def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
+def plan_layout(request: ExportRequest) -> list[LayoutPart]:
     parameters = request.parameters
     geometries = request.resolved_pin_geometries
     parts = [LayoutPart("base", None, 0.0, 0.0)]
@@ -39,4 +33,4 @@ def plan_layout(request: ExportRequest) -> list[LayoutPlate]:
             horizontal = (column - (parameters.columns - 1) / 2) * parameters.spacing
             vertical = (row - (parameters.rows - 1) / 2) * parameters.spacing
         parts.append(LayoutPart(_pin_name(request, pin_index, geometry), pin_index, horizontal, vertical))
-    return [LayoutPlate(0, parts)]
+    return parts

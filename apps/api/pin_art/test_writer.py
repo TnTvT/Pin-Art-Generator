@@ -8,7 +8,7 @@ import manifold3d
 import numpy as np
 import pytest
 
-from pin_art.geometry import Part, Plate, build_plates
+from pin_art.geometry import Part, Plate, build_plate
 from pin_art.schemas import ExportRequest
 from pin_art.writer import export_3mf, precise_package
 
@@ -57,9 +57,9 @@ def test_image_palette_snapshot_preserves_row_major_heights_and_filament_slots(m
         pinMaterials=[1, 3, 2, 1],
     )
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
+    plate = build_plate(request)
     output = tmp_path / "image-palette.3mf"
-    output.write_bytes(export_3mf(request, plates))
+    output.write_bytes(export_3mf(request, plate))
     model = lib3mf.get_wrapper().CreateModel()
     reader = model.QueryReader("3mf")
     reader.SetStrictModeActive(True)
@@ -91,9 +91,9 @@ def test_edited_pin_package_keeps_heights_color_profiles_and_part_ownership(mode
     payload.update(heights=[30, 40], materials=["#FFFFFF", "#FFFFFF", "#FF0000"],
                    filamentProfiles=["bambu-pla-basic", "bambu-pla-matte", "generic-pla"], pinMaterials=[1, 2])
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
+    plate = build_plate(request)
     output = tmp_path / "edited.3mf"
-    output.write_bytes(export_3mf(request, plates))
+    output.write_bytes(export_3mf(request, plate))
     model = lib3mf.get_wrapper().CreateModel()
     reader = model.QueryReader("3mf")
     reader.SetStrictModeActive(True)
@@ -106,7 +106,7 @@ def test_edited_pin_package_keeps_heights_color_profiles_and_part_ownership(mode
         config = ET.fromstring(archive.read("Metadata/model_settings.config"))
         assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2", "3"]
         assert len(config.findall("plate")) == (1)
-        names = [part.name for plate in plates for part in plate.parts][1:]
+        names = [part.name for part in plate.parts][1:]
         assert f"{30:.3f} mm" in names[0]
         assert f"{40:.3f} mm" in names[1]
     namespace, root, objects, _ = read_model(output.read_bytes())
@@ -123,22 +123,22 @@ def test_edited_pin_package_keeps_heights_color_profiles_and_part_ownership(mode
     np.testing.assert_allclose(lengths, np.array([30, 40]) + (0))
 
 
-def test_colored_multiplate_package_reads_strictly(tmp_path):
-    base = Part("Socket base", manifold3d.Manifold.cube((12, 12, 3)), 0, np.eye(4), "base")
+def test_colored_single_plate_package_reads_strictly(tmp_path):
+    base = Part("Base", manifold3d.Manifold.cube((12, 12, 3)), 0, np.eye(4), "base")
     pin = Part("Pin R1 C1 · 7 mm", manifold3d.Manifold.cylinder(1, .5, .5, 64), 1, np.eye(4), "pin")
-    plates = [Plate(0, [base]), Plate(1, [pin])]
+    plate = Plate([base, pin])
     output = tmp_path / "parts.3mf"
-    output.write_bytes(export_3mf(small_request(), plates))
+    output.write_bytes(export_3mf(small_request(), plate))
     wrapper = lib3mf.get_wrapper()
     model = wrapper.CreateModel()
     reader = model.QueryReader("3mf")
     reader.SetStrictModeActive(True)
     reader.ReadFromFile(str(output))
     assert reader.GetWarningCount() == 0
-    assert model.GetBuildItems().Count() == 2
+    assert model.GetBuildItems().Count() == 1
     with zipfile.ZipFile(output) as archive:
         config = ET.fromstring(archive.read("Metadata/model_settings.config"))
-        assert len(config.findall("plate")) == 2
+        assert len(config.findall("plate")) == 1
         assert [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='extruder']")] == ["1", "2"]
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_colour"] == ["#FFFFFF", "#FF0000"]
@@ -166,7 +166,7 @@ def test_identical_materials_are_compacted(tmp_path):
     request.materials = ["#FF0000", "#FF0000"]
     part = Part("Base", manifold3d.Manifold.cube((1, 1, 1)), 0, np.eye(4), "base")
     second = Part("Pin", manifold3d.Manifold.cube((1, 1, 1)), 1, np.eye(4), "pin")
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, [Plate(0, [part, second])]))) as archive:
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, Plate([part, second])))) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_colour"] == ["#FF0000"]
         config = ET.fromstring(archive.read("Metadata/model_settings.config"))
@@ -179,7 +179,7 @@ def test_selected_basic_and_matte_profiles_survive_with_matching_part_indices(mo
     payload = small_request(mode).model_dump(by_alias=True)
     payload.update(materials=colors, filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
     request = ExportRequest.model_validate(payload)
-    data = export_3mf(request, build_plates(request))
+    data = export_3mf(request, build_plate(request))
     output = tmp_path / "filament-profiles.3mf"
     output.write_bytes(data)
     model = lib3mf.get_wrapper().CreateModel()
@@ -220,7 +220,7 @@ def test_final_package_has_aligned_bambu_27_filament_routing(mode, material_coun
         Part(f"Material {index}", manifold3d.Manifold.cube((1, 1, 1)), index, np.eye(4), "cube")
         for index in range(material_count)
     ]
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, [Plate(0, parts)]))) as archive:
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, Plate(parts)))) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
     variants = settings.get("filament_extruder_variant", ["Direct Drive Standard"])
     indices = settings.get("filament_self_index", ["1"])
@@ -237,7 +237,7 @@ def test_material_compaction_uses_color_and_profile_and_drops_unused_materials()
     payload = small_request().model_dump(by_alias=True)
     payload.update(materials=["#FFFFFF", "#ffffff", "#000000"], filamentProfiles=["bambu-pla-basic", "bambu-pla-basic", "bambu-pla-matte"])
     request = ExportRequest.model_validate(payload)
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plates(request)))) as archive:
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plate(request)))) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_settings_id"] == ["Bambu PLA Basic @BBL X1C"]
         assert settings["filament_self_index"] == ["1"]
@@ -251,7 +251,7 @@ def test_profiles_follow_used_palette_order_including_generic_color_fallback():
     payload = small_request("fixed").model_dump(by_alias=True)
     payload.update(materials=["#FFFFFF", "#ffffff"], filamentProfiles=["bambu-pla-basic", "generic-pla"], baseMaterial=1, pinMaterials=[0, 0])
     request = ExportRequest.model_validate(payload)
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plates(request)))) as archive:
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, build_plate(request)))) as archive:
         settings = json.loads(archive.read("Metadata/project_settings.config"))
         assert settings["filament_settings_id"] == ["Generic PLA", "Bambu PLA Basic @BBL X1C"]
         assert settings["filament_ids"] == ["GFL99", "GFA00"]
@@ -263,9 +263,8 @@ def test_profiles_follow_used_palette_order_including_generic_color_fallback():
 def test_actual_parts_preserve_names_geometry_properties_and_plate_membership():
     request = small_request()
     request.pin_materials = [1, 0]
-    plates = build_plates(request)
-    assert len(plates) == 1
-    with zipfile.ZipFile(io.BytesIO(export_3mf(request, plates))) as archive:
+    plate = build_plate(request)
+    with zipfile.ZipFile(io.BytesIO(export_3mf(request, plate))) as archive:
         config = ET.fromstring(archive.read("Metadata/model_settings.config"))
         names = [entry.attrib["value"] for entry in config.findall("object/part/metadata[@key='name']")]
         assert names == ["base", "Pin R01 C01 5.000 mm", "Pin R01 C02 10.000 mm"]
@@ -303,7 +302,7 @@ def read_transform(element):
 
 def test_shared_meshes_are_centered_so_bambu_does_not_shift_repeated_pins():
     request = small_request("fixed")
-    namespace, root, objects, config = read_model(export_3mf(request, build_plates(request)))
+    namespace, root, objects, config = read_model(export_3mf(request, build_plate(request)))
     item = root.find(f"{namespace}build/{namespace}item")
     components = objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component")
     part_metadata = config.find("object").findall("part")
@@ -321,7 +320,7 @@ def test_shared_meshes_are_centered_so_bambu_does_not_shift_repeated_pins():
 
 def test_physical_x1c_plate_origin_centers_complete_assembly():
     request = small_request()
-    namespace, root, objects, config = read_model(export_3mf(request, build_plates(request)))
+    namespace, root, objects, config = read_model(export_3mf(request, build_plate(request)))
     items = {item.attrib["objectid"]: item for item in root.findall(f"{namespace}build/{namespace}item")}
     assert len(config.findall("plate")) == 1
     for plate_index, plate in enumerate(config.findall("plate")):
@@ -342,7 +341,7 @@ def test_physical_x1c_plate_origin_centers_complete_assembly():
 def test_fractional_pin_heights_preserve_contact_with_base_or_plate(mode):
     request = small_request(mode)
     request.heights = [8.02507837, 7.0834999]
-    namespace, root, objects, _ = read_model(export_3mf(request, build_plates(request)))
+    namespace, root, objects, _ = read_model(export_3mf(request, build_plate(request)))
     lengths = []
     for item in root.findall(f"{namespace}build/{namespace}item"):
         for component in objects[item.attrib["objectid"]].findall(f"{namespace}components/{namespace}component"):

@@ -46,7 +46,7 @@ export async function fetchExport(request: ExportRequest, signal: AbortSignal): 
   if (blob.size === 0) throw new Error('The export service returned an empty file. Please retry.');
   const plateHeader = response.headers.get('X-Plate-Count');
   const plateCount = plateHeader === null ? null : Number(plateHeader);
-  if (plateCount !== null && (!Number.isInteger(plateCount) || plateCount < 1 || plateCount > 36)) throw new Error('The export service returned an invalid plate count. Please retry.');
+  if (plateCount !== null && plateCount !== 1) throw new Error('The export service returned an invalid plate count. Please retry.');
   return {
     blob, filename: downloadFilename(response.headers.get('Content-Disposition'), `pin-art.${request.format}`), plateCount,
   };

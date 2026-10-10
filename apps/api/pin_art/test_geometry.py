@@ -4,7 +4,7 @@ import manifold3d
 import numpy as np
 import pytest
 
-from pin_art.geometry import Part, Plate, build_plates, plate_stl
+from pin_art.geometry import Part, Plate, build_plate, plate_stl
 from pin_art.schemas import ExportRequest
 from pin_art.test_schemas import request_payload
 import pin_art.geometry as geometry
@@ -37,8 +37,7 @@ def placed_solid(part):
 
 def test_fixed_parts_are_actual_base_and_shared_native_unit_cylinders():
     request = ExportRequest.model_validate(request_payload())
-    plate = build_plates(request)[0]
-    assert plate.index == 0
+    plate = build_plate(request)
     base, *pins = plate.parts
     assert base.name == "base"
     assert base.material == 0
@@ -63,8 +62,8 @@ def test_manual_pin_heights_and_materials_drive_exact_geometry(mode):
     payload = request_payload(mode=mode)
     payload.update(heights=[30, 5, 40, 12], materials=["#FFFFFF", "#FF0000", "#0000FF"], pinMaterials=[1, 2, 0, 1])
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
-    pins = [part for plate in plates for part in plate.parts if part.name != "base"]
+    plate = build_plate(request)
+    pins = [part for part in plate.parts if part.name != "base"]
     assert [pin.material for pin in pins] == [1, 2, 0, 1]
     for index, pin in enumerate(pins):
         bounds = placed_solid(pin).bounding_box()
@@ -76,7 +75,7 @@ def test_manual_pin_heights_and_materials_drive_exact_geometry(mode):
 
 
 def test_fixed_colored_parts_touch_without_intersecting():
-    plate = build_plates(ExportRequest.model_validate(request_payload()))[0]
+    plate = build_plate(ExportRequest.model_validate(request_payload()))
     base = placed_solid(plate.parts[0])
     for pin in plate.parts[1:]:
         solid = placed_solid(pin)
@@ -86,7 +85,7 @@ def test_fixed_colored_parts_touch_without_intersecting():
 
 def test_fixed_stl_is_one_true_union_with_expected_volume():
     request = ExportRequest.model_validate(request_payload(format="stl"))
-    plate = build_plates(request)[0]
+    plate = build_plate(request)
     solid = read_stl(plate_stl(plate))
     assert len(solid.decompose()) == 1
     assert solid.volume() == pytest.approx(20 * 20 * 3 + polygon_area(2) * sum(request.heights), rel=1e-6)
@@ -94,21 +93,21 @@ def test_fixed_stl_is_one_true_union_with_expected_volume():
 
 
 def test_pin_resource_is_reused_across_requests_and_base_keys_are_geometry_specific():
-    first = build_plates(ExportRequest.model_validate(request_payload()))[0]
+    first = build_plate(ExportRequest.model_validate(request_payload()))
     payload = request_payload()
     payload["parameters"]["diameter"] = 3
-    second = build_plates(ExportRequest.model_validate(payload))[0]
+    second = build_plate(ExportRequest.model_validate(payload))
     assert first.parts[1].cache_key == second.parts[1].cache_key
     assert first.parts[1].solid is second.parts[1].solid
     assert first.parts[0].cache_key == second.parts[0].cache_key
-    sliding = build_plates(ExportRequest.model_validate(request_payload(mode="print-in-place")))[0]
+    sliding = build_plate(ExportRequest.model_validate(request_payload(mode="print-in-place")))
     assert first.parts[0].cache_key != sliding.parts[0].cache_key
 
 
 def test_stl_applies_affine_matrix_exactly_once():
     transform = np.diag([2.0, 3.0, 4.0, 1.0])
     transform[:3, 3] = [5, 7, 0]
-    plate = Plate(0, [Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")])
+    plate = Plate([Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")])
     solid = read_stl(plate_stl(plate))
     np.testing.assert_allclose(solid.bounding_box(), [5, 7, 0, 7, 10, 4])
     assert solid.volume() == pytest.approx(24)
@@ -119,7 +118,7 @@ def test_stl_unions_intersecting_parts_instead_of_concatenating_shells():
     shifted = np.eye(4)
     shifted[0, 3] = 0.5
     cube = manifold3d.Manifold.cube()
-    plate = Plate(0, [Part("first", cube, 0, transform, "cube"), Part("second", cube, 0, shifted, "cube")])
+    plate = Plate([Part("first", cube, 0, transform, "cube"), Part("second", cube, 0, shifted, "cube")])
     solid = read_stl(plate_stl(plate))
     assert len(solid.decompose()) == 1
     assert solid.volume() == pytest.approx(1.5)
@@ -127,22 +126,22 @@ def test_stl_unions_intersecting_parts_instead_of_concatenating_shells():
 
 def test_stl_rejects_empty_plate_and_empty_part():
     with pytest.raises(ValueError, match="empty"):
-        plate_stl(Plate(0, []))
+        plate_stl(Plate([]))
     with pytest.raises(ValueError, match="watertight"):
-        plate_stl(Plate(0, [Part("empty", manifold3d.Manifold(), 0, np.eye(4), "empty")]))
+        plate_stl(Plate([Part("empty", manifold3d.Manifold(), 0, np.eye(4), "empty")]))
 
 
 @pytest.mark.parametrize("transform", [np.eye(3), np.full((4, 4), np.nan), np.zeros((4, 4))])
 def test_stl_rejects_invalid_affine_transforms(transform):
     with pytest.raises(ValueError, match="transform"):
-        plate_stl(Plate(0, [Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")]))
+        plate_stl(Plate([Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")]))
 
 
 def test_stl_rejects_geometry_collapsed_by_float32_serialization():
     transform = np.eye(4)
     transform[0, 3] = 1e9
     with pytest.raises(ValueError, match="degenerate"):
-        plate_stl(Plate(0, [Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")]))
+        plate_stl(Plate([Part("cube", manifold3d.Manifold.cube(), 0, transform, "cube")]))
 
 
 def test_strict_stl_guard_rejects_point_tangent_geometry_when_called_directly():
@@ -151,7 +150,7 @@ def test_strict_stl_guard_rejects_point_tangent_geometry_when_called_directly():
     second = np.eye(4)
     second[:3, 3] = [1, 1, 0]
     with pytest.raises(ValueError, match="watertight"):
-        plate_stl(Plate(0, [Part("first", cube, 0, first, "cube"), Part("second", cube, 0, second, "cube")]))
+        plate_stl(Plate([Part("first", cube, 0, first, "cube"), Part("second", cube, 0, second, "cube")]))
 
 
 @pytest.mark.parametrize("invalid_mesh", ["missing_face", "reversed_face", "duplicate_shell"])
@@ -181,7 +180,7 @@ def test_mesh_validation_welds_split_vertices_before_checking_edges():
 
 
 def test_chunked_mesh_validation_and_serialization_preserve_exact_stl_bytes(monkeypatch):
-    plate = build_plates(ExportRequest.model_validate(request_payload()))[0]
+    plate = build_plate(ExportRequest.model_validate(request_payload()))
     expected = plate_stl(plate)
     monkeypatch.setattr(geometry, "_MESH_CHUNK_SIZE", 2)
     assert plate_stl(plate) == expected

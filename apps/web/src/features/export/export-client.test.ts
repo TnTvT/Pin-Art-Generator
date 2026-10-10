@@ -9,7 +9,7 @@ const request = () => buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATE
 describe('export fetch', () => {
   it('posts JSON with an abort signal and reads binary, filename and plate count', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('binary', {
-      headers: { 'Content-Disposition': 'attachment; filename="pin-art.3mf"', 'X-Plate-Count': '3' },
+      headers: { 'Content-Disposition': 'attachment; filename="pin-art.3mf"', 'X-Plate-Count': '1' },
     }));
     vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
@@ -20,7 +20,7 @@ describe('export fetch', () => {
     });
     expect(result.blob.size).toBe(6);
     expect(result.filename).toBe('pin-art.3mf');
-    expect(result.plateCount).toBe(3);
+    expect(result.plateCount).toBe(1);
   });
 
   it('uses encoded Content-Disposition filenames and strips path components', async () => {
@@ -51,5 +51,10 @@ describe('export fetch', () => {
     await expect(fetchExport(request(), new AbortController().signal)).rejects.toThrow(/empty/i);
     await expect(fetchExport(request(), new AbortController().signal)).rejects.toThrow(/plate count/i);
     await expect(fetchExport(request(), new AbortController().signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it.each(['0', '2', '36', '1.5', 'invalid'])('rejects unsupported plate count %s', async plateCount => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('binary', { headers: { 'X-Plate-Count': plateCount } })));
+    await expect(fetchExport(request(), new AbortController().signal)).rejects.toThrow(/plate count/i);
   });
 });

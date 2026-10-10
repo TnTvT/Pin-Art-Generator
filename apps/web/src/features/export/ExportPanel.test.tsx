@@ -16,8 +16,8 @@ function Panel({ parameters = DEFAULTS, heights, blockedReason = null }: { param
   return <><ThemeToggle /><ExportPanel parameters={parameters} heights={heights} materials={DEFAULT_MODEL_MATERIALS} blockedReason={blockedReason} /></>;
 }
 
-function response(plateCount = 2) {
-  return new Response('binary', { headers: { 'Content-Disposition': 'attachment; filename="pins.3mf"', 'X-Plate-Count': String(plateCount) } });
+function response() {
+  return new Response('binary', { headers: { 'Content-Disposition': 'attachment; filename="pins.3mf"', 'X-Plate-Count': '1' } });
 }
 
 beforeEach(() => {
@@ -116,7 +116,7 @@ describe('export panel', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('snapshots parameters and heights, prevents duplicates and reports actual plates', async () => {
+  it('snapshots parameters and heights, prevents duplicates and reports the single plate', async () => {
     let finish!: (response: Response) => void;
     fetchMock.mockReturnValue(new Promise<Response>((resolve) => { finish = resolve; }));
     const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
@@ -132,8 +132,8 @@ describe('export panel', () => {
     heights[0] = 7;
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).heights).toEqual([2, 9]);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).parameters.width).toBe(120);
-    await act(async () => { finish(response(4)); });
-    expect(screen.getByText(/4 plates/)).toBeInTheDocument();
+    await act(async () => { finish(response()); });
+    expect(screen.getByText(/1 plate/)).toBeInTheDocument();
     expect(clickDownload).toHaveBeenCalledOnce();
     const anchor = clickDownload.mock.instances[0] as HTMLAnchorElement;
     expect(anchor.download).toBe('pins.3mf');

@@ -77,7 +77,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
       anchor.download = result.filename;
       document.body.appendChild(anchor);
       try { anchor.click(); } finally { anchor.remove(); }
-      setFeedback(`Download ready: ${result.filename}${result.plateCount === null ? '' : ` · ${result.plateCount} ${result.plateCount === 1 ? 'plate' : 'plates'}`}.`);
+      setFeedback(`Download ready: ${result.filename}${result.plateCount === null ? '' : ' · 1 plate'}.`);
     } catch (failure) {
       if (mounted.current && !requestController.signal.aborted) {
         setError(failure instanceof Error ? failure.message : 'Export could not be completed. Please retry.');

@@ -11,8 +11,7 @@ import pytest
 
 from pin_art.cross_sections import local_bounds
 from pin_art.exporter import generate_export
-from pin_art.geometry import build_plates, plate_stl
-from pin_art.layout import plan_layout
+from pin_art.geometry import build_plate, plate_stl
 from pin_art.schemas import ExportRequest
 from pin_art.test_geometry import placed_solid, read_stl
 from pin_art.test_polygon_layout import polygon_payload, single_polygon_payload
@@ -27,8 +26,8 @@ def test_native_polygon_geometry_dimensions_rotation_volumes_and_stl(shape, rota
     payload = polygon_payload(shape, rotation, mode, explicit)
     payload.update(format="stl")
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
-    pins = [part for plate in plates for part in plate.parts if part.name != "base"]
+    plate = build_plate(request)
+    pins = [part for part in plate.parts if part.name != "base"]
     assert all(pin.solid is pins[0].solid for pin in pins)
     assert pins[0].solid.num_vert() == (8 if shape == "square" else 6)
     unit_area = 0.5 if shape == "square" else 3 * math.sqrt(3) / 16
@@ -42,19 +41,18 @@ def test_native_polygon_geometry_dimensions_rotation_volumes_and_stl(shape, rota
         assert solid.volume() == pytest.approx(unit_area * 4 * length)
         np.testing.assert_allclose(pin.transform[:2, :2] / 2, [[math.cos(math.radians(rotation)), -math.sin(math.radians(rotation))], [math.sin(math.radians(rotation)), math.cos(math.radians(rotation))]], atol=1e-12)
         assert pin.material == request.pin_materials[index]
-        assert (plates[0].parts[0].solid ^ solid).is_empty()
-    base = plates[0].parts[0].solid
+        assert (plate.parts[0].solid ^ solid).is_empty()
+    base = plate.parts[0].solid
     expected_base_volume = 1200
 
     assert base.volume() == pytest.approx(expected_base_volume, abs=1e-6)
-    for plate in plates:
-        readback = read_stl(plate_stl(plate))
-        expected_volume = sum(placed_solid(part).volume() for part in plate.parts)
-        assert readback.volume() == pytest.approx(expected_volume, rel=1e-5)
-        boxes = np.array([placed_solid(part).bounding_box() for part in plate.parts])
-        np.testing.assert_allclose(readback.bounding_box(), [*boxes[:, :3].min(axis=0), *boxes[:, 3:].max(axis=0)], atol=2e-5)
-        assert len(readback.decompose()) == (1)
-        assert readback.bounding_box()[2] == 0
+    readback = read_stl(plate_stl(plate))
+    expected_volume = sum(placed_solid(part).volume() for part in plate.parts)
+    assert readback.volume() == pytest.approx(expected_volume, rel=1e-5)
+    boxes = np.array([placed_solid(part).bounding_box() for part in plate.parts])
+    np.testing.assert_allclose(readback.bounding_box(), [*boxes[:, :3].min(axis=0), *boxes[:, 3:].max(axis=0)], atol=2e-5)
+    assert len(readback.decompose()) == (1)
+    assert readback.bounding_box()[2] == 0
 
 
 @pytest.mark.parametrize("shape", ["square", "triangle"])
@@ -65,7 +63,7 @@ def test_rotated_3mf_strict_readback_transforms_color_profiles_reuse_and_plate_o
     payload = polygon_payload(shape, rotation, mode, explicit)
     payload.update(materials=["#FFFFFF", "#FF0000"], pinMaterials=[1] * 4, filamentProfiles=["bambu-pla-basic", "bambu-pla-matte"])
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
+    plate = build_plate(request)
     output, _, _, count = generate_export(request)
     path = tmp_path / "polygon.3mf"
     path.write_bytes(output)
@@ -78,7 +76,7 @@ def test_rotated_3mf_strict_readback_transforms_color_profiles_reuse_and_plate_o
     namespace, root, objects, _ = read_model(output)
     mesh_ids = [identifier for identifier, mesh in objects.items() if mesh.find(f"{namespace}mesh") is not None]
     assert len(mesh_ids) == 2
-    expected_parts = [part for plate in plates for part in plate.parts]
+    expected_parts = [part for part in plate.parts]
     actual_mesh_ids = []
     actual_build_ids = []
     part_index = 0
@@ -139,10 +137,9 @@ def test_polygon_exports_keep_holes_curved_and_disconnected_regions(shape, mode,
         for pin in payload["layout"]["pins"]:
             pin["x"] *= 2
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
-    assert len(plates[0].parts[0].solid.decompose()) == (2 if contour == "disconnected" else 1)
-    for plate in plates:
-        read_stl(plate_stl(plate))
+    plate = build_plate(request)
+    assert len(plate.parts[0].solid.decompose()) == (2 if contour == "disconnected" else 1)
+    read_stl(plate_stl(plate))
     output, _, _, _ = generate_export(request)
     path = tmp_path / "contours.3mf"
     path.write_bytes(output)

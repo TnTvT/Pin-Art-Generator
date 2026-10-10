@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import math
 import re
 import zipfile
 from xml.etree import ElementTree as ET
@@ -52,11 +51,6 @@ def add_mesh(model, wrapper, part: Part, colors, color_index: int):
     return mesh, recenter
 
 
-def plate_origin(index: int, count: int, width: float, depth: float) -> np.ndarray:
-    columns = math.ceil(math.sqrt(count))
-    return np.array([(index % columns) * width * 1.2, -(index // columns) * depth * 1.2, 0.0])
-
-
 def precise_package(data: bytes, components: dict, builds: dict) -> bytes:
     object_pattern = re.compile(rb'(<(?:\w+:)?object\b[^>]*\bid="(\d+)"[^>]*>)(.*?)(</(?:\w+:)?object>)', re.DOTALL)
     component_pattern = re.compile(rb'<(?:\w+:)?component\b[^>]*>')
@@ -92,7 +86,7 @@ def precise_package(data: bytes, components: dict, builds: dict) -> bytes:
     return output.getvalue()
 
 
-def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
+def export_3mf(request: ExportRequest, plate: Plate) -> bytes:
     wrapper = lib3mf.get_wrapper()
     model = wrapper.CreateModel()
     model.SetUnit(lib3mf.ModelUnit.MilliMeter)
@@ -102,7 +96,7 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
     group.AddMetaData("", "Title", "Pin Art Studio", "xs:string", False)
     profiles = request.filament_profiles or ["generic-pla"] * len(request.materials)
     materials = [(color.upper(), profile) for color, profile in zip(request.materials, profiles, strict=True)]
-    palette = list(dict.fromkeys(materials[part.material] for plate in plates for part in plate.parts))
+    palette = list(dict.fromkeys(materials[part.material] for part in plate.parts))
     palette_colors = [material[0] for material in palette]
     color_group = model.AddColorGroup()
     color_indices = {}
@@ -141,23 +135,18 @@ def export_3mf(request: ExportRequest, plates: list[Plate]) -> bytes:
         build_transforms[str(root.GetResourceID())] = build_matrix.copy()
         return root.GetResourceID()
 
-    for plate_number, plate in enumerate(plates):
-        plate_config = ET.SubElement(settings, "plate")
-        metadata(plate_config, "plater_id", plate_number + 1)
-        metadata(plate_config, "plater_name", f"Pin Art · Plate {plate_number + 1}")
-        metadata(plate_config, "locked", "false")
-        origin = plate_origin(plate_number, len(plates), printer.width, printer.depth)
-        build_matrix = np.eye(4)
-        build_matrix[:3, 3] = origin
-        object_ids = []
-        build_matrix[:2, 3] += printer.center
-        name = "Fixed pin sculpture" if request.mode == "fixed" else "Print-in-place pin art"
-        object_ids.append(assembly(plate.parts, name, build_matrix))
-        for object_id in object_ids:
-            instance = ET.SubElement(plate_config, "model_instance")
-            metadata(instance, "object_id", object_id)
-            metadata(instance, "instance_id", 0)
-            metadata(instance, "identify_id", object_id)
+    plate_config = ET.SubElement(settings, "plate")
+    metadata(plate_config, "plater_id", 1)
+    metadata(plate_config, "plater_name", "Pin Art · Plate 1")
+    metadata(plate_config, "locked", "false")
+    build_matrix = np.eye(4)
+    build_matrix[:2, 3] = printer.center
+    name = "Fixed pin sculpture" if request.mode == "fixed" else "Print-in-place pin art"
+    object_id = assembly(plate.parts, name, build_matrix)
+    instance = ET.SubElement(plate_config, "model_instance")
+    metadata(instance, "object_id", object_id)
+    metadata(instance, "instance_id", 0)
+    metadata(instance, "identify_id", object_id)
 
     project_settings = {
         **project_profile(request.printer, [material[1] for material in palette]),

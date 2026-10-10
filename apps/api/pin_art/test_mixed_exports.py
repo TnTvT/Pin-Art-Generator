@@ -11,8 +11,7 @@ import pytest
 
 from pin_art.cross_sections import local_bounds
 from pin_art.exporter import generate_export
-from pin_art.geometry import build_plates, plate_stl
-from pin_art.layout import plan_layout
+from pin_art.geometry import build_plate, plate_stl
 from pin_art.schemas import ExportRequest
 from pin_art.test_geometry import placed_solid, polygon_area, read_stl
 from pin_art.test_pin_geometries import mixed_payload
@@ -24,8 +23,8 @@ from pin_art.test_writer import read_model, read_transform
 def test_mixed_solids_and_stl_use_each_resolved_geometry(explicit, mode):
     payload = mixed_payload(mode=mode, explicit=explicit, format="stl")
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
-    pins = [part for plate in plates for part in plate.parts if part.name != "base"]
+    plate = build_plate(request)
+    pins = [part for part in plate.parts if part.name != "base"]
     assert [pin.solid.num_vert() for pin in pins] == [128, 8, 6, 6]
     assert pins[2].solid is pins[3].solid
     assert len({pin.cache_key for pin in pins}) == 3
@@ -39,13 +38,12 @@ def test_mixed_solids_and_stl_use_each_resolved_geometry(explicit, mode):
         assert solid.volume() == pytest.approx(areas[index] * length)
         assert f"{geometry.shape} {geometry.rotation:g}deg" in pin.name
         assert pin.material == request.pin_materials[index]
-        assert (plates[0].parts[0].solid ^ solid).is_empty()
+        assert (plate.parts[0].solid ^ solid).is_empty()
 
-    for plate in plates:
-        solid = read_stl(plate_stl(plate))
-        assert solid.bounding_box()[2] == 0
-        assert solid.volume() == pytest.approx(sum(placed_solid(part).volume() for part in plate.parts), rel=1e-5)
-        assert len(solid.decompose()) == (1)
+    solid = read_stl(plate_stl(plate))
+    assert solid.bounding_box()[2] == 0
+    assert solid.volume() == pytest.approx(sum(placed_solid(part).volume() for part in plate.parts), rel=1e-5)
+    assert len(solid.decompose()) == (1)
 
 
 @pytest.mark.parametrize("explicit", [False, True])
@@ -57,7 +55,7 @@ def test_mixed_3mf_strict_readback_bounds_profiles_resource_reuse_and_plate_owne
                    pinMaterials=[1, 2, 1, 3])
 
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
+    plate = build_plate(request)
     output, _, _, count = generate_export(request)
     assert count == 1
     path = tmp_path / "mixed.3mf"
@@ -75,7 +73,7 @@ def test_mixed_3mf_strict_readback_bounds_profiles_resource_reuse_and_plate_owne
     assert settings["filament_ids"] == ["GFA00", "GFA01", "GFL99"]
     assert settings["printer_model"] == "Bambu Lab X1 Carbon"
     configs = {entry.attrib["id"]: entry for entry in config.findall("object")}
-    expected = [part for plate in plates for part in plate.parts]
+    expected = [part for part in plate.parts]
     palette_indices = [1, 2, 3, 1]
     reused = {}
     part_index = 0

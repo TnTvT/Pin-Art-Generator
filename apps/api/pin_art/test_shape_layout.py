@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from pin_art.schemas import ExportRequest
-from pin_art.geometry import build_plates, plate_stl
+from pin_art.geometry import build_plate, plate_stl
 from pin_art.writer import export_3mf
 from pin_art.exporter import generate_export
 
@@ -26,18 +26,17 @@ def shape_request(mode="fixed"):
 @pytest.mark.parametrize("mode", ["fixed"])
 def test_shape_exports_keep_holes_positions_and_plates(mode, tmp_path):
     request = ExportRequest.model_validate(shape_request(mode))
-    plates = build_plates(request)
-    assert len(plates) == (1)
-    assert plates[0].parts[0].solid.volume() == pytest.approx((800 - 36) * 3 - (0), rel=0.001)
-    assert len(plate_stl(plates[0])) > 84
+    plate = build_plate(request)
+    assert plate.parts[0].solid.volume() == pytest.approx((800 - 36) * 3 - (0), rel=0.001)
+    assert len(plate_stl(plate)) > 84
     path = tmp_path / "shape.3mf"
-    path.write_bytes(export_3mf(request, plates))
+    path.write_bytes(export_3mf(request, plate))
     reader = lib3mf.get_wrapper().CreateModel().QueryReader("3mf")
     reader.SetStrictModeActive(True)
     reader.ReadFromFile(str(path))
     assert reader.GetWarningCount() == 0
-    assert "left" in plates[-1].parts[-2].name
-    assert "right" in plates[-1].parts[-1].name
+    assert "left" in plate.parts[-2].name
+    assert "right" in plate.parts[-1].name
     with zipfile.ZipFile(io.BytesIO(path.read_bytes())) as archive:
         assert "Metadata/project_settings.config" in archive.namelist()
 
@@ -61,11 +60,11 @@ def test_disconnected_regions_preserve_assembly_coordinates_and_closed_solids(mo
         {"outer": [[5, -10], [20, -10], [20, 10], [5, 10]], "holes": []},
     ]
     request = ExportRequest.model_validate(payload)
-    plates = build_plates(request)
-    assert len(plates[0].parts[0].solid.decompose()) == 2
-    assert len(plate_stl(plates[0])) > 84
-    assert tuple(plates[0].parts[1].transform[:3, 3]) == (-10, 0, 3)
-    assert tuple(plates[0].parts[2].transform[:3, 3]) == (10, 0, 3)
+    plate = build_plate(request)
+    assert len(plate.parts[0].solid.decompose()) == 2
+    assert len(plate_stl(plate)) > 84
+    assert tuple(plate.parts[1].transform[:3, 3]) == (-10, 0, 3)
+    assert tuple(plate.parts[2].transform[:3, 3]) == (10, 0, 3)
 
 
 @pytest.mark.parametrize("mode", ["fixed"])

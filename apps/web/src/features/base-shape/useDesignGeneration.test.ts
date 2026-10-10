@@ -30,6 +30,61 @@ beforeEach(() => {
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('shares height/color samples and keeps generated heights independent of manual height edits', async () => {
+    const count = committed.layout.pins.length;
+    const materials = Array(count).fill(DEFAULT_MODEL_MATERIALS.pins);
+    const pixels = new Uint8ClampedArray(count * 4).fill(255);
+    vi.mocked(sampleImagePixels).mockReturnValue(pixels);
+    vi.mocked(startColorMapping).mockImplementation(() => ({ promise: Promise.resolve({ result: { materials, palette: [], notice: null }, elapsedMs: 1 }), cancel: vi.fn() }));
+    const input: GenerationSettings = { ...settings, mode: 'height-color', source: { name: 'image', url: 'blob:image', bitmap: {} } as SourceImage };
+    const { result, rerender } = renderHook(({ currentEditor }) => useDesignGeneration(input, committed, currentEditor), { initialProps: { currentEditor: editor } });
+    await waitFor(() => expect(result.current.design?.colors?.materials).toEqual(materials));
+    expect([...result.current.design!.heightMap!.heights]).toEqual(Array(count).fill(2));
+    const changedEditor = { ...editor, state: { ...editor.state, overrides: new Map([[0, { height: 33 }]]) } } as PinEditor;
+    rerender({ currentEditor: changedEditor });
+    expect(result.current.design?.heightMap?.heights[0]).toBe(2);
+    expect(changedEditor.state.overrides.get(0)?.height).toBe(33);
+    expect(sampleImagePixels).toHaveBeenCalledOnce();
+    expect(startColorMapping).toHaveBeenCalledOnce();
+  });
+
+  it('retries failed color generation and clears generated values on image removal without clearing edits', async () => {
+    const count = committed.layout.pins.length;
+    const colors = { materials: Array(count).fill(DEFAULT_MODEL_MATERIALS.pins), palette: [], notice: null };
+    vi.mocked(sampleImagePixels).mockReturnValue(new Uint8ClampedArray(count * 4).fill(255));
+    vi.mocked(startColorMapping).mockImplementation(() => ({ promise: Promise.resolve({ result: colors, elapsedMs: 1 }), cancel: vi.fn() }));
+    const source = { name: 'image', url: 'blob:image', bitmap: {} } as SourceImage;
+    const input: GenerationSettings = { ...settings, source, mode: 'color' };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(result.current.design?.colors).toBe(colors));
+    expect(result.current.design?.heightMap).toBeNull();
+    vi.mocked(startColorMapping).mockImplementationOnce(() => ({ promise: Promise.reject(new Error('Choose at least one preset.')), cancel: vi.fn() }));
+    rerender({ input: { ...input, source: { ...source, name: 'replacement' } } });
+    await waitFor(() => expect(result.current.error).toContain('Choose at least one preset.'));
+    expect(result.current.design).toBeUndefined();
+    expect(editor.state.overrides.get(0)?.height).toBe(30);
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.design?.colors).toBe(colors));
+    rerender({ input: { ...input, source: null } });
+    await waitFor(() => expect(result.current.design).toBeDefined());
+    expect(result.current.design?.colors).toBeNull();
+    expect(result.current.design?.heightMap).toBeNull();
+    expect(editor.state.overrides.get(0)?.height).toBe(30);
+  });
+
+  it('cancels a pending color worker when the generator unmounts', async () => {
+    vi.mocked(sampleImagePixels).mockReturnValue(new Uint8ClampedArray(committed.layout.pins.length * 4));
+    const cancel = vi.fn();
+    vi.mocked(startColorMapping).mockImplementation(() => ({ promise: new Promise(() => {}), cancel }));
+    const input: GenerationSettings = { ...settings, mode: 'color', source: { name: 'image', url: 'blob:image', bitmap: {} } as SourceImage };
+    const { result, unmount } = renderHook(() => useDesignGeneration(input, committed, editor));
+    await waitFor(() => expect(startColorMapping).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.design).toBeUndefined();
+    unmount();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it('publishes mechanics atomically, cancels stale geometry and recovers without replacing valid settings on failure', async () => {
     let finish!: (mesh: MechanicalMesh) => void;
     const cancel = vi.fn(), latest = { positions: new Float32Array([1, 2, 3]), elapsedMs: 2 };
