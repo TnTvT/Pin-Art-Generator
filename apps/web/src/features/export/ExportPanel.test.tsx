@@ -37,7 +37,7 @@ describe('export panel', () => {
     await user.click(screen.getByRole('option', { name: 'Snapmaker U1 · 0.4 mm' }));
     expect(screen.getByText('2 / 4 materials for 3MF · Includes base')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
-    await user.click(screen.getByRole('button', { name: 'Download Snapmaker 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.printer).toBe('snapmaker-u1');
     expect(payload.parameters).toEqual(parameters);
@@ -52,18 +52,18 @@ describe('export panel', () => {
     renderWithProviders(<ExportPanel parameters={{ ...DEFAULTS, columns: 4, rows: 1 }} materials={DEFAULT_MODEL_MATERIALS} pinSelections={pins} />);
     await user.click(screen.getByRole('combobox', { name: 'Printer' }));
     await user.click(screen.getByRole('option', { name: 'Snapmaker U1 · 0.4 mm' }));
-    expect(screen.getByRole('button', { name: 'Download Snapmaker 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeDisabled();
     expect(screen.getByText(/3MF blocked:.*4 materials including the base/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
     await user.click(screen.getByRole('combobox', { name: 'Printer' }));
     await user.click(screen.getByRole('option', { name: 'Bambu Lab X1 Carbon · 0.4 mm' }));
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it('blocks tangent fixed STL before submitting while keeping round 3MF available', () => {
     renderWithProviders(<Panel parameters={{ ...DEFAULTS, spacing: DEFAULTS.diameter }} />);
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled();
     expect(screen.getByText(/STL blocked:.*positive gap/)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -89,7 +89,7 @@ describe('export panel', () => {
     const parameters = { ...DEFAULTS, construction: { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4 } } };
     renderWithProviders(<Panel parameters={parameters} />);
     await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }));
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.mode).toBe('print-in-place');
     expect(payload.sliding).toEqual(parameters.construction.sliding);
@@ -103,7 +103,7 @@ describe('export panel', () => {
     expect(screen.getByText(/Guide thickness/)).toBeInTheDocument();
     rerender(<Panel parameters={{ ...DEFAULTS, width: 500, depth: 500 }} />);
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeDisabled();
   });
 
   it('explains blocked image processing and blocks unsafe geometry', () => {
@@ -112,7 +112,7 @@ describe('export panel', () => {
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
     rerender(<Panel parameters={{ ...DEFAULTS, spacing: 1 }} />);
     expect(screen.getByText(/Pins overlap/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -122,12 +122,13 @@ describe('export panel', () => {
     const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
     const heights = new Float32Array([2, 9]);
     const { unmount } = renderWithProviders(<Panel parameters={parameters} heights={heights} />);
-    const button = screen.getByRole('button', { name: 'Download Bambu 3MF' });
+    const button = screen.getByRole('button', { name: 'Download 3MF' });
     fireEvent.click(button);
     fireEvent.click(button);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Printer' })).toBeDisabled();
+    expect(screen.getByText('Preparing 3MF…')).toBeInTheDocument();
     parameters.width = 10;
     heights[0] = 7;
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).heights).toEqual([2, 9]);
@@ -147,7 +148,7 @@ describe('export panel', () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'INVALID_DESIGN', message: 'Increase spacing for the guide walls.' } }), { status: 422 }));
     renderWithProviders(<Panel />);
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Increase spacing for the guide walls. (INVALID_DESIGN)');
     await user.click(screen.getByRole('button', { name: 'Retry export' }));
     expect(fetchMock).toHaveBeenCalledTimes(2);

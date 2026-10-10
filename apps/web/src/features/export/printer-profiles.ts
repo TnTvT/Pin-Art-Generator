@@ -1,6 +1,6 @@
 export const PRINTER_PROFILES = {
-  'bambu-x1c': { name: 'Bambu Lab X1 Carbon 0.4 nozzle', label: 'Bambu Lab X1 Carbon · 0.4 mm', shortName: 'Bambu X1C', slicer: 'Bambu Studio', downloadName: 'Bambu 3MF', width: 256, depth: 256, height: 250, maxMaterials: 16 },
-  'snapmaker-u1': { name: 'Snapmaker U1 (0.4 nozzle)', label: 'Snapmaker U1 · 0.4 mm', shortName: 'Snapmaker U1', slicer: 'Snapmaker Orca', downloadName: 'Snapmaker 3MF', width: 270, depth: 270, height: 270, maxMaterials: 4 },
+  'bambu-x1c': { name: 'Bambu Lab X1 Carbon 0.4 nozzle', label: 'Bambu Lab X1 Carbon · 0.4 mm', shortName: 'Bambu X1C', slicer: 'Bambu Studio', width: 256, depth: 256, height: 250, maxMaterials: 16 },
+  'snapmaker-u1': { name: 'Snapmaker U1 (0.4 nozzle)', label: 'Snapmaker U1 · 0.4 mm', shortName: 'Snapmaker U1', slicer: 'Snapmaker Orca', width: 270, depth: 270, height: 270, maxMaterials: 4 },
 } as const;
 
 export type PrinterId = keyof typeof PRINTER_PROFILES;

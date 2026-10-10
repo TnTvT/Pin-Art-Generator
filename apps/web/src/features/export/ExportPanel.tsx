@@ -113,10 +113,10 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
         {!validation && stlValidation && <p id="stl-block-reason" className="export-blocked" role="status">STL blocked: {stlValidation}</p>}
         <div className="export-actions">
           <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!stlValidation} aria-describedby={validation ? 'export-block-reason' : stlValidation ? 'stl-block-reason' : undefined}>Download STL</Button>
-          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!printerValidation} aria-describedby={validation ? 'export-block-reason' : printerValidation ? 'printer-block-reason' : undefined}>Download {profile.downloadName}</Button>
+          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!printerValidation} aria-describedby={validation ? 'export-block-reason' : printerValidation ? 'printer-block-reason' : undefined}>Download 3MF</Button>
         </div>
         <div aria-live="polite" role="status">
-          {busy && <p className="field-help">Preparing {busy === '3mf' ? profile.downloadName : 'STL'}…</p>}
+          {busy && <p className="field-help">Preparing {busy === '3mf' ? '3MF' : 'STL'}…</p>}
           {feedback && <p className="export-feedback">{feedback}</p>}
         </div>
         {error && <Alert color="red" title="Export failed">

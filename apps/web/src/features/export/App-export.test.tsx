@@ -57,15 +57,15 @@ describe('app export integration', () => {
   it.each([4, 6])('retains %s mm spacing across modes and exports the larger retaining heads', async spacing => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     if (spacing !== 4) fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: String(spacing) } });
     await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByLabelText('Pin spacing')).toHaveValue(`${spacing} mm`);
     await user.click(screen.getByRole('button', { name: 'Advanced settings' }));
     expect(screen.getByLabelText('Sliding clearance')).toHaveValue('0.4 mm');
     expect(screen.getByLabelText('Head flare')).toHaveValue('0.6 mm');
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.parameters.spacing).toBe(spacing);
     expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.6 });
@@ -97,21 +97,21 @@ describe('app export integration', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Base width' }), { target: { value: '3' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Base depth' }), { target: { value: '3' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Edge padding' }), { target: { value: '0' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
     await openEditor(user, 'Shape');
     await user.click(within(screen.getByRole('region', { name: 'Edit selected pin shapes' })).getByRole('radio', { name: 'Round' }));
     await user.click(screen.getByRole('button', { name: 'Apply shape' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Pin size' }), { target: { value: '4' } });
     await waitFor(() => expect(screen.getByText('Settings not applied')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
     if (recovery === 'undo') await user.click(screen.getByRole('button', { name: 'Undo' }));
     else {
       await user.click(screen.getByRole('button', { name: 'More pin actions' }));
       await user.click(screen.getByRole('menuitem', { name: 'Restore default shape' }));
     }
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"square","rotation":0}]');
     expect(screen.queryByText('Settings not applied')).not.toBeInTheDocument();
     if (recovery === 'undo') {
@@ -124,10 +124,10 @@ describe('app export integration', () => {
   it.each(['fixed', 'print-in-place'] as const)('exports a selected shape in %s without moving pins or altering height and material', async exportMode => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     if (exportMode === 'print-in-place') {
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     }
     await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
     await openEditor(user, 'Height');
@@ -141,7 +141,7 @@ describe('app export integration', () => {
     expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"triangle","rotation":30},{"shape":"round","rotation":0}]');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: 'triangle', rotation: 30 }, { shape: 'round', rotation: 0 }]);
     expect(request.parameters.pinGeometries).toBeUndefined();
@@ -162,10 +162,10 @@ describe('app export integration', () => {
     vi.mocked(useSourceImage).mockReturnValue(imageState({ source: validSource }));
     const user = userEvent.setup();
     renderWithProviders(<App />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     if (exportMode === 'print-in-place') {
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     }
     await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
     await openEditor(user, 'Height');
@@ -187,11 +187,11 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Done' }));
     await user.click(screen.getByRole('radio', { name: 'Pixel' }));
     await user.click(screen.getByRole('radio', { name: 'Height + Color' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
     expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     const parameters = { ...request.parameters, layout: request.layout };
     const placement = { offsetX: 8, offsetY: 0, zoom: 1.5 };
@@ -211,7 +211,7 @@ describe('app export integration', () => {
       await waitFor(() => expect(screen.getByRole('dialog', { name: 'Change pin layout?' })).toBeInTheDocument());
       await user.click(screen.getByRole('button', { name: 'Change layout' }));
     }
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByRole('radio', { name: 'Pixel' })).toBeChecked();
   }, 10000);
   it('adjusts image mapping live while retaining pin edits, selection, history and the exported layout', async () => {
@@ -242,7 +242,7 @@ describe('app export integration', () => {
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
     expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.heights.slice(0, 2)).toEqual([35, 12]);
     expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
@@ -260,7 +260,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Apply height' }));
     await user.click(screen.getByText('Triangle', { exact: true }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Pin rotation' }), { target: { value: '30' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
@@ -269,7 +269,7 @@ describe('app export integration', () => {
     expect(screen.getByRole('textbox', { name: 'Pin rotation' })).toHaveValue('30°');
     await openEditor(user, 'Height');
     expect(screen.getByLabelText('Selected height')).toHaveValue('35 mm');
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.parameters.pinShape).toBe('triangle');
     expect(request.parameters.pinRotation).toBe(30);
@@ -300,7 +300,7 @@ describe('app export integration', () => {
     await user.click(screen.getByText('Square', { exact: true }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Change pin layout?' })).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Change layout' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(screen.getByText(/0 selected/)).toBeInTheDocument();
@@ -333,13 +333,13 @@ describe('app export integration', () => {
     expect(screen.getByLabelText('Max height')).toHaveValue('30.1 mm');
     await waitFor(() => expect(screen.getByTestId('preview-heights')).toHaveTextContent('45,30.100'));
     fireEvent.change(screen.getByLabelText('Max height'), { target: { value: '' } });
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.parameters.extension).toBe(30.1);
     expect(request.heights[0]).toBe(45);
     expect(request.heights[1]).toBeCloseTo(30.1);
     await user.click(screen.getByText('Color', { exact: true }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByLabelText('Generated pin extension')).toHaveValue('30.1 mm');
     expect(screen.queryByRole('slider', { name: 'Minimum mapped height' })).not.toBeInTheDocument();
     await user.click(within(screen.getByRole('region', { name: 'Image mapping' })).getByText('Height', { exact: true }));
@@ -357,10 +357,10 @@ describe('app export integration', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     }
     await user.click(screen.getByText('Height + Color', { exact: true }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByTestId('preview-colors')).toHaveTextContent('#8e9089 #ffffff');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('10,14.517');
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.mode).toBe(mode);
     expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
@@ -392,12 +392,12 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
     await user.click(screen.getByRole('button', { name: 'Apply to group' }));
     await user.click(screen.getByRole('button', { name: 'Done' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent(mode === 'fixed' ? '311 pins' : '284 pins');
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('→ Ivory White');
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.mode).toBe(mode);
     expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
@@ -406,7 +406,7 @@ describe('app export integration', () => {
     expect(request.heights[0]).toBe(33);
     expect(request.heights[1]).toBeCloseTo(14.51753, 3);
     await user.click(screen.getByRole('button', { name: 'Undo' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).not.toHaveTextContent('→');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('33,14.517');
     expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
@@ -421,10 +421,10 @@ describe('app export integration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     await user.click(screen.getByText('Color', { exact: true }));
     await waitFor(() => expect(screen.getByText(/Export blocked:.*No matching filament slots/)).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeDisabled();
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('4,4');
     await user.click(screen.getByRole('button', { name: 'Retry mapping' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Bambu 3MF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
   });
   it('starts with PLA catalog defaults and exports their official filament identities', async () => {
@@ -436,7 +436,7 @@ describe('app export integration', () => {
     await openEditor(user, 'Material');
     expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Turquoise (10605)');
     expect(screen.queryByLabelText('Selection color')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.materials).toEqual(['#8e9089', '#00b1b7']);
     expect(payload.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-basic']);
@@ -556,7 +556,7 @@ describe('app export integration', () => {
     fireEvent.change(screen.getByLabelText('Selection color'), { target: { value: '#ff0000' } });
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('32,22');
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.heights.slice(0, 3)).toEqual([32, 22, 20]);
     expect(request.materials).toEqual(['#8e9089', '#ff0000', '#00b1b7']);
@@ -629,7 +629,7 @@ describe('app export integration', () => {
     await openEditor(user, 'Material');
     expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Sakura Pink (11201)');
     expect(screen.getByTestId('preview-colors')).toHaveTextContent('#ffffff #e8afcf');
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.materials).toEqual(['#ffffff', '#e8afcf']);
     expect(payload.baseMaterial).toBe(0);
@@ -648,7 +648,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
     await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const first = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(first.materials).toEqual(['#ffffff', '#ffffff']);
     expect(first.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-matte']);
@@ -658,7 +658,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
     await user.click(screen.getByRole('option', { name: 'Custom color' }));
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const second = JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string);
     expect(second.materials).toEqual(['#ffffff', '#ffffff']);
     expect(second.filamentProfiles).toEqual(['bambu-pla-basic', 'generic-pla']);
@@ -710,7 +710,7 @@ describe('app export integration', () => {
     vi.mocked(mapImageToPins).mockReturnValue({ heights, minimum: 4, maximum: 10 });
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Download Bambu 3MF' }));
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const payload = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(payload.heights).toEqual(Array.from(heights));
     expect(Object.keys(payload)).toEqual(['format', 'mode', 'parameters', 'pinGeometries', 'layout', 'heights', 'materials', 'filamentProfiles', 'baseMaterial', 'pinMaterials', 'sliding']);
