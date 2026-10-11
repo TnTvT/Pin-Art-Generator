@@ -1,6 +1,9 @@
 import asyncio
 import io
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -137,6 +140,86 @@ def test_busy_requests_do_not_spawn_more_workers():
             client.portal.call(app.state.export_lock.release)
 
 
+def test_busy_is_rejected_before_expensive_validation(monkeypatch):
+    import pin_art.app as api
+
+    def unexpected_validation(*args, **kwargs):
+        raise AssertionError("Busy requests must not validate geometry")
+
+    monkeypatch.setattr(api.ExportRequest, "model_validate", unexpected_validation)
+    with TestClient(app) as client:
+        client.portal.call(app.state.export_lock.acquire)
+        try:
+            response = client.post("/api/exports", json=request_payload())
+            assert response.status_code == 503
+            assert int(response.headers["Retry-After"]) > 0
+        finally:
+            client.portal.call(app.state.export_lock.release)
+
+
+def test_temporary_directory_failure_returns_safe_error_and_unlocks(monkeypatch):
+    import pin_art.app as api
+
+    def unavailable_directory(*args, **kwargs):
+        raise OSError("private filesystem details")
+
+    monkeypatch.setattr(api.tempfile, "TemporaryDirectory", unavailable_directory)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/exports", json=request_payload())
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "EXPORT_FAILED"
+        assert "private filesystem" not in response.text
+        assert not app.state.export_lock.locked()
+
+
+def test_export_attempts_are_rate_limited_without_blocking_health():
+    with TestClient(app) as client:
+        for _ in range(6):
+            assert client.post("/api/exports", json={}).status_code == 422
+        response = client.post("/api/exports", json={})
+        assert response.status_code == 429
+        assert response.json()["error"]["code"] == "EXPORT_RATE_LIMITED"
+        assert 1 <= int(response.headers["Retry-After"]) <= 60
+        assert client.get("/api/health").status_code == 200
+
+
+def test_geometry_validation_is_isolated_from_the_api_event_loop(monkeypatch):
+    import pin_art.app as api
+
+    def unexpected_validation(*args, **kwargs):
+        raise AssertionError("Geometry validation belongs in the timed worker")
+
+    monkeypatch.setattr(api.ExportRequest, "model_validate", unexpected_validation)
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload())
+        assert response.status_code == 200
+        assert not app.state.export_lock.locked()
+
+
+def test_worker_failure_keeps_bounded_diagnostics_in_logs_only(monkeypatch, caplog):
+    import pin_art.app as api
+
+    monkeypatch.setattr(api, "WORKER_MODULE", "pin_art.missing_worker")
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload())
+        assert response.status_code == 500
+        assert "missing_worker" in caplog.text
+        assert "missing_worker" not in response.text
+
+
+def test_generated_artifact_size_is_bounded_and_next_attempt_works(monkeypatch):
+    import pin_art.app as api
+
+    monkeypatch.setattr(api, "MAX_ARTIFACT_BYTES", 1, raising=False)
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload())
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "EXPORT_TOO_LARGE"
+        assert not app.state.export_lock.locked()
+        monkeypatch.setattr(api, "MAX_ARTIFACT_BYTES", 256 * 1024 * 1024)
+        assert client.post("/api/exports", json=request_payload()).status_code == 200
+
+
 def test_worker_timeout_cleans_up_and_unlocks(monkeypatch):
     import pin_art.app as api
 
@@ -166,7 +249,8 @@ def test_download_disconnect_removes_temporary_artifacts(tmp_path, message_type,
     directory = tempfile.TemporaryDirectory(dir=tmp_path)
     target = Path(directory.name) / "model.stl"
     target.write_bytes(b"test model")
-    response = ExportFileResponse(target, directory=directory)
+    lock = asyncio.Lock()
+    response = ExportFileResponse(target, directory=directory, lock=lock)
 
     async def disconnect_receive():
         return {"type": "http.disconnect"}
@@ -176,6 +260,132 @@ def test_download_disconnect_removes_temporary_artifacts(tmp_path, message_type,
             raise failure_type("disconnected")
 
     scope = {"type": "http", "method": "GET", "headers": [], "asgi": {"spec_version": "2.4"}}
+
+    async def send_file():
+        await lock.acquire()
+        await response(scope, disconnect_receive, disconnected_send)
+
     with pytest.raises(failure_type):
-        asyncio.run(response(scope, disconnect_receive, disconnected_send))
+        asyncio.run(send_file())
     assert not target.parent.exists()
+    assert not lock.locked()
+
+
+def test_download_holds_admission_until_the_file_is_sent(tmp_path):
+    async def exercise():
+        directory = tempfile.TemporaryDirectory(dir=tmp_path)
+        target = Path(directory.name) / "model.stl"
+        target.write_bytes(b"model")
+        lock = asyncio.Lock()
+        await lock.acquire()
+        response = ExportFileResponse(target, directory=directory, lock=lock)
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            assert lock.locked()
+
+        await response({"type": "http", "method": "GET", "headers": []}, receive, send)
+        assert not lock.locked()
+        assert not target.parent.exists()
+
+    asyncio.run(exercise())
+
+
+def test_slow_download_times_out_and_releases_artifacts(tmp_path, monkeypatch):
+    import pin_art.app as api
+
+    monkeypatch.setattr(api, "DOWNLOAD_TIMEOUT", 0.01)
+
+    async def exercise():
+        directory = tempfile.TemporaryDirectory(dir=tmp_path)
+        target = Path(directory.name) / "model.stl"
+        target.write_bytes(b"model")
+        lock = asyncio.Lock()
+        await lock.acquire()
+        response = ExportFileResponse(target, directory=directory, lock=lock)
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            await asyncio.sleep(60)
+
+        with pytest.raises(TimeoutError):
+            await response({"type": "http", "method": "GET", "headers": []}, receive, send)
+        assert not lock.locked()
+        assert not target.parent.exists()
+
+    asyncio.run(exercise())
+
+
+def test_upload_disconnect_is_not_an_internal_server_error():
+    from starlette.requests import Request
+    from pin_art.app import download_export, lifespan
+
+    async def exercise():
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async with lifespan(app):
+            request = Request({"type": "http", "headers": [(b"content-type", b"application/json")]}, receive)
+            response = await download_export(request)
+            assert response.status_code == 499
+            assert not app.state.export_lock.locked()
+
+    asyncio.run(exercise())
+
+
+def test_slow_upload_times_out_and_unlocks(monkeypatch):
+    import pin_art.app as api
+    from starlette.requests import Request
+
+    monkeypatch.setattr(api, "BODY_TIMEOUT", 0.01)
+
+    async def exercise():
+        async def receive():
+            await asyncio.sleep(60)
+
+        async with api.lifespan(app):
+            request = Request({"type": "http", "headers": [(b"content-type", b"application/json")]}, receive)
+            response = await api.download_export(request)
+            assert response.status_code == 408
+            assert not app.state.export_lock.locked()
+
+    asyncio.run(exercise())
+
+
+def test_worker_memory_limit_is_actionable_and_unlocks(monkeypatch):
+    import pin_art.jobs as jobs
+    import pin_art.app as api
+
+    monkeypatch.setattr(jobs, "resident_bytes", lambda pid: 1000, raising=False)
+    monkeypatch.setattr(api, "MAX_WORKER_RSS_BYTES", 100, raising=False)
+    with TestClient(app) as client:
+        response = client.post("/api/exports", json=request_payload())
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "EXPORT_MEMORY_LIMIT"
+        assert not app.state.export_lock.locked()
+
+
+@pytest.mark.parametrize("body", ["[" * 2000 + "]" * 2000, '{"value": NaN}', b"\xff"], ids=["deep", "nonfinite", "invalid-encoding"])
+def test_invalid_deep_or_nonfinite_json_is_safe(body):
+    with TestClient(app) as client:
+        response = client.post("/api/exports", content=body, headers={"Content-Type": "application/json"})
+        assert response.status_code in (400, 422)
+        assert not app.state.export_lock.locked()
+
+
+@pytest.mark.parametrize("limit", ["0", "6145", "invalid"])
+def test_invalid_worker_memory_configuration_fails_at_startup(limit):
+    result = subprocess.run([sys.executable, "-c", "import pin_art.app"],
+                            env={**os.environ, "PIN_ART_WORKER_RSS_MIB": limit}, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "ValueError" in result.stderr
+
+
+def test_worker_memory_budget_can_be_lowered():
+    result = subprocess.run([sys.executable, "-c", "from pin_art.app import MAX_WORKER_RSS_BYTES; print(MAX_WORKER_RSS_BYTES)"],
+                            env={**os.environ, "PIN_ART_WORKER_RSS_MIB": "1024"}, capture_output=True, text=True, check=True)
+    assert int(result.stdout.strip()) == 1024 ** 3
