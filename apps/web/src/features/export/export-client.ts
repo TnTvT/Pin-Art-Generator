@@ -24,7 +24,7 @@ export async function fetchExport(request: ExportRequest, signal: AbortSignal): 
     });
   } catch (error) {
     if (signal.aborted || ((error instanceof Error || error instanceof DOMException) && error.name === 'AbortError')) throw error;
-    throw new Error('Could not connect to the export service. Check that the backend is running on localhost:8000, then retry.');
+    throw new Error('Could not connect to the export service. Check your connection, then retry.');
   }
   if (!response.ok || response.headers.get('Content-Type')?.includes('application/json')) {
     let message = `Export failed (HTTP ${response.status}). Please retry.`;
@@ -39,6 +39,11 @@ export async function fetchExport(request: ExportRequest, signal: AbortSignal): 
       }
     } catch {
       message = `Export failed (HTTP ${response.status}). The service returned an unreadable error. Please retry.`;
+    }
+    const retryAfter = response.headers.get('Retry-After');
+    if ([429, 503].includes(response.status) && retryAfter && /^\d+$/.test(retryAfter)) {
+      const seconds = Number(retryAfter);
+      if (Number.isSafeInteger(seconds) && seconds > 0) message += ` Retry in ${seconds} seconds.`;
     }
     throw new Error(message);
   }

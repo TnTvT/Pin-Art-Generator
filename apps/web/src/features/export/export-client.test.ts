@@ -43,6 +43,20 @@ describe('export fetch', () => {
     await expect(fetchExport(request(), new AbortController().signal)).rejects.toThrow(/502/);
   });
 
+  it.each([429, 503])('shows the retry delay without automatically resubmitting HTTP %s', async status => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: 'Please wait.' } }), {
+      status, headers: { 'Retry-After': '45' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchExport(request(), new AbortController().signal)).rejects.toThrow('Retry in 45 seconds.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not suggest localhost to users when the deployed service is offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(fetchExport(request(), new AbortController().signal)).rejects.not.toThrow('localhost');
+  });
+
   it('rejects empty binaries and invalid plate counts and preserves aborts', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(''))
       .mockResolvedValueOnce(new Response('binary', { headers: { 'X-Plate-Count': '37' } }))
