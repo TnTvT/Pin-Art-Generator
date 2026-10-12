@@ -244,6 +244,17 @@ describe('atomic design generation', () => {
     rerender({ currentEditor: editor, currentSettings: { ...input, options: { ...input.options, maximum: 2 } } });
     await waitFor(() => expect(startColorMapping).toHaveBeenCalledTimes(2));
   });
+  it('resamples compact mapping when cap size changes even if physical pin positions are unchanged', async () => {
+    const input = { ...settings, source: { name: 'test', bitmap: {}, url: 'blob:test' } as SourceImage, placement: { offsetX: 1, offsetY: 0, zoom: 1 } };
+    vi.mocked(mapImageToPins).mockReturnValue({ heights: new Float32Array(committed.layout.pins.length).fill(10), minimum: 10, maximum: 10 });
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(result.current.design?.heightMap).toBeDefined());
+    expect(mapImageToPins).toHaveBeenCalledTimes(1);
+    rerender({ input: { ...input, parameters: { ...DEFAULTS, diameter: 1.9 } } });
+    await waitFor(() => expect(result.current.design?.parameters.diameter).toBe(1.9));
+    expect(result.current.design?.changed).toBe(false);
+    expect(mapImageToPins).toHaveBeenCalledTimes(2);
+  });
   it('marks only ID or XY changes as topology changes', async () => {
     const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input: settings } });
     await waitFor(() => expect(result.current.design?.changed).toBe(false));

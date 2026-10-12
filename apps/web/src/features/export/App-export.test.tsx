@@ -193,7 +193,7 @@ describe('app export integration', () => {
     expect(screen.queryByRole('dialog', { name: 'Change pin layout?' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
-    const parameters = { ...request.parameters, layout: request.layout };
+    const parameters = { ...request.parameters, layout: request.layout, construction: { mode: request.mode, sliding: request.sliding } };
     const placement = { offsetX: 8, offsetY: 0, zoom: 1.5 };
     const generatedHeights = [...actual.mapImageToPins(validSource, parameters, 10, false, placement, 'pixel').heights];
     generatedHeights[0] = 35;

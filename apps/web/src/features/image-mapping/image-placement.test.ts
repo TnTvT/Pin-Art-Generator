@@ -6,19 +6,20 @@ const parameters = { ...DEFAULTS, width: 120, depth: 100, layout: { regions: [],
 const bitmap = { width: 200, height: 100 };
 
 describe('image placement', () => {
-  it('preserves centered contain by default and moves both sampling axes in world mm', () => {
+  it('contains within compact pin tops and moves both sampling axes in compact mm', () => {
     const initial = imageTransform(bitmap, parameters);
-    expect(initial).toMatchObject({ scale: 0.6, centerX: 100, centerY: 50, left: -60, top: 30, width: 120, height: 60 });
+    expect(initial).toMatchObject({ scale: 0.21, centerX: 100, centerY: 50, left: -21, top: 10.5, width: 42, height: 21 });
     const moved = imageTransform(bitmap, parameters, { offsetX: 12, offsetY: 6, zoom: 2 });
     expect(sourcePoint({ x: 12, y: 6 }, moved)).toEqual({ x: 99.5, y: 49.5 });
-    expect(sourcePoint({ x: 0, y: 0 }, moved)).toEqual({ x: 89.5, y: 54.5 });
-    expect(moved).toMatchObject({ left: -108, top: 66, width: 240, height: 120 });
+    expect(sourcePoint({ x: 0, y: 0 }, moved).x).toBeCloseTo(70.928571);
+    expect(sourcePoint({ x: 0, y: 0 }, moved).y).toBeCloseTo(63.785714);
+    expect(moved).toMatchObject({ left: -30, top: 27, width: 84, height: 42 });
   });
 
   it('uses foreground bounds for image bases without changing their geometry', () => {
     const cropped = { ...parameters, layout: { ...parameters.layout, imageBounds: [20, 10, 140, 90] as [number, number, number, number] } };
     const transform = imageTransform(bitmap, cropped, { offsetX: 3, offsetY: -4, zoom: 0.5 });
-    expect(transform).toMatchObject({ centerX: 80, centerY: 50, scale: 0.5, left: -37, top: 21 });
+    expect(transform).toMatchObject({ centerX: 80, centerY: 50, scale: 0.175, left: -11, top: 4.75 });
     expect(sourcePoint({ x: 3, y: -4 }, transform)).toEqual({ x: 79.5, y: 49.5 });
     expect(cropped.layout.pins).toBe(parameters.layout.pins);
   });
@@ -36,10 +37,10 @@ describe('image placement', () => {
     expect(() => imageTransform(bitmap, parameters, { ...initial, zoom: 0 })).toThrow(/zoom/i);
   });
 
-  it('fits the source content to the actual pin footprint, including asymmetric layouts and a single pin', () => {
-    expect(fitImageToPins(bitmap, parameters)).toEqual({ offsetX: 0, offsetY: 0, zoom: 82 / 120 });
+  it('fits the source content to the centered compact domain, including a single pin', () => {
+    expect(fitImageToPins(bitmap, parameters)).toEqual(DEFAULT_IMAGE_PLACEMENT);
     const single = { ...parameters, layout: { ...parameters.layout, pins: [{ id: 'a', x: 20, y: -10 }] } };
-    expect(fitImageToPins(bitmap, single)).toEqual({ offsetX: 20, offsetY: -10, zoom: 0.1 });
+    expect(fitImageToPins(bitmap, single)).toEqual(DEFAULT_IMAGE_PLACEMENT);
     expect(DEFAULT_IMAGE_PLACEMENT).toEqual({ offsetX: 0, offsetY: 0, zoom: 1 });
   });
 });

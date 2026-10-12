@@ -73,6 +73,9 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
           && ['enabled', 'minimum', 'inverted', 'mode', 'options', 'placement', 'sampling'].every(key => cached.settings[key as keyof GenerationSettings] === settings[key as keyof GenerationSettings])
           && cached.design.parameters.width === parameters.width && cached.design.parameters.depth === parameters.depth
           && cached.design.parameters.extension === parameters.extension && samePins(cached.design.parameters.layout!, parameters.layout)
+          && cached.design.parameters.diameter === parameters.diameter && cached.design.parameters.spacing === parameters.spacing
+          && cached.design.parameters.construction?.mode === parameters.construction?.mode
+          && cached.design.parameters.construction?.sliding.headFlare === parameters.construction?.sliding.headFlare
           && JSON.stringify(cached.design.parameters.layout?.imageBounds) === JSON.stringify(parameters.layout.imageBounds);
         if (reuseMapping) { heightMap = cached.design.heightMap; colors = cached.design.colors; }
         else if (settings.enabled && settings.source) {

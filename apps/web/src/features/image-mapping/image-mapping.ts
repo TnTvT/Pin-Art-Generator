@@ -1,8 +1,9 @@
-import { getMetrics, type Parameters } from '../pin-design/model';
+import type { Parameters } from '../pin-design/model';
 import { fitImage, pixelsToHeights, type HeightMap } from './sampling';
 import type { ShapeImage } from '../base-shape/layout';
 import { DEFAULT_IMAGE_PLACEMENT, imageTransform, sourcePoint, type ImagePlacement } from './image-placement';
 import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from './image-sampling';
+import { getMappingGrid } from './mapping-grid';
 
 export interface SourceImage {
   name: string;
@@ -22,15 +23,15 @@ export function readShapeImage(source: SourceImage): ShapeImage {
 }
 
 export function sampleLayoutPixels(source: SourceImage, parameters: Parameters, placement = DEFAULT_IMAGE_PLACEMENT, sampling: ImageSampling = DEFAULT_IMAGE_SAMPLING): Uint8ClampedArray {
-  const image = readShapeImage(source), layout = parameters.layout!;
-  const pixels = new Uint8ClampedArray(layout.pins.length * 4);
+  const image = readShapeImage(source), grid = getMappingGrid(parameters);
+  const pixels = new Uint8ClampedArray(grid.pins.length * 4);
   const transform = imageTransform(image, parameters, placement);
   function channel(horizontal: number, vertical: number, axis: number) {
     if (horizontal < 0 || vertical < 0 || horizontal >= image.width || vertical >= image.height) return 255;
     const offset = (vertical * image.width + horizontal) * 4, alpha = image.pixels[offset + 3] / 255;
     return image.pixels[offset + axis] * alpha + 255 * (1 - alpha);
   }
-  layout.pins.forEach((pin, index) => {
+  grid.pins.forEach((pin, index) => {
     const { x: sourceX, y: sourceY } = sourcePoint(pin, transform);
     if (sampling === 'pixel') {
       for (let axis = 0; axis < 3; axis++) pixels[index * 4 + axis] = channel(Math.floor(sourceX + .5), Math.floor(sourceY + .5), axis);
@@ -54,7 +55,7 @@ export function sampleImagePixels(source: SourceImage, parameters: Parameters, a
   canvas.height = parameters.rows;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Image processing is unavailable in this browser.');
-  const footprint = getMetrics(parameters);
+  const footprint = getMappingGrid(parameters);
   const placement = fitImage(source.bitmap.width, source.bitmap.height, footprint.width, footprint.depth, canvas.width, canvas.height);
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
