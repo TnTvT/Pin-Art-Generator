@@ -1,12 +1,22 @@
 .image-placement-heading { display: flex; justify-content: space-between; align-items: center; gap: var(--mantine-spacing-xs); }
 .image-placement-heading p, .image-placement-status { color: var(--mantine-color-dimmed); font-size: var(--mantine-font-size-xs); }
-.image-placement-canvas { display: block; width: 100%; height: clamp(220px, 42vh, 420px); background: white; border: 1px solid var(--mantine-color-default-border); border-radius: var(--mantine-radius-md); touch-action: none; cursor: grab; }
+.image-placement-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mantine-spacing-md); }
+.image-placement-panel { min-width: 0; }
+.image-placement-panel h3 { margin: 0 0 var(--mantine-spacing-xs); font-size: var(--mantine-font-size-sm); font-weight: 600; }
+.image-placement-opacity { margin-top: var(--mantine-spacing-xs); font-size: var(--mantine-font-size-xs); color: var(--mantine-color-dimmed); }
+.image-placement-opacity > :first-child { margin-bottom: var(--mantine-spacing-xs); }
+.image-placement-canvas { display: block; width: 100%; height: clamp(200px, 34vh, 360px); background: white; border: 1px solid var(--mantine-color-default-border); border-radius: var(--mantine-radius-md); touch-action: none; cursor: grab; }
 .image-placement-canvas:active { cursor: grabbing; }
+.image-placement-canvas-readonly, .image-placement-canvas-readonly:active { cursor: default; touch-action: auto; }
 .image-placement-canvas:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 2px; }
 .image-placement-base { stroke: #087f8c; stroke-width: 2; }
 .image-placement-pins { stroke: #ed9a00; stroke-width: 1; }
 .image-placement-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--mantine-spacing-xs); margin: var(--mantine-spacing-sm) 0 var(--mantine-spacing-md); }
 .image-placement-status { margin-bottom: 0; }
+@media (max-width: 700px) {
+  .image-placement-comparison { grid-template-columns: minmax(0, 1fr); }
+  .image-placement-canvas { height: clamp(180px, 30vh, 280px); }
+}
 @media (max-width: 400px) {
   .image-placement-canvas { height: min(32vh, 240px); }
   .image-placement-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }

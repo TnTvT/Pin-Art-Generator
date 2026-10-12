@@ -1,40 +1,59 @@
 import { useEffect, useId, useMemo, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Parameters } from '../pin-design/model';
-import { pinVertices, resolvePinGeometries } from '../pin-shape/geometry';
+import { resolvePinGeometries } from '../pin-shape/geometry';
+import { profilePoints } from '../mechanics/model';
+import { getMappingGrid } from './mapping-grid';
 import type { SourceImage } from './image-mapping';
 import { imageTransform, zoomImage, type ImagePlacement } from './image-placement';
 import { DEFAULT_IMAGE_SAMPLING, type ImageSampling } from './image-sampling';
+import type { SamplingPreviewGroup } from './sampling-preview';
 
 interface Props {
   source: SourceImage; parameters: Parameters; placement: ImagePlacement; blocked: boolean;
   preview?: SourceImage | null; sampling?: ImageSampling;
+  samples?: SamplingPreviewGroup[]; showPinShapes?: boolean;
+  showSamples?: boolean;
+  interactive?: boolean;
+  imageOpacity?: number;
   onChange: (placement: ImagePlacement) => void;
 }
 
-export default function ImagePlacementCanvas({ source, preview = source, sampling = DEFAULT_IMAGE_SAMPLING, parameters, placement, blocked, onChange }: Props) {
+export default function ImagePlacementCanvas({ source, preview = source, sampling = DEFAULT_IMAGE_SAMPLING, samples = [], showSamples = false, showPinShapes = false, interactive = true, imageOpacity = 1, parameters, placement, blocked, onChange }: Props) {
   const canvas = useRef<SVGSVGElement>(null);
   const clipId = useId();
+  const patternId = useId();
+  const linesId = useId();
   const drag = useRef<{ placement: ImagePlacement; point: { x: number; y: number }; pointerId: number } | null>(null);
   const current = useRef({ placement, blocked, onChange });
   current.current = { placement, blocked, onChange };
+  const grid = useMemo(() => getMappingGrid(parameters), [parameters]);
+  const cells = useMemo(() => grid.pins.map(pin => `M${pin.x - grid.cellSize / 2},${-pin.y - grid.cellSize / 2}h${grid.cellSize}v${grid.cellSize}h${-grid.cellSize}Z`).join(''), [grid]);
   const view = useMemo(() => {
-    const margin = Math.max(parameters.width, parameters.depth) * 0.1;
-    return { left: -parameters.width / 2 - margin, top: -parameters.depth / 2 - margin,
-      width: parameters.width + margin * 2, height: parameters.depth + margin * 2 };
-  }, [parameters.width, parameters.depth]);
+    const width = Math.max(grid.width, (parameters.width + 2 * Math.abs(grid.centerX)) * grid.scale);
+    const depth = Math.max(grid.depth, (parameters.depth + 2 * Math.abs(grid.centerY)) * grid.scale);
+    const margin = Math.max(width, depth) * 0.1;
+    return { left: -width / 2 - margin, top: -depth / 2 - margin, width: width + margin * 2, height: depth + margin * 2 };
+  }, [grid, parameters.width, parameters.depth]);
   const contour = useMemo(() => parameters.layout?.regions.map(region => [region.outer, ...region.holes]
-    .map(ring => `M${ring.map(([horizontal, vertical]) => `${horizontal},${-vertical}`).join('L')}Z`).join('')).join('') ?? '', [parameters.layout]);
+    .map(ring => `M${ring.map(([horizontal, vertical]) => `${(horizontal - grid.centerX) * grid.scale},${-(vertical - grid.centerY) * grid.scale}`).join('L')}Z`).join('')).join('')
+    ?? `M${-parameters.width * grid.scale / 2},${-parameters.depth * grid.scale / 2}h${parameters.width * grid.scale}v${parameters.depth * grid.scale}h${-parameters.width * grid.scale}Z`, [parameters.layout, parameters.width, parameters.depth, grid]);
   const pins = useMemo(() => {
+    if (!showPinShapes) return '';
     const geometries = resolvePinGeometries(parameters);
-    const vertexCache = new Map<string, ReturnType<typeof pinVertices>>();
-    const radius = parameters.diameter / 2;
-    return parameters.layout?.pins.map((pin, index) => {
+    const vertexCache = new Map<string, ReturnType<typeof profilePoints>>();
+    const radius = grid.cellSize / 2;
+    const flare = parameters.construction?.mode === 'print-in-place' ? parameters.construction.sliding.headFlare : 0;
+    return grid.pins.map((pin, index) => {
       const geometry = geometries[index], key = `${geometry.shape}:${geometry.rotation}`;
-      if (geometry.shape === 'round') return `M${pin.x - radius},${-pin.y}a${radius},${radius} 0 1,0 ${parameters.diameter},0a${radius},${radius} 0 1,0 ${-parameters.diameter},0`;
-      if (!vertexCache.has(key)) vertexCache.set(key, pinVertices(geometry.shape, parameters.diameter, geometry.rotation));
+      if (geometry.shape === 'round') return `M${pin.x - radius},${-pin.y}a${radius},${radius} 0 1,0 ${grid.cellSize},0a${radius},${radius} 0 1,0 ${-grid.cellSize},0`;
+      if (!vertexCache.has(key)) {
+        const angle = geometry.rotation * Math.PI / 180;
+        vertexCache.set(key, profilePoints(geometry.shape, parameters.diameter, flare).map(([horizontal, vertical]) =>
+          [horizontal * Math.cos(angle) - vertical * Math.sin(angle), horizontal * Math.sin(angle) + vertical * Math.cos(angle)]));
+      }
       return `M${vertexCache.get(key)!.map(([horizontal, vertical]) => `${pin.x + horizontal},${-pin.y - vertical}`).join('L')}Z`;
-    }).join('') ?? '';
-  }, [parameters.layout, parameters.diameter, parameters.pinShape, parameters.pinRotation, parameters.pinGeometries]);
+    }).join('');
+  }, [showPinShapes, grid, parameters]);
   const transform = imageTransform(source.bitmap, parameters, placement);
 
   function worldPoint(clientX: number, clientY: number) {
@@ -53,6 +72,7 @@ export default function ImagePlacementCanvas({ source, preview = source, samplin
   }
 
   useEffect(() => {
+    if (!interactive) return;
     const target = canvas.current!;
     function wheel(event: WheelEvent) {
       event.preventDefault();
@@ -64,7 +84,7 @@ export default function ImagePlacementCanvas({ source, preview = source, samplin
     target.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('blur', cancel);
     return () => { target.removeEventListener('wheel', wheel); window.removeEventListener('blur', cancel); };
-  }, [view]);
+  }, [view, interactive]);
 
   function start(event: PointerEvent<SVGSVGElement>) {
     if (blocked || event.button !== 0 || drag.current) return;
@@ -97,16 +117,32 @@ export default function ImagePlacementCanvas({ source, preview = source, samplin
     }
   }
 
-  return <svg ref={canvas} className="image-placement-canvas" role="application" aria-label="Image placement canvas" aria-describedby="image-placement-instructions"
-    aria-disabled={blocked} tabIndex={0} viewBox={`${view.left} ${view.top} ${view.width} ${view.height}`}
-    onPointerDown={start} onPointerMove={move} onPointerUp={event => { if (event.pointerId === drag.current?.pointerId) finish(false); }}
-    onPointerCancel={event => { if (event.pointerId === drag.current?.pointerId) finish(true); }} onLostPointerCapture={() => finish(true)}
-    onBlur={() => finish(true)} onKeyDown={keyDown}>
-    <defs><clipPath id={clipId}><path d={contour} fillRule="evenodd" clipRule="evenodd" /></clipPath></defs>
-    {preview && <image href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} opacity="0.22" />}
-    <path data-overlay="mapping-background" d={contour} fill="#ffffff" fillRule="evenodd" />
-    {preview && <image href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} clipPath={`url(#${clipId})`} />}
+  return <svg ref={canvas} className={`image-placement-canvas${interactive ? '' : ' image-placement-canvas-readonly'}`} role={interactive ? 'application' : 'img'} aria-label={interactive ? 'Image placement canvas' : 'Mapped pin samples'} aria-describedby={interactive ? 'image-placement-instructions' : undefined}
+    aria-disabled={interactive ? blocked : undefined} tabIndex={interactive ? 0 : undefined} viewBox={`${view.left} ${view.top} ${view.width} ${view.height}`}
+    onPointerDown={interactive ? start : undefined} onPointerMove={interactive ? move : undefined} onPointerUp={interactive ? event => { if (event.pointerId === drag.current?.pointerId) finish(false); } : undefined}
+    onPointerCancel={interactive ? event => { if (event.pointerId === drag.current?.pointerId) finish(true); } : undefined} onLostPointerCapture={interactive ? () => finish(true) : undefined}
+    onBlur={interactive ? () => finish(true) : undefined} onKeyDown={interactive ? keyDown : undefined}>
+    <defs>
+      <clipPath id={clipId}><path d={cells} /></clipPath>
+      <pattern id={patternId} patternUnits="userSpaceOnUse" x={-grid.width / 2} y={-grid.depth / 2} width={grid.cellSize * 2} height={grid.cellSize * 2}>
+        <rect width={grid.cellSize * 2} height={grid.cellSize * 2} fill="#ffffff" />
+        <rect width={grid.cellSize} height={grid.cellSize} fill="#e8edf0" />
+        <rect x={grid.cellSize} y={grid.cellSize} width={grid.cellSize} height={grid.cellSize} fill="#e8edf0" />
+      </pattern>
+      <pattern id={linesId} patternUnits="userSpaceOnUse" x={-grid.width / 2} y={-grid.depth / 2} width={grid.cellSize} height={grid.cellSize}>
+        <path d={`M${grid.cellSize},0H0V${grid.cellSize}`} fill="none" stroke="#ffffff" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path d={`M${grid.cellSize},0H0V${grid.cellSize}`} fill="none" stroke="#253b45" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+      </pattern>
+    </defs>
+    {preview && <image href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} opacity={0.22 * imageOpacity} />}
+    <rect data-overlay="mapping-background" x={-grid.width / 2} y={-grid.depth / 2} width={grid.width} height={grid.depth} fill="#ffffff" />
+    <rect data-overlay="pixel-background" x={-grid.width / 2} y={-grid.depth / 2} width={grid.width} height={grid.depth} fill={`url(#${patternId})`} clipPath={`url(#${clipId})`} />
+    {preview && !showSamples && <image data-overlay="original-image" href={preview.url} style={{ imageRendering: sampling === 'pixel' ? 'pixelated' : 'auto' }} preserveAspectRatio="none" x={transform.left} y={-transform.top} width={transform.width} height={transform.height} opacity={imageOpacity} clipPath={`url(#${clipId})`} />}
+    {preview && showSamples && samples.length > 0 && <g data-overlay="samples" clipPath={`url(#${clipId})`} shapeRendering="crispEdges">
+      {samples.map(group => <path key={group.color} d={group.path} fill={group.color} />)}
+    </g>}
+    {!showSamples && <rect data-overlay="pixel-grid" x={-grid.width / 2} y={-grid.depth / 2} width={grid.width} height={grid.depth} fill={`url(#${linesId})`} opacity="0.85" clipPath={`url(#${clipId})`} pointerEvents="none" />}
     <path className="image-placement-base" d={contour} fill="none" vectorEffect="non-scaling-stroke" />
-    <path className="image-placement-pins" data-overlay="pins" d={pins} fill="none" vectorEffect="non-scaling-stroke" />
+    {showPinShapes && <path className="image-placement-pins" data-overlay="pins" d={pins} fill="none" vectorEffect="non-scaling-stroke" />}
   </svg>;
 }
