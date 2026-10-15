@@ -39,7 +39,7 @@ describe('printer export selection', () => {
 
   it('uses 5 mm margins only in print-in-place 3MF', () => {
     const options = { ...u1, mode: 'print-in-place' as const };
-    expect(validateExport({ ...DEFAULTS, width: 260, depth: 260 }, undefined, options, '3mf')).toBeNull();
-    expect(validateExport({ ...DEFAULTS, width: 261 }, undefined, options, '3mf')).toMatch(/5 mm margins/);
+    expect(validateExport({ ...DEFAULTS, spacing: 4.5, width: 260, depth: 260 }, undefined, options, '3mf')).toBeNull();
+    expect(validateExport({ ...DEFAULTS, spacing: 4.5, width: 261 }, undefined, options, '3mf')).toMatch(/5 mm margins/);
   });
 });

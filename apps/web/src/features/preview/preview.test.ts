@@ -85,7 +85,7 @@ afterEach(() => {
 describe('preview camera projection', () => {
   it('renders nine mixed mechanical groups with fixed-size heads, canonical picking and display-only transparency', () => {
     const parameters = { ...DEFAULTS, columns: 3, rows: 1, spacing: 5,
-      construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const },
+      construction: { ...DEFAULT_CONSTRUCTION, sliding: { ...DEFAULT_CONSTRUCTION.sliding, headFlare: 0.6, lowerHeadAngle: 60, lowerHeadGap: 0.2 }, mode: 'print-in-place' as const },
       pinGeometries: [{ shape: 'round' as const, rotation: 0 }, { shape: 'square' as const, rotation: 45 }, { shape: 'triangle' as const, rotation: 30 }] };
     const heights = new Float32Array([5, 10, 20]), onSelect = vi.fn();
     preview.setPinColors(['#ff0000', '#00ff00', '#0000ff']);
@@ -101,8 +101,8 @@ describe('preview camera projection', () => {
       const shapeIndex = Math.floor(index / 3), role = index % 3;
       group.getMatrixAt(0, matrix); group.getColorAt(0, color);
       expect(color.getHexString()).toBe(['ff0000', '00ff00', '0000ff'][shapeIndex]);
-      expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(role === 0 ? 0.6 : role === 1 ? 0 : 3 + heights[shapeIndex] - 0.6);
-      expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(role === 0 ? 3 + heights[shapeIndex] - 1.2 : 1);
+      expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(role === 0 ? 0.6 * Math.sqrt(3) : role === 1 ? 0 : 3 + heights[shapeIndex] - 0.6);
+      expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(role === 0 ? 3 + heights[shapeIndex] - 0.6 * Math.sqrt(3) - 0.6 : 1);
     });
     const base = renderedScene().children.find(child => child instanceof Mesh && !(child instanceof InstancedMesh) && child.material instanceof MeshStandardMaterial) as Mesh;
     const material = base.material as MeshStandardMaterial, originalColor = material.color.getHexString();
@@ -122,6 +122,18 @@ describe('preview camera projection', () => {
     groups.forEach(group => [group.boundingBox!.min, group.boundingBox!.max].forEach(corner => {
       const point = corner.clone().project(fitted); expect(Math.abs(point.x)).toBeLessThan(1); expect(Math.abs(point.y)).toBeLessThan(1);
     }));
+    const lowerGeometry = groups[1].geometry, upperGeometry = groups[2].geometry;
+    const disposeLower = vi.spyOn(lowerGeometry, 'dispose');
+    const changedAngle = { ...parameters, construction: { ...parameters.construction, sliding: { ...parameters.construction.sliding, lowerHeadAngle: 45 } } };
+    preview.update(changedAngle, heights, buildMechanicalBase(changedAngle)); renderedCamera();
+    expect(disposeLower).toHaveBeenCalledOnce();
+    expect(groups[1].geometry).not.toBe(lowerGeometry);
+    groups[1].geometry.computeBoundingBox();
+    expect(groups[1].geometry.boundingBox!.max.z).toBeCloseTo(0.6);
+    expect(groups[2].geometry).toBe(upperGeometry);
+    groups[0].getMatrixAt(0, matrix);
+    expect(new Vector3().setFromMatrixPosition(matrix).z).toBeCloseTo(0.6);
+    expect(new Vector3().setFromMatrixScale(matrix).z).toBeCloseTo(3 + heights[0] - 1.2);
     preview.update(DEFAULTS); renderedCamera();
     expect(renderedScene().children.filter(child => child instanceof InstancedMesh)).toHaveLength(1);
   });

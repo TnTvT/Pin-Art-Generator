@@ -54,21 +54,21 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
-  it.each([4, 6])('retains %s mm spacing across modes and exports the larger retaining heads', async spacing => {
+  it.each([4.5, 6])('retains %s mm spacing across modes and exports the larger retaining heads', async spacing => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
-    if (spacing !== 4) fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: String(spacing) } });
+    fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: String(spacing) } });
     await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByLabelText('Pin spacing')).toHaveValue(`${spacing} mm`);
     await user.click(screen.getByRole('button', { name: 'Advanced settings' }));
-    expect(screen.getByLabelText('Sliding clearance')).toHaveValue('0.4 mm');
-    expect(screen.getByLabelText('Head flare')).toHaveValue('0.6 mm');
+    expect(screen.getByLabelText('Sliding clearance')).toHaveValue('0.6 mm');
+    expect(screen.getByLabelText('Head flare')).toHaveValue('0.7 mm');
     await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
     expect(request.parameters.spacing).toBe(spacing);
-    expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.6 });
+    expect(request.sliding).toEqual({ clearance: 0.6, headFlare: 0.7, lowerHeadGap: 0.3, lowerHeadAngle: 45 });
     await user.click(screen.getByRole('radio', { name: 'Fixed sculpture' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     expect(screen.getByLabelText('Pin spacing')).toHaveValue(`${spacing} mm`);
@@ -126,6 +126,7 @@ describe('app export integration', () => {
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     if (exportMode === 'print-in-place') {
+      fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '4.5' } });
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     }
@@ -146,7 +147,9 @@ describe('app export integration', () => {
     expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: 'triangle', rotation: 30 }, { shape: 'round', rotation: 0 }]);
     expect(request.parameters.pinGeometries).toBeUndefined();
     expect(request.heights[0]).toBe(35);
-    expect(request.layout.pins[0]).toEqual(exportMode === 'fixed' ? { id: 'g:-11:-13', x: -52, y: -44 } : { id: 'g:-10:-13', x: -52, y: -40 });
+    expect(request.layout.pins[0].id).toBe(exportMode === 'fixed' ? 'g:-11:-13' : 'g:-9:-11');
+    expect(request.layout.pins[0].x).toBeCloseTo(exportMode === 'fixed' ? -52 : -49.5, 10);
+    expect(request.layout.pins[0].y).toBeCloseTo(exportMode === 'fixed' ? -44 : -40.5, 10);
     expect(request.pinMaterials.slice(0, 2)).toEqual([1, 1]);
     await user.click(screen.getByRole('button', { name: 'Undo' }));
     expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"round","rotation":0},{"shape":"round","rotation":0}]');
@@ -164,6 +167,7 @@ describe('app export integration', () => {
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     if (exportMode === 'print-in-place') {
+      fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '4.5' } });
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     }
@@ -199,7 +203,7 @@ describe('app export integration', () => {
     generatedHeights[0] = 35;
     expect(request.heights).toEqual(generatedHeights);
     expect(request.mode).toBe(exportMode);
-    expect(request.layout.pins).toHaveLength(exportMode === 'fixed' ? 621 : 567);
+    expect(request.layout.pins).toHaveLength(exportMode === 'fixed' ? 621 : 437);
     expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
     expect(request.pinGeometries[0]).toEqual({ shape: 'triangle', rotation: 30 });
     expect(new Set(request.pinMaterials.slice(1).map((index: number) => request.materials[index]))).toEqual(new Set(['#ffffff', '#000000']));
@@ -353,6 +357,7 @@ describe('app export integration', () => {
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     if (mode === 'print-in-place') {
+      fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '4.5' } });
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     }
@@ -365,7 +370,7 @@ describe('app export integration', () => {
     expect(request.mode).toBe(mode);
     expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
     expect(request.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-basic', 'bambu-pla-basic']);
-    expect(request.pinMaterials).toEqual(Array.from({ length: mode === 'fixed' ? 621 : 567 }, (_, index) => index % 2 + 1));
+    expect(request.pinMaterials).toEqual(Array.from({ length: mode === 'fixed' ? 621 : 437 }, (_, index) => index % 2 + 1));
     expect(request.heights[0]).toBe(10);
     expect(request.heights[1]).toBeCloseTo(14.51753, 3);
     expect(request).not.toHaveProperty('image');
@@ -377,6 +382,7 @@ describe('app export integration', () => {
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     if (mode === 'print-in-place') {
+      fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '4.5' } });
       await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
     }
@@ -394,7 +400,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
-    expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent(mode === 'fixed' ? '311 pins' : '284 pins');
+    expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent(mode === 'fixed' ? '311 pins' : '219 pins');
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).toHaveTextContent('→ Ivory White');
     expect(screen.getByText('1 selected')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
@@ -402,7 +408,7 @@ describe('app export integration', () => {
     expect(request.mode).toBe(mode);
     expect(request.materials).toEqual(['#8e9089', '#ffffff', '#00b1b7']);
     expect(request.filamentProfiles).toEqual(['bambu-pla-basic', 'bambu-pla-matte', 'bambu-pla-basic']);
-    expect(request.pinMaterials).toEqual(Array.from({ length: mode === 'fixed' ? 621 : 567 }, (_, index) => index % 2 + 1));
+    expect(request.pinMaterials).toEqual(Array.from({ length: mode === 'fixed' ? 621 : 437 }, (_, index) => index % 2 + 1));
     expect(request.heights[0]).toBe(33);
     expect(request.heights[1]).toBeCloseTo(14.51753, 3);
     await user.click(screen.getByRole('button', { name: 'Undo' }));
@@ -410,7 +416,7 @@ describe('app export integration', () => {
     expect(screen.getByRole('button', { name: 'Edit Jade White Basic group' })).not.toHaveTextContent('→');
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('33,14.517');
     expect(startColorMapping).toHaveBeenCalledTimes(mappingCalls);
-  });
+  }, 10000);
 
   it('blocks export on a worker failure and recovers with Retry mapping', async () => {
     const user = userEvent.setup();

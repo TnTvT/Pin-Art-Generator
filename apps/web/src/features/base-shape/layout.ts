@@ -1,5 +1,6 @@
 import { contours } from 'd3-contour';
 import RBush from 'rbush';
+import { guideDimensions } from '../mechanics/dimensions';
 import { deltaE2000, Lab, sRGB, to } from 'colorjs.io/fn';
 import type { Parameters } from '../pin-design/model';
 import { MAX_PINS } from '../pin-design/limits';
@@ -147,7 +148,8 @@ export function generateLayout(parameters: Parameters, shape: ShapeOptions, imag
   if (regions.reduce((count, region) => count + region.outer.length + region.holes.reduce((total, ring) => total + ring.length, 0), 0) > 20000) throw new Error('Contours exceed 20,000 vertices. Use a cleaner image or adjust background tolerance.');
   const bounds = pinBounds(parameters);
   const sliding = parameters.construction?.mode === 'print-in-place' ? parameters.construction.sliding : undefined;
-  const padding = sliding ? Math.max(shape.padding + sliding.headFlare, sliding.clearance / 2 + 0.8, sliding.clearance / 2 + sliding.headFlare + 0.2) : shape.padding;
+  const dimensions = sliding ? guideDimensions(sliding) : undefined;
+  const padding = sliding && dimensions ? Math.max(shape.padding + sliding.headFlare, sliding.clearance / 2 + 0.8, Math.max(dimensions.lowerMouthOffset, dimensions.upperMouthOffset) + 0.2) : shape.padding;
   const firstColumn = Math.ceil((-width / 2 + padding - bounds.minX - EPSILON) / parameters.spacing);
   const lastColumn = Math.floor((width / 2 - padding - bounds.maxX + EPSILON) / parameters.spacing);
   const firstRow = Math.ceil((-depth / 2 + padding - bounds.minY - EPSILON) / parameters.spacing);

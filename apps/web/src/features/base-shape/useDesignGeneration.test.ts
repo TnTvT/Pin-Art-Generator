@@ -90,7 +90,7 @@ describe('atomic design generation', () => {
     const cancel = vi.fn(), latest = { positions: new Float32Array([1, 2, 3]), elapsedMs: 2 };
     vi.mocked(startMechanicalJob).mockImplementationOnce(() => ({ promise: new Promise(resolve => { finish = resolve; }), cancel }))
       .mockImplementation(() => ({ promise: Promise.resolve(latest), cancel: vi.fn() }));
-    const input = { ...settings, parameters: { ...DEFAULTS, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } } };
+    const input = { ...settings, parameters: { ...DEFAULTS, spacing: 4.5, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } } };
     const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
     await waitFor(() => expect(startMechanicalJob).toHaveBeenCalledOnce());
     expect(result.current.loading).toBe(true); expect(result.current.design).toBeUndefined();

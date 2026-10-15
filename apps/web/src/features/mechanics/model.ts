@@ -1,12 +1,13 @@
 import { getPinPositions, type Parameters } from '../pin-design/model';
 import { createPinContainment, geometryParameters, minimumPinClearance, pinVertices, resolvePinGeometries, type PinShape } from '../pin-shape/geometry';
 import type { Point, Region } from '../base-shape/layout';
+import { DEFAULT_LOWER_HEAD_GAP, DEFAULT_LOWER_HEAD_ANGLE, guideDimensions, type SlidingSettings } from './dimensions';
 
 export interface Construction {
   mode: 'fixed' | 'print-in-place';
-  sliding: { clearance: number; headFlare: number };
+  sliding: SlidingSettings;
 }
-export const DEFAULT_CONSTRUCTION: Construction = { mode: 'fixed', sliding: { clearance: 0.4, headFlare: 0.6 } };
+export const DEFAULT_CONSTRUCTION: Construction = { mode: 'fixed', sliding: { clearance: 0.6, headFlare: 0.7, lowerHeadGap: DEFAULT_LOWER_HEAD_GAP, lowerHeadAngle: DEFAULT_LOWER_HEAD_ANGLE } };
 
 export function profilePoints(shape: PinShape, diameter: number, offset = 0): Point[] {
   if (shape === 'round') return pinVertices(shape, diameter + 2 * offset);
@@ -31,16 +32,19 @@ export function baseRegions(parameters: Parameters): Region[] {
 export function mechanicalPadding(parameters: Parameters) {
   if (parameters.construction?.mode !== 'print-in-place') return 0;
   const { clearance, headFlare } = parameters.construction.sliding;
-  return Math.max((parameters.layout?.edgePadding ?? 0) + headFlare, clearance / 2 + 0.8, clearance / 2 + headFlare + 0.2);
+  const { lowerMouthOffset, upperMouthOffset } = guideDimensions(parameters.construction.sliding);
+  return Math.max((parameters.layout?.edgePadding ?? 0) + headFlare, clearance / 2 + 0.8, Math.max(lowerMouthOffset, upperMouthOffset) + 0.2);
 }
 
 export function validateMechanics(parameters: Parameters, heights?: Float32Array) {
   if (parameters.construction?.mode !== 'print-in-place') return;
   const { clearance, headFlare } = parameters.construction.sliding;
+  const { lowerMouthHeight, upperMouthHeight, lowerMouthOffset, lowerHeadHeight, upperHeadHeight } = guideDimensions(parameters.construction.sliding);
   if (![clearance, headFlare].every(value => Number.isFinite(value) && value > 0)) throw new Error('Sliding clearance and Head flare must be positive finite numbers.');
   if (headFlare - clearance / 2 < 0.2 - 1e-6) throw new Error('Head flare must exceed half the Sliding clearance by at least 0.2 mm.');
-  if (parameters.thickness - 2 * headFlare < 1 - 1e-6) throw new Error('Guide thickness must be at least 1 mm. Increase base thickness or reduce Head flare.');
+  if (parameters.thickness - lowerMouthHeight - upperMouthHeight < 1 - 1e-6) throw new Error('Guide thickness must be at least 1 mm. Increase base thickness or reduce Lower taper angle, Head flare or Lower head surface gap.');
   if ((heights ?? [parameters.extension]).some(value => !Number.isFinite(value) || value < 2 * headFlare - 1e-6)) throw new Error('Every pin extension must be at least twice the Head flare.');
+  if ((heights ?? [parameters.extension]).some(value => parameters.thickness + value <= lowerHeadHeight + upperHeadHeight)) throw new Error('Retaining head tapers must leave a positive shaft length. Increase pin extension or reduce Lower taper angle or Head flare.');
   const pins = getPinPositions(parameters), geometries = resolvePinGeometries(parameters), regions = baseRegions(parameters);
   const checks = new Map<string, ReturnType<typeof createPinContainment>>();
   const required = mechanicalPadding(parameters);
@@ -50,22 +54,23 @@ export function validateMechanics(parameters: Parameters, heights?: Float32Array
     if (!checks.get(key)!(pins[index].x, pins[index].y, required)) throw new Error(`Pin ${pins[index].id} needs more head padding or guide/mouth edge wall. Increase Edge padding or base size.`);
   }
   const gap = minimumPinClearance(parameters, pins);
-  const minimum = Math.max(2 * headFlare + 0.2, clearance + 0.8, clearance + 2 * headFlare + 0.2);
+  const minimum = Math.max(2 * headFlare + 0.2, clearance + 0.8, 2 * Math.max(lowerMouthOffset, clearance / 2 + headFlare) + 0.2);
   if (gap !== null && gap < minimum - 1e-6) throw new Error('Guide walls must be at least 0.8 mm; mouth walls and head gaps at least 0.2 mm. Increase spacing or reduce pin size.');
 }
 
 export function mechanicalWarnings(parameters: Parameters) {
   if (parameters.construction?.mode !== 'print-in-place') return [];
-  const { clearance, headFlare } = parameters.construction.sliding;
+  const { lowerMouthOffset, upperMouthOffset } = guideDimensions(parameters.construction.sliding);
+  const mouthOffset = Math.max(lowerMouthOffset, upperMouthOffset);
   const gap = minimumPinClearance(parameters, getPinPositions(parameters));
-  const thin = gap !== null && gap - clearance - 2 * headFlare < 0.8 - 1e-6;
+  const thin = gap !== null && gap - 2 * mouthOffset < 0.8 - 1e-6;
   const edgeThin = (() => {
     const checks = new Map<string, ReturnType<typeof createPinContainment>>(), regions = baseRegions(parameters), pins = getPinPositions(parameters);
     return resolvePinGeometries(parameters).some((geometry, index) => {
       const key = `${geometry.shape}:${geometry.rotation}`;
       if (!checks.has(key)) checks.set(key, createPinContainment(regions, geometryParameters(parameters, geometry)));
       const pin = pins[index];
-      return !checks.get(key)!(pin.x, pin.y, clearance / 2 + headFlare + 0.8);
+      return !checks.get(key)!(pin.x, pin.y, mouthOffset + 0.8);
     });
   })();
   return thin || edgeThin ? ['Guide mouths have less than 0.8 mm of material. Thin lips may be fragile; try a small fit sample first.'] : [];

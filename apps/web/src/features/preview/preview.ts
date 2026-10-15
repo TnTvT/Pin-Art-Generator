@@ -1,4 +1,5 @@
 import { createMechanicalPinGeometry, geometryFromMesh, type MechanicalMesh, type PinRole } from '../mechanics/preview-geometry';
+import { DEFAULT_LOWER_HEAD_ANGLE } from '../mechanics/dimensions';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { DEFAULT_MODEL_COLORS, pinCount, type ModelColors, type Parameters } from '../pin-design/model';
@@ -127,10 +128,11 @@ export function createPreview(container: HTMLDivElement): Preview {
     const nextGroups: PinInstanceGroup[] = [];
     for (const [shape, indices] of indicesByShape) for (const role of roles) {
       const group = pinGroups.find(candidate => candidate.shape === shape && candidate.role === role) ?? available.shift() ?? createGroup(shape);
-      const geometryKey = sliding ? `${shape}:${role}:${parameters.diameter}:${sliding.headFlare}` : `${shape}:fixed`;
+      const angle = role === 'bottom-head' ? sliding?.lowerHeadAngle ?? DEFAULT_LOWER_HEAD_ANGLE : 45;
+      const geometryKey = sliding ? `${shape}:${role}:${parameters.diameter}:${sliding.headFlare}:${angle}` : `${shape}:fixed`;
       if (group.shape !== shape || group.role !== role || sliding && group.geometryKey !== geometryKey) {
         group.mesh.geometry.dispose();
-        group.mesh.geometry = sliding && role ? createMechanicalPinGeometry(shape, parameters.diameter, sliding.headFlare, role) : createPinGeometry(shape);
+        group.mesh.geometry = sliding && role ? createMechanicalPinGeometry(shape, parameters.diameter, sliding.headFlare, role, angle) : createPinGeometry(shape);
         group.shape = shape;
       }
       group.role = role; group.geometryKey = geometryKey;

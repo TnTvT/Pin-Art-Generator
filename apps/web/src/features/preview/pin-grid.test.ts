@@ -10,6 +10,19 @@ const mesh = new InstancedMesh(geometry, material, 5000);
 afterEach(() => { mesh.count = 0; });
 
 describe('pin instance placement', () => {
+  it('places the longer 60-degree lower head without moving the upper head or pin top', () => {
+    const parameters = { ...DEFAULTS, columns: 1, rows: 1,
+      construction: { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.6, lowerHeadGap: 0.2, lowerHeadAngle: 60 } } };
+    const transform = new Matrix4();
+    updatePinInstances(mesh, parameters, new Float32Array([10]), undefined, 'shaft');
+    mesh.getMatrixAt(0, transform);
+    expect(new Vector3(0, 0, 0).applyMatrix4(transform).z).toBeCloseTo(0.6 * Math.sqrt(3));
+    expect(new Vector3(0, 0, 1).applyMatrix4(transform).z).toBeCloseTo(12.4);
+    updatePinInstances(mesh, parameters, new Float32Array([10]), undefined, 'top-head');
+    mesh.getMatrixAt(0, transform);
+    expect(new Vector3(0, 0, 0).applyMatrix4(transform).z).toBeCloseTo(12.4);
+    expect(new Vector3(0, 0, 0.6).applyMatrix4(transform).z).toBeCloseTo(13);
+  });
   it('places group-local instances using canonical positions, heights and rotations', () => {
     const parameters = { ...DEFAULTS, columns: 4, rows: 1, pinShape: 'triangle' as const, pinRotation: 120, pinGeometries: [
       { shape: 'round' as const, rotation: 90 }, { shape: 'square' as const, rotation: 0 },

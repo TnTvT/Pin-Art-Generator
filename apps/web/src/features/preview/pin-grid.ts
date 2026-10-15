@@ -1,4 +1,5 @@
 import type { PinRole } from '../mechanics/preview-geometry';
+import { guideDimensions } from '../mechanics/dimensions';
 import { InstancedMesh, Object3D } from 'three';
 import { pinCount, pinPosition, type Parameters } from '../pin-design/model';
 import { effectivePinRotation, type PinShape } from '../pin-shape/geometry';
@@ -15,6 +16,7 @@ export interface PinInstanceGroup {
 export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, heights?: Float32Array, indices?: readonly number[], role?: PinRole) {
   const instance = new Object3D();
   pins.count = indices?.length ?? pinCount(parameters);
+  const mechanics = role && parameters.construction?.mode === 'print-in-place' ? guideDimensions(parameters.construction.sliding) : undefined;
   for (let localIndex = 0; localIndex < pins.count; localIndex++) {
     const index = indices?.[localIndex] ?? localIndex;
     const geometry = parameters.pinGeometries?.[index];
@@ -24,11 +26,11 @@ export function updatePinInstances(pins: InstancedMesh, parameters: Parameters, 
     const extension = heights?.[index] ?? parameters.extension;
     instance.scale.set(parameters.diameter, extension, parameters.diameter);
     instance.position.set(position.x, position.y, parameters.thickness + extension / 2);
-    if (role && parameters.construction?.mode === 'print-in-place') {
-      const flare = parameters.construction.sliding.headFlare, length = parameters.thickness + extension;
+    if (role && mechanics) {
+      const { lowerHeadHeight, upperHeadHeight } = mechanics, length = parameters.thickness + extension;
       instance.rotation.set(0, 0, rotation * Math.PI / 180);
-      instance.scale.set(1, 1, role === 'shaft' ? length - 2 * flare : 1);
-      instance.position.z = role === 'shaft' ? flare : role === 'bottom-head' ? 0 : length - flare;
+      instance.scale.set(1, 1, role === 'shaft' ? length - lowerHeadHeight - upperHeadHeight : 1);
+      instance.position.z = role === 'shaft' ? lowerHeadHeight : role === 'bottom-head' ? 0 : length - upperHeadHeight;
     }
     instance.updateMatrix();
     pins.setMatrixAt(localIndex, instance.matrix);

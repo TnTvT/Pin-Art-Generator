@@ -96,8 +96,8 @@ def build_plate(request: ExportRequest) -> Plate:
             bottom = parameters.thickness
             diameter = parameters.diameter
             if request.mode == "print-in-place":
-                pin = sliding_pin(geometry.shape, diameter, parameters.thickness, length, request.sliding.clearance, request.sliding.head_flare)
-                pin_key = f"sliding:{geometry.shape}:{diameter!r}:{parameters.thickness!r}:{length!r}:{request.sliding.clearance!r}:{request.sliding.head_flare!r}"
+                pin = sliding_pin(geometry.shape, diameter, parameters.thickness, length, request.sliding.clearance, request.sliding.head_flare, request.sliding.lower_head_angle)
+                pin_key = f"sliding:{geometry.shape}:{diameter!r}:{parameters.thickness!r}:{length!r}:{request.sliding.clearance!r}:{request.sliding.head_flare!r}:{request.sliding.lower_head_angle!r}"
                 diameter, length, bottom = 1, 1, 0
             parts.append(Part(
                 placement.name, pin, request.pin_materials[pin_index],

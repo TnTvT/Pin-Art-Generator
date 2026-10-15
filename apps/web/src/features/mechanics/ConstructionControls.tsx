@@ -2,6 +2,7 @@ import { Accordion, SegmentedControl } from '@mantine/core';
 import ShapeNumberField from '../base-shape/ShapeNumberField';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import type { Construction } from './model';
+import { DEFAULT_LOWER_HEAD_GAP, DEFAULT_LOWER_HEAD_ANGLE } from './dimensions';
 
 export default function ConstructionControls({ value, onChange, disabled }: { value: Construction; onChange: (value: Construction) => void; disabled: boolean }) {
   return <div className="export-settings construction-controls">
@@ -19,7 +20,9 @@ export default function ConstructionControls({ value, onChange, disabled }: { va
           <ShapeNumberField label="Sliding clearance" value={value.sliding.clearance} disabled={disabled} onChange={clearance => onChange({ ...value, sliding: { ...value.sliding, clearance } })} />
           <ShapeNumberField label="Head flare" value={value.sliding.headFlare} disabled={disabled} onChange={headFlare => onChange({ ...value, sliding: { ...value.sliding, headFlare } })} />
         </div>
-        <InfoPopover label="Mechanical dimensions help"><p>Sliding clearance is total: half on each wall. Head flare is the outward offset and tapered head height. The guide section must be at least 1 mm thick; guide walls 0.8 mm; mouth walls and head gaps 0.2 mm.</p></InfoPopover>
+        <ShapeNumberField label="Lower taper angle (°)" millimeters={false} maximum={89.9} value={value.sliding.lowerHeadAngle ?? DEFAULT_LOWER_HEAD_ANGLE} disabled={disabled} onChange={lowerHeadAngle => onChange({ ...value, sliding: { ...value.sliding, lowerHeadAngle } })} />
+        <ShapeNumberField label="Lower head surface gap" value={value.sliding.lowerHeadGap ?? DEFAULT_LOWER_HEAD_GAP} disabled={disabled} onChange={lowerHeadGap => onChange({ ...value, sliding: { ...value.sliding, lowerHeadGap } })} />
+        <InfoPopover label="Mechanical dimensions help"><p>Sliding clearance is total: half on each shaft wall. Head flare controls both heads' outward width. Lower taper angle is measured from the print bed; the lower head and matching mouth default to 45°. Lower head surface gap defaults to 0.3 mm and is the shortest distance between their sloping surfaces, not a horizontal gap or distance to the print bed. Mouth width and depth are calculated from that gap and angle, with a small correction for rounded mesh facets. Shaft clearance, head widths, upper head and upper mouth stay unchanged; upper tapers remain 45°. Steeper angles or larger gaps may need more base thickness or spacing. The guide section must be at least 1 mm thick; guide walls 0.8 mm; mouth walls and head gaps 0.2 mm. These are model dimensions, not a guarantee of physical release.</p></InfoPopover>
       </Accordion.Panel></Accordion.Item>
     </Accordion>}
   </div>;

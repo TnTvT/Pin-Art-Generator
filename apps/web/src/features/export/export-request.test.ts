@@ -28,7 +28,7 @@ describe('export request mapping', () => {
       heights: Array(320).fill(20), materials: ['#8e9089', '#00b1b7'],
       filamentProfiles: ['bambu-pla-basic', 'bambu-pla-basic'],
       baseMaterial: 0, pinMaterials: Array(320).fill(1),
-      sliding: { clearance: 0.4, headFlare: 0.6 },
+      sliding: { clearance: 0.6, headFlare: 0.7, lowerHeadGap: 0.3, lowerHeadAngle: 45 },
     });
   });
 
@@ -69,7 +69,7 @@ describe('print validation', () => {
     expect(validateExport({ ...parameters, depth: 2 }, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toBeNull();
   });
   it('uses actual square wall gaps rather than enclosing circles for guide mouths', () => {
-    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 3.4 };
+    const parameters = { ...DEFAULTS, pinShape: 'square' as const, spacing: 4 };
     const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
     expect(validateExport(parameters, undefined, options, '3mf')).toBeNull();
     expect(validateExport({ ...parameters, pinRotation: 45 }, undefined, options, '3mf')).toMatch(/Guide walls/);
@@ -112,18 +112,19 @@ describe('print validation', () => {
 
   it('validates guides, heads and mouth walls for print-in-place', () => {
     const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
-    expect(validateExport(DEFAULTS, undefined, options)).toBeNull();
+    expect(validateExport(DEFAULTS, undefined, options)).toMatch(/wall/i);
+    expect(validateExport({ ...DEFAULTS, spacing: 4.5 }, undefined, options)).toBeNull();
     expect(validateExport({ ...DEFAULTS, thickness: 1.5 }, undefined, options)).toMatch(/Guide thickness/);
     expect(validateExport({ ...DEFAULTS, spacing: 3.3 }, undefined, options)).toMatch(/wall/i);
     expect(validateExport({ ...DEFAULTS, thickness: 0.5 }, undefined, DEFAULT_EXPORT_OPTIONS)).toBeNull();
   });
   it('requires print-in-place 3MF margins but keeps STL printer-independent', () => {
     const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
-    const large = { ...DEFAULTS, width: 247 };
+    const large = { ...DEFAULTS, spacing: 4.5, width: 247 };
     expect(validateExport(large, undefined, options, '3mf')).toMatch(/5 mm/);
     expect(validateExport(large, undefined, options, 'stl')).toBeNull();
-    const request = buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, options, '3mf');
-    expect(request.sliding).toEqual({ clearance: 0.4, headFlare: 0.6 });
+    const request = buildExportRequest({ ...DEFAULTS, spacing: 4.5 }, undefined, DEFAULT_MODEL_MATERIALS, options, '3mf');
+    expect(request.sliding).toEqual({ clearance: 0.6, headFlare: 0.7, lowerHeadGap: 0.3, lowerHeadAngle: 45 });
     expect(request.parameters).not.toHaveProperty('construction');
     expect(request).not.toHaveProperty('socket');
     expect(request).not.toHaveProperty('plate');

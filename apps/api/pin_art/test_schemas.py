@@ -1,10 +1,12 @@
 import copy
+from math import cos, pi, sqrt
 
 import pytest
 from pydantic import ValidationError
 
 from pin_art.schemas import ExportRequest
 
+LEGACY_LOWER_HEAD_GAP = 0.2 / sqrt(1 / cos(pi / 63) ** 2 + 1)
 
 def request_payload(**overrides):
     payload = {
@@ -24,7 +26,7 @@ def request_payload(**overrides):
         "materials": ["#112233", "#AABBCC"],
         "baseMaterial": 0,
         "pinMaterials": [1, 0, 1, 0],
-        "sliding": {"clearance": 0.4, "headFlare": 0.4},
+        "sliding": {"clearance": 0.4, "headFlare": 0.4, "lowerHeadGap": LEGACY_LOWER_HEAD_GAP, "lowerHeadAngle": 45},
     }
     payload.update(overrides)
     return copy.deepcopy(payload)
@@ -47,12 +49,14 @@ def test_filament_profiles_are_optional_and_round_trip_when_supplied():
     assert request.model_dump(by_alias=True) == payload
 
 
-def test_default_sliding_settings_increase_retention_not_clearance():
+def test_default_sliding_settings_use_requested_shaft_clearance_and_lower_gap():
     payload = request_payload(mode="print-in-place")
     payload.pop("sliding")
     request = ExportRequest.model_validate(payload)
-    assert request.sliding.clearance == 0.4
-    assert request.sliding.head_flare == 0.6
+    assert request.sliding.clearance == 0.6
+    assert request.sliding.head_flare == 0.7
+    assert request.sliding.lower_head_gap == 0.3
+    assert request.sliding.lower_head_angle == 45
 
 
 def test_manual_heights_can_exceed_generator_extension():

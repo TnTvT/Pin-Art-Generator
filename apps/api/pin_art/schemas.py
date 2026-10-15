@@ -49,8 +49,10 @@ class Parameters(DomainModel):
 
 
 class SlidingParameters(DomainModel):
-    clearance: PositiveNumber = 0.4
-    head_flare: PositiveNumber = Field(default=0.6, alias="headFlare")
+    clearance: PositiveNumber = 0.6
+    head_flare: PositiveNumber = Field(default=0.7, alias="headFlare")
+    lower_head_gap: PositiveNumber = Field(default=0.3, alias="lowerHeadGap")
+    lower_head_angle: Annotated[float, Field(gt=0, lt=90, allow_inf_nan=False)] = Field(default=45, alias="lowerHeadAngle")
 
 
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]

@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import fixtureData from '../../../../../fixtures/sliding-profiles.json?raw';
 import solidData from '../../../../../fixtures/sliding-solids.json?raw';
+import releaseData from '../../../../../fixtures/sliding-release.json?raw';
 import { DEFAULTS } from '../pin-design/model';
 import { createEditorState, editorReducer } from '../pin-editing/model';
 import { profilePoints } from './model';
 import { buildMechanicalBase, createMechanicalPinGeometry, geometryFromMesh } from './preview-geometry';
 import type { PinShape } from '../pin-shape/geometry';
+import { guideDimensions } from './dimensions';
 
 const fixtures = JSON.parse(fixtureData) as { shape: PinShape; diameter: number; offset: number; points: number[][] }[];
-const construction = { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4 } };
+const construction = { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.4, lowerHeadGap: 0.2 / Math.sqrt(1 / Math.cos(Math.PI / 63) ** 2 + 1), lowerHeadAngle: 45 } };
 const solids = JSON.parse(solidData) as { shape: PinShape; baseVolume: number; pinVolume: number }[];
+const releaseFixtures = JSON.parse(releaseData) as { shape: PinShape; diameter: number; clearance: number; headFlare: number; lowerHeadGap: number; lowerHeadAngle: number; thickness: number; extension: number; lowerMouthHeight: number; lowerMouthOffset: number; upperMouthHeight: number; upperMouthOffset: number; baseVolume: number; pinVolume: number }[];
 function signedVolume(geometry: ReturnType<typeof geometryFromMesh>) {
   const positions = geometry.getAttribute('position'), first = new Vector3(), second = new Vector3(), third = new Vector3();
   let volume = 0;
@@ -21,6 +24,40 @@ function signedVolume(geometry: ReturnType<typeof geometryFromMesh>) {
   return volume;
 }
 describe('mechanical geometry parity', () => {
+  it('changes only lower tapers and preserves the original upper mouth', () => {
+    const parameters = { ...DEFAULTS, width: 20, depth: 20, columns: 1, rows: 1, diameter: 3,
+      construction: { mode: 'print-in-place' as const, sliding: { clearance: 0.4, headFlare: 0.6, lowerHeadGap: 0.2, lowerHeadAngle: 60 } } };
+    const base = geometryFromMesh(buildMechanicalBase(parameters));
+    const positions = base.getAttribute('position');
+    const innerVertices = Array.from({ length: positions.count }, (_, index) => new Vector3().fromBufferAttribute(positions, index)).filter(vertex => Math.abs(vertex.x) < 5 && Math.abs(vertex.y) < 5);
+    const topRadii = innerVertices.filter(vertex => Math.abs(vertex.z - 3) < 1e-6).map(vertex => Math.hypot(vertex.x, vertex.y));
+    const bottomRadii = innerVertices.filter(vertex => Math.abs(vertex.z) < 1e-6).map(vertex => Math.hypot(vertex.x, vertex.y));
+    expect(Math.max(...topRadii)).toBeCloseTo(2.3, 6);
+    expect(Math.max(...bottomRadii)).toBeCloseTo(2.331155716721474, 6);
+    expect(innerVertices.some(vertex => Math.abs(vertex.z - 2.4) < 1e-6)).toBe(true);
+    expect(innerVertices.some(vertex => Math.abs(vertex.z - 1.093193768849142) < 1e-6)).toBe(true);
+    base.dispose();
+  });
+  it.each(releaseFixtures)('matches lower-taper Python solids and preserves $shape head widths', fixture => {
+    const sliding = { clearance: fixture.clearance, headFlare: fixture.headFlare, lowerHeadGap: fixture.lowerHeadGap, lowerHeadAngle: fixture.lowerHeadAngle };
+    expect(guideDimensions(sliding).lowerMouthHeight).toBeCloseTo(fixture.lowerMouthHeight);
+    expect(guideDimensions(sliding).lowerMouthOffset).toBeCloseTo(fixture.lowerMouthOffset);
+    expect(guideDimensions(sliding).upperMouthHeight).toBeCloseTo(fixture.upperMouthHeight);
+    expect(guideDimensions(sliding).upperMouthOffset).toBeCloseTo(fixture.upperMouthOffset);
+    const parameters = { ...DEFAULTS, width: 20, depth: 20, columns: 1, rows: 1, diameter: fixture.diameter, thickness: fixture.thickness,
+      construction: { mode: 'print-in-place' as const, sliding }, pinShape: fixture.shape };
+    const base = geometryFromMesh(buildMechanicalBase(parameters));
+    expect(signedVolume(base)).toBeCloseTo(fixture.baseVolume, 4);
+    const lower = createMechanicalPinGeometry(fixture.shape, fixture.diameter, fixture.headFlare, 'bottom-head', fixture.lowerHeadAngle);
+    const upper = createMechanicalPinGeometry(fixture.shape, fixture.diameter, fixture.headFlare, 'top-head');
+    const shaft = createMechanicalPinGeometry(fixture.shape, fixture.diameter, fixture.headFlare, 'shaft');
+    expect(signedVolume(lower) + signedVolume(upper) + signedVolume(shaft) * (fixture.thickness + fixture.extension - guideDimensions(sliding).lowerHeadHeight - fixture.headFlare)).toBeCloseTo(fixture.pinVolume, 4);
+    const positions = base.getAttribute('position');
+    const innerVertices = Array.from({ length: positions.count }, (_, index) => new Vector3().fromBufferAttribute(positions, index)).filter(vertex => Math.abs(vertex.x) < 5 && Math.abs(vertex.y) < 5);
+    expect(innerVertices.some(vertex => Math.abs(vertex.z - fixture.lowerMouthHeight) < 1e-6)).toBe(true);
+    expect(innerVertices.some(vertex => Math.abs(vertex.z - (fixture.thickness - fixture.upperMouthHeight)) < 1e-6)).toBe(true);
+    base.dispose(); lower.dispose(); upper.dispose(); shaft.dispose();
+  });
   it.each(fixtures)('$shape $diameter/$offset profiles match Python', fixture => {
     const points = profilePoints(fixture.shape, fixture.diameter, fixture.offset);
     expect(points).toHaveLength(fixture.points.length);
@@ -34,7 +71,7 @@ describe('mechanical geometry parity', () => {
     expect(base.boundingBox!.max.toArray()).toEqual([10, 10, 3]);
     const solid = solids.find(value => value.shape === shape)!;
     expect(signedVolume(base)).toBeCloseTo(solid.baseVolume, 4);
-    const lower = createMechanicalPinGeometry(shape, 2, 0.4, 'bottom-head');
+    const lower = createMechanicalPinGeometry(shape, 2, 0.4, 'bottom-head', 45);
     const shaft = createMechanicalPinGeometry(shape, 2, 0.4, 'shaft');
     const upper = createMechanicalPinGeometry(shape, 2, 0.4, 'top-head');
     expect(signedVolume(lower) + signedVolume(upper) + signedVolume(shaft) * 12.2).toBeCloseTo(solid.pinVolume, 4);
