@@ -63,6 +63,13 @@ describe('export request mapping', () => {
 });
 
 describe('print validation', () => {
+  it.each(['stl', '3mf'] as const)('blocks Triangle pins in print-in-place %s without limiting fixed exports', format => {
+    const parameters = { ...DEFAULTS, columns: 2, rows: 1, spacing: 6,
+      pinGeometries: [{ shape: 'round' as const, rotation: 0 }, { shape: 'triangle' as const, rotation: 30 }] };
+    const options = { ...DEFAULT_EXPORT_OPTIONS, mode: 'print-in-place' as const };
+    expect(validateExport(parameters, undefined, options, format)).toMatch(/Triangle.*Fixed sculpture/);
+    expect(validateExport(parameters, undefined, DEFAULT_EXPORT_OPTIONS, format)).toBeNull();
+  });
   it('checks asymmetric polygon containment in the legacy path, not just total footprint size', () => {
     const parameters = { ...DEFAULTS, columns: 1, rows: 1, depth: 1.5, pinShape: 'triangle' as const };
     expect(validateExport(parameters, undefined, DEFAULT_EXPORT_OPTIONS, '3mf')).toMatch(/boundary/);

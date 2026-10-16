@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../pin-design/model';
 import { createEditorState, editorReducer, resolveDesign } from './model';
+import { DEFAULT_CONSTRUCTION } from '../mechanics/model';
 
 const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
 function selected() {
   return editorReducer(createEditorState(2, parameters), { type: 'select', ids: [0], operation: 'replace' });
 }
 describe('transactional per-pin geometry', () => {
+  it('rejects Triangle edits and history restoration in print-in-place atomically', () => {
+    const movable = { ...parameters, spacing: 6, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } };
+    const initial = editorReducer(createEditorState(2, movable), { type: 'select', ids: [0], operation: 'replace' });
+    const rejected = editorReducer(initial, { type: 'geometry', geometry: { shape: 'triangle', rotation: 0 } });
+    expect(rejected.error).toMatch(/Triangle.*Fixed sculpture/);
+    expect(rejected.overrides).toBe(initial.overrides);
+    expect(rejected.past).toBe(initial.past);
+    let edited = editorReducer(selected(), { type: 'geometry', geometry: { shape: 'triangle', rotation: 0 } });
+    edited = editorReducer(edited, { type: 'geometry', geometry: { shape: 'round', rotation: 0 } });
+    edited = editorReducer(edited, { type: 'generation', parameters: movable });
+    const undone = editorReducer(edited, { type: 'undo' });
+    expect(undone.error).toMatch(/Triangle.*Fixed sculpture/);
+    expect(undone.overrides).toBe(edited.overrides);
+    expect(undone.past).toBe(edited.past);
+  });
   it('changes only selected geometry, preserving height/material and explicit default-equal overrides', () => {
     let state = editorReducer(selected(), { type: 'height', heights: new Float32Array([20, 20]), value: 30, mode: 'set' });
     state = editorReducer(state, { type: 'geometry', geometry: { shape: 'square', rotation: 45 } });

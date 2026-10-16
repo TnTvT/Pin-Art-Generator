@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Accordion, Alert, Badge, Button, Group, Modal, NumberInput } from '@mantine/core';
 import ConstructionControls from '../features/mechanics/ConstructionControls';
-import { DEFAULT_CONSTRUCTION, mechanicalWarnings } from '../features/mechanics/model';
+import { DEFAULT_CONSTRUCTION, mechanicalWarnings, minimumPrintInPlaceSpacing, type Construction } from '../features/mechanics/model';
 import ThemeToggle from './ThemeToggle';
 import ParameterField from '../features/pin-design/ParameterField';
 import ModelPreview from '../features/preview/ModelPreview';
@@ -104,6 +104,16 @@ export default function App() {
     setDraft(current => ({ ...current, extension: upper }));
   }
 
+  function changeConstruction(construction: Construction) {
+    if (editor.isDragging || pendingDesign !== null) return;
+    const enteringPrintInPlace = construction.mode === 'print-in-place' && requested.construction?.mode !== 'print-in-place';
+    const spacing = enteringPrintInPlace
+      ? Math.max(requested.spacing, minimumPrintInPlaceSpacing(requested.diameter, construction.sliding))
+      : requested.spacing;
+    setRequested(current => ({ ...current, construction, spacing }));
+    if (spacing !== requested.spacing) setDraft(current => ({ ...current, spacing }));
+  }
+
   function resetParameters() {
     if (editor.isDragging) return;
     setRequested({ ...DEFAULTS });
@@ -161,7 +171,7 @@ export default function App() {
               placementBlocked={editor.isDragging || pendingDesign !== null}
               onPlacementChange={placement => { if (!editor.isDragging && !pendingDesign) imagePlacement.change(placement); }}
               loading={image.loading}
-              error={image.error || mapping.error}
+              error={image.error || (mapping.suggestedSpacing === undefined ? mapping.error : null)}
               minimum={minimum}
               maximum={requested.extension}
               inverted={inverted}
@@ -191,7 +201,7 @@ export default function App() {
             {image.error && !image.source && <Button variant="subtle" size="xs" onClick={image.remove}>Clear image error and use uniform pins</Button>}
             <section className="controls-panel" aria-label="Parameters">
               <div className="controls-heading"><h2>Parameters</h2><span>01 / DESIGN</span></div>
-              <ConstructionControls value={requested.construction ?? DEFAULT_CONSTRUCTION} disabled={editor.isDragging || pendingDesign !== null} onChange={construction => setRequested(current => ({ ...current, construction }))} />
+              <ConstructionControls value={requested.construction ?? DEFAULT_CONSTRUCTION} hasTrianglePins={requested.pinShape === 'triangle' || editor.committed.pinGeometries.some(geometry => geometry.shape === 'triangle')} suggestedSpacing={mapping.suggestedSpacing} onUseSuggestedSpacing={spacing => changeParameter('spacing', spacing)} disabled={editor.isDragging || pendingDesign !== null} onChange={changeConstruction} />
               <Accordion multiple defaultValue={['base', 'pins']} order={3} className="parameter-accordion">
                 <Accordion.Item value="base">
                   <Accordion.Control><span className="section-heading"><span>Base plate</span><span>Foundation</span></span></Accordion.Control>

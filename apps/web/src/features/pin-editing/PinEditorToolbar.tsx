@@ -7,6 +7,7 @@ import type { HeightMode } from './model';
 import type { PinEditor } from './usePinEditor';
 import { summarizeColors } from './color-summary';
 import type { PinGeometry, PinShape } from '../pin-shape/geometry';
+import { pinShapeOptions, TRIANGLE_FIXED_ONLY } from '../pin-shape/availability';
 
 const shapeLabels = { round: 'Round', square: 'Square', triangle: 'Triangle' };
 function effectiveRotation(geometry: PinGeometry) {
@@ -36,6 +37,8 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
   const selectedRotation = selectedGeometry ? effectiveRotation(selectedGeometry) : 0;
   const mixedRotation = selected.some(index => effectiveRotation(committed.pinGeometries[index]) !== selectedRotation);
   const shape = geometryDraft ? geometryDraft.shape : mixedShape ? null : selectedGeometry?.shape ?? null;
+  const shapeChoices = pinShapeOptions(parameters?.construction?.mode);
+  const shapeAvailable = shape !== null && shapeChoices.some(option => option.value === shape);
   const polygonRotation = geometryDraft?.rotation ?? (mixedRotation ? '' : selectedRotation);
   const rotation = shape === 'round' ? 0 : polygonRotation;
   const validRotation = typeof rotation === 'number' && Number.isFinite(rotation) && rotation >= 0 && rotation <= 360;
@@ -53,7 +56,7 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
   }
   function selectAll() { editor.select(Array.from({ length: state.count }, (_, index) => index), 'replace'); }
   function applyGeometry() {
-    if (shape && validRotation && !disabled) {
+    if (shape && shapeAvailable && validRotation && !disabled) {
       setGeometryDraft({ shape, rotation: polygonRotation });
       editor.dispatch({ type: 'geometry', geometry: { shape, rotation: rotation === 360 ? 0 : rotation } });
     }
@@ -121,16 +124,17 @@ export default function PinEditorToolbar({ editor, columns = 1, parameters }: { 
             <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setHeightDrafts(current => { const next = { ...current }; delete next[editor.heightMode]; return next; })}>Use selected height</Button></Group>
       </> : popover === 'shape' ? <>
           <fieldset className="export-mode"><legend>Selected shape{!shape ? ' · Mixed' : ''}</legend>
-            <SegmentedControl fullWidth value={shape ?? ''} onChange={next => setGeometryDraft({ shape: next as PinShape, rotation: polygonRotation })} disabled={disabled}
-              data={[{ label: 'Round', value: 'round' }, { label: 'Square', value: 'square' }, { label: 'Triangle', value: 'triangle' }]} size="sm" />
+            <SegmentedControl fullWidth value={shapeAvailable ? shape! : ''} onChange={next => setGeometryDraft({ shape: next as PinShape, rotation: polygonRotation })} disabled={disabled}
+              data={shapeChoices} size="sm" />
           </fieldset>
           {!shape && <p>Choose a shape before applying to this mixed selection.</p>}
+          {shape && !shapeAvailable && <p role="status">{TRIANGLE_FIXED_ONLY}</p>}
           <NumberInput label="Selected rotation" value={rotation} placeholder={rotation === '' && mixedRotation ? 'Mixed' : undefined}
             onChange={changeRotation} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyGeometry(); } }} suffix="°" min={0} max={360} step={1} decimalScale={2} clampBehavior="none" disabled={disabled || shape === 'round'} size="sm"
             error={validRotation || rotation === '' && mixedRotation ? undefined : 'Enter an angle from 0 to 360 degrees, then Apply.'} />
           <Slider thumbLabel="Selected rotation slider" thumbValueText={next => `${next} degrees`} min={0} max={360} step={1} value={validRotation ? rotation : 0} disabled={disabled || shape === 'round'} onChange={changeRotation} label={next => `${next}°`}
             thumbProps={{ onKeyDown: event => { if (event.key === 'Enter') { event.preventDefault(); applyGeometry(); } } }} />
-          <Group gap="xs"><Button size="xs" disabled={disabled || !shape || !validRotation} onClick={applyGeometry}>Apply shape</Button>
+          <Group gap="xs"><Button size="xs" disabled={disabled || !shapeAvailable || !validRotation} onClick={applyGeometry}>Apply shape</Button>
             <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setGeometryDraft(null)}>Use selected shape</Button></Group>
       </> : <>
           <FilamentColorField label="Selection color" value={material} mixed={mixedMaterial && !materialDirty}

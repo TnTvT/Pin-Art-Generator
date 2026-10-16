@@ -30,6 +30,19 @@ beforeEach(() => {
   vi.mocked(startShapeJob).mockImplementation(request => ({ promise: Promise.resolve({ result: generateLayout(request.parameters, request.shape, request.image), elapsedMs: 1 }), cancel: vi.fn() }));
 });
 describe('atomic design generation', () => {
+  it('returns actionable spacing validation and applies the pending circle once spacing is corrected', async () => {
+    const input = { ...settings, shape: { ...DEFAULT_SHAPE, preset: 'circle' as const }, parameters: { ...DEFAULTS, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } } };
+    const { result, rerender } = renderHook(({ input }) => useDesignGeneration(input, committed, editor), { initialProps: { input } });
+    await waitFor(() => expect(result.current.error).toMatch(/Guide walls/));
+    expect(result.current.suggestedSpacing).toBe(4.5);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.design).toBeUndefined();
+    rerender({ input: { ...input, parameters: { ...input.parameters, spacing: 4.5 } } });
+    await waitFor(() => expect(result.current.design).toBeDefined());
+    expect(result.current.error).toBeNull();
+    expect(result.current.suggestedSpacing).toBeUndefined();
+    expect(result.current.design!.parameters).toMatchObject({ width: 120, depth: 120, spacing: 4.5, construction: { mode: 'print-in-place' } });
+  });
   it('shares height/color samples and keeps generated heights independent of manual height edits', async () => {
     const count = committed.layout.pins.length;
     const materials = Array(count).fill(DEFAULT_MODEL_MATERIALS.pins);

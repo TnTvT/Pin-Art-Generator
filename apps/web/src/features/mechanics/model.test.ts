@@ -1,11 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../pin-design/model';
 import { DEFAULT_SHAPE, generateLayout } from '../base-shape/layout';
-import { DEFAULT_CONSTRUCTION, profilePoints, validateMechanics } from './model';
+import { DEFAULT_CONSTRUCTION, MechanicalSpacingError, minimumPrintInPlaceSpacing, profilePoints, validateMechanics } from './model';
 
 const construction = { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const };
 const parameters = { ...DEFAULTS, spacing: 4.5, ...generateLayout({ ...DEFAULTS, spacing: 4.5, construction }, DEFAULT_SHAPE), construction };
 describe('print-in-place mechanics', () => {
+  it.each([[2, 4.5], [2.5, 5], [3, 5.5]])('calculates safe spacing for %s mm pins', (diameter, spacing) => {
+    expect(minimumPrintInPlaceSpacing(diameter, construction.sliding)).toBe(spacing);
+    expect(() => validateMechanics({ ...parameters, layout: undefined, diameter, spacing })).not.toThrow();
+  });
+  it('derives safe spacing from the selected mechanical settings', () => {
+    const sliding = { ...construction.sliding, lowerHeadGap: 0.4 };
+    const spacing = minimumPrintInPlaceSpacing(2, sliding);
+    expect(spacing).toBe(4.8);
+    expect(() => validateMechanics({ ...parameters, layout: undefined, spacing, construction: { ...construction, sliding } })).not.toThrow();
+  });
+  it.each([{ diameter: 2, spacing: 4, suggestedSpacing: 4.5 }, { diameter: 3, spacing: 5, suggestedSpacing: 5.5 }])('suggests safe explicit spacing for $diameter mm pins without mutating the design', ({ diameter, spacing, suggestedSpacing }) => {
+    expect.assertions(4);
+    const input = { ...parameters, layout: undefined, diameter, spacing };
+    try { validateMechanics(input); } catch (error) {
+      expect(error).toBeInstanceOf(MechanicalSpacingError);
+      expect(error).toMatchObject({ suggestedSpacing });
+      expect(input.spacing).toBe(spacing);
+      expect(() => validateMechanics({ ...input, spacing: suggestedSpacing })).not.toThrow();
+    }
+  });
   it('validates surface gap independently of shaft clearance and retaining head size', () => {
     expect(() => validateMechanics(parameters)).not.toThrow();
     expect(() => validateMechanics({ ...parameters, construction: { ...construction, sliding: { ...construction.sliding, lowerHeadGap: -0.1 } } })).toThrow('Lower head surface gap');

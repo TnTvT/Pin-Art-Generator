@@ -6,6 +6,23 @@ import ConstructionControls from './ConstructionControls';
 import { DEFAULT_CONSTRUCTION } from './model';
 
 describe('construction controls', () => {
+  it('offers an explicit spacing recovery action without changing parameters on render', async () => {
+    const user = userEvent.setup(), onChange = vi.fn(), apply = vi.fn();
+    renderWithProviders(<ConstructionControls value={{ ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' }} disabled={false} onChange={onChange} suggestedSpacing={4.5} onUseSuggestedSpacing={apply} />);
+    expect(screen.getByText(/last valid preview/i)).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Use 4.5 mm spacing' }));
+    expect(apply).toHaveBeenCalledExactlyOnceWith(4.5);
+  });
+  it('blocks switching designs with Triangle pins to print-in-place without changing them', () => {
+    const onChange = vi.fn();
+    renderWithProviders(<ConstructionControls value={DEFAULT_CONSTRUCTION} disabled={false} hasTrianglePins onChange={onChange} />);
+    expect(screen.getByRole('radio', { name: 'Print-in-place' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Fixed sculpture' })).toBeChecked();
+    expect(screen.getByText(/Change Triangle pins to Round or Square/)).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
   it('edits surface gap and angle without changing shaft clearance or head width', async () => {
     const user = userEvent.setup(), onChange = vi.fn();
     const value = { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const };

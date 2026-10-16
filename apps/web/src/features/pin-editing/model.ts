@@ -3,6 +3,7 @@ export { materialKey } from '../filaments/materials';
 import { validateMechanics } from '../mechanics/model';
 import { pinCount, type Parameters } from '../pin-design/model';
 import { resolvePinGeometries, validateResolvedGeometry, type PinGeometry } from '../pin-shape/geometry';
+import { validatePinShapeAvailability } from '../pin-shape/availability';
 
 export type HeightMode = 'set' | 'offset';
 export type SelectionOperation = 'replace' | 'add' | 'toggle';
@@ -70,7 +71,9 @@ export function validateEditedMechanics(parameters: Parameters, overrides: Reado
   if (parameters.construction?.mode !== 'print-in-place') return;
   const heights = generated?.slice() ?? new Float32Array(pinCount(parameters)).fill(parameters.extension);
   for (const [index, value] of overrides) if (value.height !== undefined && index < heights.length) heights[index] = value.height;
-  validateMechanics({ ...parameters, pinGeometries: resolveEditedGeometries(parameters, overrides) }, heights);
+  const resolved = { ...parameters, pinGeometries: resolveEditedGeometries(parameters, overrides) };
+  validatePinShapeAvailability(resolved);
+  validateMechanics(resolved, heights);
 }
 
 function commit(state: EditorState, overrides: Map<number, PinOverride>, base = state.base): EditorState {

@@ -7,6 +7,7 @@ import usePinEditor from './usePinEditor';
 import PinEditorToolbar from './PinEditorToolbar';
 import type { PinShape } from '../pin-shape/geometry';
 import type { PinEditor } from './usePinEditor';
+import { DEFAULT_CONSTRUCTION } from '../mechanics/model';
 
 function geometryEditor(geometries: { shape: PinShape; rotation: number }[], selection = [0, 1]) {
   const dispatch = vi.fn();
@@ -33,6 +34,25 @@ async function openMaterial(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('preview editing toolbar', () => {
+  it('hides Triangle and blocks a cached Triangle draft in print-in-place without discarding it', async () => {
+    const user = userEvent.setup();
+    const { editor, dispatch } = geometryEditor([{ shape: 'round', rotation: 0 }], [0]);
+    const view = renderWithProviders(<PinEditorToolbar editor={editor} parameters={DEFAULTS} />);
+    await user.click(screen.getByRole('button', { name: 'Shape' }));
+    await user.click(screen.getByRole('radio', { name: 'Triangle' }));
+    const parameters = { ...DEFAULTS, construction: { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const } };
+    view.rerender(<PinEditorToolbar editor={editor} parameters={parameters} />);
+    expect(screen.queryByRole('radio', { name: 'Triangle' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply shape' })).toBeDisabled();
+    fireEvent.keyDown(screen.getByLabelText('Selected rotation'), { key: 'Enter' });
+    expect(dispatch).not.toHaveBeenCalled();
+    view.rerender(<PinEditorToolbar editor={editor} parameters={DEFAULTS} />);
+    expect(screen.getByRole('radio', { name: 'Triangle' })).toBeChecked();
+    view.rerender(<PinEditorToolbar editor={editor} parameters={parameters} />);
+    await user.click(screen.getByRole('radio', { name: 'Square' }));
+    await user.click(screen.getByRole('button', { name: 'Apply shape' }));
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: 'geometry', geometry: { shape: 'square', rotation: 0 } });
+  });
   it('requires an explicit mixed shape and submits shape and rotation together with Apply or Enter', async () => {
     const user = userEvent.setup();
     const { editor, dispatch } = geometryEditor([{ shape: 'square', rotation: 15 }, { shape: 'triangle', rotation: 45 }]);

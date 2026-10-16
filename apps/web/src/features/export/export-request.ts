@@ -5,6 +5,7 @@ import { resolveFilamentProfile, type FilamentProfile, type MaterialSelection, t
 import { type Layout, type Region } from '../base-shape/layout';
 import { effectivePinRotation, resolvePinGeometries, resolvedContainment, validatePinGeometry, type PinGeometry } from '../pin-shape/geometry';
 import { DEFAULT_PRINTER, PRINTER_PROFILES, validatePrinterMaterials, type PrinterId } from './printer-profiles';
+import { validatePinShapeAvailability } from '../pin-shape/availability';
 
 export type ExportFormat = 'stl' | '3mf';
 export type ExportMode = Construction['mode'];
@@ -49,7 +50,10 @@ export function validateExport(parameters: Parameters, heights: Float32Array | u
   if (heights && (heights.length !== metrics.count || heights.some((height) => !Number.isFinite(height) || height <= 0))) {
     return 'Resolved pin heights are invalid or incomplete. Every pin must have a finite height greater than 0 mm.';
   }
-  try { validateMechanics({ ...parameters, construction: options }, heights); }
+  try {
+    validatePinShapeAvailability({ ...parameters, construction: options });
+    validateMechanics({ ...parameters, construction: options }, heights);
+  }
   catch (error) { return error instanceof Error ? error.message : 'Invalid print-in-place structure.'; }
   if (format === '3mf') {
     const profile = PRINTER_PROFILES[options.printer ?? DEFAULT_PRINTER];

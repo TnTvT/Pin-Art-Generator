@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { startMechanicalJob } from '../mechanics/mechanical-worker';
+import { MechanicalSpacingError } from '../mechanics/model';
 import type { MechanicalMesh } from '../mechanics/preview-geometry';
 import type { PinGeometry } from '../pin-shape/geometry';
 import type { Parameters } from '../pin-design/model';
@@ -20,7 +21,7 @@ export interface GeneratedDesign { parameters: Parameters; heightMap: HeightMap 
 
 export default function useDesignGeneration(settings: GenerationSettings, committed: Parameters, editor: PinEditor) {
   const [retry, setRetry] = useState(0);
-  const [status, setStatus] = useState<{ job: object; design?: GeneratedDesign; error?: string; geometryConflict?: boolean } | null>(null);
+  const [status, setStatus] = useState<{ job: object; design?: GeneratedDesign; error?: string; geometryConflict?: boolean; suggestedSpacing?: number } | null>(null);
   const geometrySignature = JSON.stringify([...editor.state.overrides].filter(([, value]) => value.geometry));
   const overridesSignature = JSON.stringify([...editor.state.overrides].flatMap(([index, value]) => value.material ? [{ index, material: value.material }] : []));
   const overrides = useMemo(() => JSON.parse(overridesSignature) as MaterialOverride[], [overridesSignature]);
@@ -119,7 +120,7 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
         designCache.current = { settings, retry, design, geometrySignature };
         setStatus({ job, design });
       } catch (error) {
-        if (active) setStatus({ job, geometryConflict, error: `${error instanceof Error ? error.message : 'Design generation failed.'} Current settings have not been applied.` });
+        if (active) setStatus({ job, geometryConflict, error: `${error instanceof Error ? error.message : 'Design generation failed.'} Current settings have not been applied.`, suggestedSpacing: error instanceof MechanicalSpacingError ? error.suggestedSpacing : undefined });
       }
     }
     void run();
@@ -128,5 +129,6 @@ export default function useDesignGeneration(settings: GenerationSettings, commit
 
   return { job, design: status?.job === job ? status.design : undefined, loading: status?.job !== job,
     geometryConflict: status?.job === job && status.geometryConflict === true,
+    suggestedSpacing: status?.job === job ? status.suggestedSpacing : undefined,
     error: status?.job === job ? status.error ?? null : null, retry: () => setRetry(value => value + 1) };
 }

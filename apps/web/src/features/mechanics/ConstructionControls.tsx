@@ -1,19 +1,27 @@
-import { Accordion, SegmentedControl } from '@mantine/core';
+import { Accordion, Alert, Button, SegmentedControl } from '@mantine/core';
 import ShapeNumberField from '../base-shape/ShapeNumberField';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
 import type { Construction } from './model';
 import { DEFAULT_LOWER_HEAD_GAP, DEFAULT_LOWER_HEAD_ANGLE } from './dimensions';
+import { TRIANGLE_FIXED_ONLY } from '../pin-shape/availability';
+import { formatDimension } from '../pin-design/model';
 
-export default function ConstructionControls({ value, onChange, disabled }: { value: Construction; onChange: (value: Construction) => void; disabled: boolean }) {
+export default function ConstructionControls({ value, onChange, disabled, hasTrianglePins = false, suggestedSpacing, onUseSuggestedSpacing }: { value: Construction; onChange: (value: Construction) => void; disabled: boolean; hasTrianglePins?: boolean; suggestedSpacing?: number; onUseSuggestedSpacing?: (spacing: number) => void }) {
   return <div className="export-settings construction-controls">
     <div className="section-title"><h3>Construction</h3><InfoPopover label="Construction help">
       <p>Fixed sculpture joins pins to the base. Print-in-place uses a through-hole guide base and separate pins with top and bottom retaining heads, printed together without assembly.</p>
       <p>Pin extension is measured from the base top to the pin top, including the head, in its initial printing position. It is not the total pin length or sliding travel.</p>
+      <p>Switching to Print-in-place raises Pin spacing when needed to leave room for the retaining heads and guide mouths. Larger spacing and all other parameters are kept. Layout changes still require confirmation when you have pin edits.</p>
       <p>Clearance needs a physical fit sample. These defaults do not guarantee release, smooth sliding, or position holding. Keep support, brim and other slicer structures out of the gaps.</p>
     </InfoPopover></div>
     <SegmentedControl aria-label="Construction mode" fullWidth size="xs" value={value.mode} disabled={disabled}
-      data={[{ label: 'Fixed sculpture', value: 'fixed' }, { label: 'Print-in-place', value: 'print-in-place' }]}
-      onChange={mode => onChange({ ...value, mode: mode as Construction['mode'] })} />
+      data={[{ label: 'Fixed sculpture', value: 'fixed' }, { label: 'Print-in-place', value: 'print-in-place', disabled: hasTrianglePins }]}
+      onChange={mode => { if (mode !== 'print-in-place' || !hasTrianglePins) onChange({ ...value, mode: mode as Construction['mode'] }); }} />
+    {hasTrianglePins && <p className="field-help" role="status">{TRIANGLE_FIXED_ONLY}</p>}
+    {value.mode === 'print-in-place' && suggestedSpacing !== undefined && onUseSuggestedSpacing && <Alert color="orange" title="Print-in-place needs more spacing">
+      <p>The current spacing leaves too little material around the pin holes. You are seeing the last valid preview. Apply the suggested spacing or adjust your parameters; your pending base shape is kept.</p>
+      <Button size="xs" variant="light" disabled={disabled} onClick={() => onUseSuggestedSpacing(suggestedSpacing)}>Use {formatDimension(suggestedSpacing)} mm spacing</Button>
+    </Alert>}
     {value.mode === 'print-in-place' && <Accordion variant="default" order={4}>
       <Accordion.Item value="mechanics"><Accordion.Control>Advanced settings</Accordion.Control><Accordion.Panel>
         <div className="field-pair">

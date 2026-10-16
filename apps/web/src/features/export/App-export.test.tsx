@@ -25,6 +25,7 @@ vi.mock('../preview/ModelPreview', () => ({
     <div data-testid="preview-colors">{colors?.base} {pinColors?.[0] ?? colors?.pins}</div>
     <div data-testid="preview-heights">{[...heights].slice(0, 2).join(',')}</div>
     <div data-testid="preview-geometries">{JSON.stringify(parameters.pinGeometries?.slice(0, 2))}</div>
+    <div data-testid="preview-base">{JSON.stringify({ width: parameters.width, depth: parameters.depth, vertices: parameters.layout?.regions[0].outer.length, mode: parameters.construction?.mode ?? 'fixed' })}</div>
     <button onClick={() => editing.onSelect([0], 'replace')}>Pick first pin</button>
     <button onClick={() => editing.onSelect([1], 'toggle')}>Toggle second pin</button>
     <button onClick={editing.onDragStart}>Start height drag</button>
@@ -54,6 +55,100 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it.each([[2, 4.5], [2.5, 5], [3, 5.5]])('automatically raises spacing for %s mm pins when entering print-in-place without resetting the design', async (diameter, spacing) => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Pin size'), { target: { value: String(diameter) } });
+    fireEvent.change(screen.getByLabelText('Base width'), { target: { value: '130' } });
+    fireEvent.change(screen.getByLabelText('Generated pin extension'), { target: { value: '25' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    const colors = screen.getByTestId('preview-colors').textContent;
+    await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue(`${spacing} mm`);
+    expect(screen.queryByRole('button', { name: /Use .* mm spacing/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('preview-colors').textContent).toBe(colors);
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('25,25');
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.parameters).toMatchObject({ width: 130, depth: 100, thickness: 3, diameter, spacing, extension: 25 });
+    expect(request.mode).toBe('print-in-place');
+  });
+  it('confirms automatic mode-switch layout changes and restores mode, spacing and edits on cancel', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+    await openEditor(user, 'Height');
+    fireEvent.change(screen.getByLabelText('Selected height'), { target: { value: '35' } });
+    await user.click(screen.getByRole('button', { name: 'Apply height' }));
+    await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
+    await screen.findByRole('dialog', { name: 'Change pin layout?' });
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4.5 mm');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    await user.click(screen.getByRole('button', { name: 'Keep layout' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    expect(screen.getByRole('radio', { name: 'Fixed sculpture' })).toBeChecked();
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4 mm');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
+    await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
+    await screen.findByRole('dialog', { name: 'Change pin layout?' });
+    await user.click(screen.getByRole('button', { name: 'Change layout' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    expect(screen.getByRole('radio', { name: 'Print-in-place' })).toBeChecked();
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4.5 mm');
+    expect(screen.getByTestId('preview-heights')).toHaveTextContent('20,20');
+  });
+  it.each(['Circle', 'Rounded rectangle', 'Ellipse'])('recovers a pending %s base after print-in-place spacing validation without silently resizing', async preset => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Pin spacing'), { target: { value: '4' } });
+    await user.click(screen.getByRole('combobox', { name: 'Base shape' }));
+    await user.click(screen.getByRole('option', { name: preset }));
+    const apply = await screen.findByRole('button', { name: 'Use 4.5 mm spacing' });
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4 mm');
+    expect(JSON.parse(screen.getByTestId('preview-base').textContent!)).toMatchObject({ mode: 'print-in-place', vertices: 4 });
+    expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
+    await user.click(apply);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4.5 mm');
+    const base = JSON.parse(screen.getByTestId('preview-base').textContent!);
+    expect(base).toMatchObject({ width: 120, depth: preset === 'Circle' ? 120 : 100, mode: 'print-in-place' });
+    expect(base.vertices).toBeGreaterThan(4);
+    expect(screen.queryByRole('button', { name: 'Use 4.5 mm spacing' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Base shape' }));
+    await user.click(screen.getByRole('option', { name: 'Rectangle' }));
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('preview-base').textContent!)).toMatchObject({ mode: 'print-in-place', vertices: 4 }));
+  }, 10000);
+  it.each(['default', 'selected'] as const)('keeps Triangle %s pins in fixed mode until users explicitly change them', async source => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    if (source === 'selected') {
+      await user.click(screen.getByRole('button', { name: 'Pick first pin' }));
+      await openEditor(user, 'Shape');
+      const panel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
+      await user.click(within(panel).getByRole('radio', { name: 'Triangle' }));
+      await user.click(within(panel).getByRole('button', { name: 'Apply shape' }));
+      expect(screen.getByRole('radio', { name: 'Print-in-place' })).toBeDisabled();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+      await openEditor(user, 'Shape');
+      const updatedPanel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
+      await user.click(within(updatedPanel).getByRole('radio', { name: 'Round' }));
+      await user.click(within(updatedPanel).getByRole('button', { name: 'Apply shape' }));
+    } else {
+      await user.click(screen.getByRole('radio', { name: 'Triangle' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+      expect(screen.getByRole('radio', { name: 'Print-in-place' })).toBeDisabled();
+      await user.click(screen.getByRole('radio', { name: 'Round' }));
+    }
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Print-in-place' })).toBeEnabled());
+    expect(screen.getByRole('radio', { name: 'Fixed sculpture' })).toBeChecked();
+  }, 10000);
   it.each([4.5, 6])('retains %s mm spacing across modes and exports the larger retaining heads', async spacing => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
@@ -122,6 +217,7 @@ describe('app export integration', () => {
     }
   }, 10000);
   it.each(['fixed', 'print-in-place'] as const)('exports a selected shape in %s without moving pins or altering height and material', async exportMode => {
+    const expectedShape = exportMode === 'fixed' ? 'triangle' : 'square';
     const user = userEvent.setup();
     renderWithProviders(<App />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
@@ -136,15 +232,15 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Apply height' }));
     await openEditor(user, 'Shape');
     const panel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
-    await user.click(within(panel).getByRole('radio', { name: 'Triangle' }));
+    await user.click(within(panel).getByRole('radio', { name: exportMode === 'fixed' ? 'Triangle' : 'Square' }));
     fireEvent.change(within(panel).getByRole('textbox', { name: 'Selected rotation' }), { target: { value: '30' } });
     await user.click(within(panel).getByRole('button', { name: 'Apply shape' }));
-    expect(screen.getByTestId('preview-geometries')).toHaveTextContent('[{"shape":"triangle","rotation":30},{"shape":"round","rotation":0}]');
+    expect(screen.getByTestId('preview-geometries')).toHaveTextContent(JSON.stringify([{ shape: expectedShape, rotation: 30 }, { shape: 'round', rotation: 0 }]));
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
     const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
-    expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: 'triangle', rotation: 30 }, { shape: 'round', rotation: 0 }]);
+    expect(request.pinGeometries.slice(0, 2)).toEqual([{ shape: expectedShape, rotation: 30 }, { shape: 'round', rotation: 0 }]);
     expect(request.parameters.pinGeometries).toBeUndefined();
     expect(request.heights[0]).toBe(35);
     expect(request.layout.pins[0].id).toBe(exportMode === 'fixed' ? 'g:-11:-13' : 'g:-9:-11');
@@ -156,6 +252,7 @@ describe('app export integration', () => {
     expect(screen.getByTestId('preview-heights')).toHaveTextContent('35,20');
   }, 10000);
   it.each(['fixed', 'print-in-place'] as const)('exports the resolved Pixel snapshot in %s mode while preserving edits and placement', async exportMode => {
+    const expectedShape = exportMode === 'fixed' ? 'triangle' : 'square';
     const actual = await vi.importActual<typeof import('../image-mapping/image-mapping')>('../image-mapping/image-mapping');
     const rgba = new Uint8ClampedArray([0,0,0,255, 255,255,255,255]);
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data: rgba }) } as unknown as CanvasRenderingContext2D);
@@ -182,7 +279,7 @@ describe('app export integration', () => {
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await openEditor(user, 'Shape');
     const shapePanel = screen.getByRole('region', { name: 'Edit selected pin shapes' });
-    await user.click(within(shapePanel).getByRole('radio', { name: 'Triangle' }));
+    await user.click(within(shapePanel).getByRole('radio', { name: exportMode === 'fixed' ? 'Triangle' : 'Square' }));
     fireEvent.change(within(shapePanel).getByRole('textbox', { name: 'Selected rotation' }), { target: { value: '30' } });
     await user.click(within(shapePanel).getByRole('button', { name: 'Apply shape' }));
     await user.click(screen.getByRole('button', { name: 'Adjust image' }));
@@ -205,7 +302,7 @@ describe('app export integration', () => {
     expect(request.mode).toBe(exportMode);
     expect(request.layout.pins).toHaveLength(exportMode === 'fixed' ? 621 : 437);
     expect(request.materials[request.pinMaterials[0]]).toBe('#ff0000');
-    expect(request.pinGeometries[0]).toEqual({ shape: 'triangle', rotation: 30 });
+    expect(request.pinGeometries[0]).toEqual({ shape: expectedShape, rotation: 30 });
     expect(new Set(request.pinMaterials.slice(1).map((index: number) => request.materials[index]))).toEqual(new Set(['#ffffff', '#000000']));
     expect(request.filamentProfiles[request.pinMaterials[1]]).toBe('bambu-pla-basic');
     expect(request.sampling).toBeUndefined();
