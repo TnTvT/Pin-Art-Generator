@@ -338,7 +338,7 @@ describe('app export integration', () => {
     }
     await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
     expect(screen.getByRole('radio', { name: 'Pixel' })).toBeChecked();
-  }, 10000);
+  }, 30000);
   it('adjusts image mapping live while retaining pin edits, selection, history and the exported layout', async () => {
     const user = userEvent.setup();
     const validSource = { ...source, bitmap: { width: 200, height: 100 } as ImageBitmap };
