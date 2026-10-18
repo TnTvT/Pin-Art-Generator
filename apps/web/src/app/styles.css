@@ -167,7 +167,7 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
 .metric > span { color: var(--muted); font-size: 10px; }
 .metric strong { display: block; font-size: 12px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .metric em { font-style: normal; color: var(--muted); font-size: 11px; font-weight: 400; }
-.design-feedback { flex-shrink: 0; display: grid; gap: 8px; max-height: 20vh; overflow-y: auto; }
+.design-feedback { flex-shrink: 0; display: grid; grid-auto-rows: max-content; gap: 8px; max-height: 20vh; overflow-y: auto; }
 .design-feedback .mantine-Alert-root { font-size: 12px; }
 .fit-message { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; padding: 0 4px; }
 .fit-message > span { color: var(--accent); font-weight: 700; }

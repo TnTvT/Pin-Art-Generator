@@ -12,6 +12,7 @@ export default function ConstructionControls({ value, onChange, disabled, hasTri
       <p>Fixed sculpture joins pins to the base. Print-in-place uses a through-hole guide base and separate pins with top and bottom retaining heads, printed together without assembly.</p>
       <p>Pin extension is measured from the base top to the pin top, including the head, in its initial printing position. It is not the total pin length or sliding travel.</p>
       <p>Switching to Print-in-place raises Pin spacing when needed to leave room for the retaining heads and guide mouths. Larger spacing and all other parameters are kept. Layout changes still require confirmation when you have pin edits.</p>
+      <p>A thicker base gives pins a longer straight guide. The straight guide length is Base thickness minus both tapered mouth heights. We show a tilt advisory when it is shorter than one Pin size; this is a geometry-based heuristic, not a predicted angle or a pass/fail printing limit. Longer guides can still have play, depending on clearance, pin extension and print tolerances. Keep release gaps that already print well rather than tightening them just to remove wobble.</p>
       <p>Clearance needs a physical fit sample. These defaults do not guarantee release, smooth sliding, or position holding. Keep support, brim and other slicer structures out of the gaps.</p>
     </InfoPopover></div>
     <SegmentedControl aria-label="Construction mode" fullWidth size="xs" value={value.mode} disabled={disabled}

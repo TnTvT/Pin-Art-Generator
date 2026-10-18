@@ -1,11 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS } from '../pin-design/model';
 import { DEFAULT_SHAPE, generateLayout } from '../base-shape/layout';
-import { DEFAULT_CONSTRUCTION, MechanicalSpacingError, minimumPrintInPlaceSpacing, profilePoints, validateMechanics } from './model';
+import { DEFAULT_CONSTRUCTION, MechanicalSpacingError, mechanicalWarnings, minimumPrintInPlaceSpacing, profilePoints, validateMechanics } from './model';
+import { guideDimensions } from './dimensions';
 
 const construction = { ...DEFAULT_CONSTRUCTION, mode: 'print-in-place' as const };
 const parameters = { ...DEFAULTS, spacing: 4.5, ...generateLayout({ ...DEFAULTS, spacing: 4.5, construction }, DEFAULT_SHAPE), construction };
 describe('print-in-place mechanics', () => {
+  it.each(['round', 'square'] as const)('warns about short straight guidance without rejecting valid %s pins', pinShape => {
+    const input = { ...parameters, layout: undefined, diameter: 3, spacing: 6, pinShape };
+    const warnings = mechanicalWarnings(input);
+    expect(warnings.join(' ')).toContain('Pins may tilt');
+    expect(warnings.join(' ')).toContain('1.48 mm');
+    expect(warnings.join(' ')).toContain('3 mm pins');
+    expect(warnings.join(' ')).toContain('0.6 mm total shaft clearance');
+    expect(warnings.join(' ')).toContain('Base thickness');
+    expect(() => validateMechanics(input)).not.toThrow();
+    expect(input.thickness).toBe(3);
+  });
+  it('does not show the short-guide advisory for Fixed or longer guides', () => {
+    expect(mechanicalWarnings({ ...parameters, construction: DEFAULT_CONSTRUCTION })).toEqual([]);
+    expect(mechanicalWarnings({ ...parameters, thickness: 6 }).join(' ')).not.toContain('Pins may tilt');
+  });
+  it('uses actual taper dimensions and an explicit one-pin-size advisory boundary', () => {
+    const { lowerMouthHeight, upperMouthHeight } = guideDimensions(construction.sliding);
+    const boundary = parameters.diameter + lowerMouthHeight + upperMouthHeight;
+    expect(mechanicalWarnings({ ...parameters, thickness: boundary - 0.01 }).join(' ')).toContain('Pins may tilt');
+    expect(mechanicalWarnings({ ...parameters, thickness: boundary }).join(' ')).not.toContain('Pins may tilt');
+    const sliding = { ...construction.sliding, lowerHeadAngle: 60 };
+    expect(mechanicalWarnings({ ...parameters, thickness: boundary, construction: { ...construction, sliding } }).join(' ')).toContain('Pins may tilt');
+  });
+  it('keeps the separate thin-mouth warning alongside the tilt advisory', () => {
+    const warnings = mechanicalWarnings(parameters);
+    expect(warnings.some(warning => warning.startsWith('Guide mouths'))).toBe(true);
+    expect(warnings.some(warning => warning.startsWith('Pins may tilt'))).toBe(true);
+  });
   it.each([[2, 4.5], [2.5, 5], [3, 5.5]])('calculates safe spacing for %s mm pins', (diameter, spacing) => {
     expect(minimumPrintInPlaceSpacing(diameter, construction.sliding)).toBe(spacing);
     expect(() => validateMechanics({ ...parameters, layout: undefined, diameter, spacing })).not.toThrow();

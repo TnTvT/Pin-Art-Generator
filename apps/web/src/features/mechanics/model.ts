@@ -1,4 +1,4 @@
-import { getPinPositions, type Parameters } from '../pin-design/model';
+import { formatDimension, getPinPositions, type Parameters } from '../pin-design/model';
 import { createPinContainment, geometryParameters, minimumPinClearance, pinVertices, resolvePinGeometries, type PinShape } from '../pin-shape/geometry';
 import type { Point, Region } from '../base-shape/layout';
 import { DEFAULT_LOWER_HEAD_GAP, DEFAULT_LOWER_HEAD_ANGLE, guideDimensions, type SlidingSettings } from './dimensions';
@@ -80,7 +80,7 @@ export function validateMechanics(parameters: Parameters, heights?: Float32Array
 
 export function mechanicalWarnings(parameters: Parameters) {
   if (parameters.construction?.mode !== 'print-in-place') return [];
-  const { lowerMouthOffset, upperMouthOffset } = guideDimensions(parameters.construction.sliding);
+  const { lowerMouthOffset, upperMouthOffset, lowerMouthHeight, upperMouthHeight } = guideDimensions(parameters.construction.sliding);
   const mouthOffset = Math.max(lowerMouthOffset, upperMouthOffset);
   const gap = minimumPinClearance(parameters, getPinPositions(parameters));
   const thin = gap !== null && gap - 2 * mouthOffset < 0.8 - 1e-6;
@@ -93,5 +93,10 @@ export function mechanicalWarnings(parameters: Parameters) {
       return !checks.get(key)!(pin.x, pin.y, mouthOffset + 0.8);
     });
   })();
-  return thin || edgeThin ? ['Guide mouths have less than 0.8 mm of material. Thin lips may be fragile; try a small fit sample first.'] : [];
+  const warnings = thin || edgeThin ? ['Guide mouths have less than 0.8 mm of material. Thin lips may be fragile; try a small fit sample first.'] : [];
+  const guideLength = parameters.thickness - lowerMouthHeight - upperMouthHeight;
+  if (guideLength < parameters.diameter - 1e-6) {
+    warnings.push(`Pins may tilt: the straight guide is only ${formatDimension(guideLength)} mm long for ${formatDimension(parameters.diameter)} mm pins (${formatDimension(parameters.construction.sliding.clearance)} mm total shaft clearance). Increase Base thickness for longer guidance. This is an advisory, not a prediction of printed play.`);
+  }
+  return warnings;
 }

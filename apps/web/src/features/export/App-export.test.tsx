@@ -55,6 +55,30 @@ beforeEach(() => {
 });
 
 describe('app export integration', () => {
+  it('shows nonblocking short-guide advice and updates it with the applied base thickness', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<App />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    expect(screen.queryByText(/Pins may tilt/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Print-in-place' }));
+    const warning = await screen.findByText(/Pins may tilt/);
+    expect(warning).toHaveTextContent('1.48 mm');
+    expect(warning).toHaveTextContent('2 mm pins');
+    expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Base thickness'), { target: { value: '6' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download 3MF' })).toBeEnabled());
+    expect(screen.queryByText(/Pins may tilt/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Pin spacing')).toHaveValue('4.5 mm');
+    fireEvent.change(screen.getByLabelText('Base thickness'), { target: { value: '3' } });
+    await screen.findByText(/Pins may tilt/);
+    await user.click(screen.getByRole('button', { name: 'Download 3MF' }));
+    const request = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(request.parameters.thickness).toBe(3);
+    expect(request.sliding).toMatchObject({ clearance: 0.6, lowerHeadGap: 0.3, headFlare: 0.7 });
+    await user.click(screen.getByRole('radio', { name: 'Fixed sculpture' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled());
+    expect(screen.queryByText(/Pins may tilt/)).not.toBeInTheDocument();
+  });
   it.each([[2, 4.5], [2.5, 5], [3, 5.5]])('automatically raises spacing for %s mm pins when entering print-in-place without resetting the design', async (diameter, spacing) => {
     const user = userEvent.setup();
     renderWithProviders(<App />);
