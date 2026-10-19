@@ -1,14 +1,14 @@
 # Product requirements: Pin Art Studio
 
-**Status:** Current demo baseline
+**Status:** Current product baseline
 
-**Last updated:** October 10, 2026
+**Last updated:** October 18, 2026
 
 ## 1. Purpose
 
 Help a user explore a pin-art design by configuring a preset or image-derived base with automatically positioned round, square or triangular pins, viewing it in 3D, and mapping an image to pin heights and preset filament colors.
 
-The first audience is the project owner and makers experimenting with pin-art geometry before a future printable-model workflow. Success means users can quickly understand how dimensions, grid density, and image brightness affect the model without using CAD software.
+The audience is makers exploring printable pin-art geometry without CAD software. Success means users can understand how dimensions, grid density, image brightness and material selection affect the preview and exported models.
 
 ## 2. Scope and delivery stages
 
@@ -24,7 +24,7 @@ The first audience is the project owner and makers experimenting with pin-art ge
 | Base shapes | Rectangle, rounded rectangle, circle, ellipse, solid image silhouettes/disconnected regions and automatic layout | Implemented |
 | Moving-pin hardware | Captive sliding pins, through-guide base, retaining heads and true preview | Implemented; physical fit verification is user-owned |
 
-The initial request prioritized a quick demo without tests. A later explicit request added automated testing. That later requirement governs the current project.
+Automated tests cover geometry, mapping, editing and export behavior. Slicer compatibility and physical fit remain user-verified.
 
 ## 3. User workflow
 
@@ -168,7 +168,6 @@ These are local direct-export measurements, not HTTP latency or guarantees. Both
 
 Browser checks exercised a 4,949-pin print-in-place design and Select all. Increasing it to 5,151 candidates produced the 5,000-pin error, retained the valid preview, and disabled exports. Small mixed-shape models verified real guide holes/heads, picking, extension rejection, transparency, Top view, theme/narrow layout and successful STL/3MF downloads. Shared fixtures and Boolean-reference tests verify frontend/backend profiles, volumes, closed solids and ideal travel/contact. Bambu slicing and physical release/fit remain unverified and user-owned.
 
-Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking and the production frontend build. Existing lib3mf Python deprecation warnings and the frontend large-chunk build warning remain; they are not new test failures.
 
 ## 8. Current boundaries and future work
 
@@ -203,7 +202,7 @@ Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking 
 
 - On entry from Fixed to Print-in-place, raise Pin spacing only when below the conservative minimum derived from shared pin size and current mechanical settings, rounded up to 0.1 mm. Preserve larger spacing and all other parameters; returning to Fixed never shrinks spacing. Position changes still require confirmation when manual pin edits exist; cancellation restores mode, spacing and edits. Do not auto-correct subsequent manual spacing or advanced-setting changes: surface validation failures beside Construction, not as image-mapping failures. State explicitly that the preview is the last valid design and offer a user-triggered safe-spacing suggestion. Keep the pending Rectangle/Rounded rectangle/Circle/Ellipse choice and regenerate after correction. Spacing failures expose typed recovery information rather than deriving actions by parsing error messages.
 
-- Offer Round and Square in Print-in-place, including per-pin rotation; keep Triangle available in Fixed sculpture. Hide Triangle in both shape selectors while movable mode is active. Block switching designs with default or edited Triangle pins until users explicitly change them; do not auto-convert. Reject cached Triangle drafts/history and frontend export attempts in movable mode. Retain the native Triangle geometry/API compatibility path for legacy clients rather than deleting it. Advanced settings default to total Sliding clearance 0.6 mm, Head flare 0.7 mm (outward offset), Lower taper angle 45° from the horizontal print bed, and Lower head surface gap 0.3 mm (shortest lower head/mouth slope separation at the initial position). Keep lower surface separation independent of shaft clearance. Widen the shaft guide and derived upper mouth with clearance; use the selected flare for both heads, retaining the upper 45° angle and initial Z bounds. Ideal radial capture remains 0.4 mm by increasing head flare to 0.7 mm alongside 0.6 mm total shaft clearance. Default Fixed spacing is 4 mm, with 621 pins in the default rectangle. Entering Print-in-place automatically raises insufficient spacing: default mechanics use 4.5 mm for 2 mm pins, 5 mm for 2.5 mm pins and 5.5 mm for 3 mm pins. Preserve already larger values. Larger/rotated pins must still satisfy validation. See ADR-025/028 for mechanical history; the earlier no-adjustment mode-switch policy is superseded here.
+- Offer Round and Square in Print-in-place, including per-pin rotation; keep Triangle available in Fixed sculpture. Hide Triangle in both shape selectors while movable mode is active. Block switching designs with default or edited Triangle pins until users explicitly change them; do not auto-convert. Reject cached Triangle drafts/history and frontend export attempts in movable mode. Retain the native Triangle geometry/API compatibility path for legacy clients rather than deleting it. Advanced settings default to total Sliding clearance 0.6 mm, Head flare 0.7 mm (outward offset), Lower taper angle 45° from the horizontal print bed, and Lower head surface gap 0.3 mm (shortest lower head/mouth slope separation at the initial position). Keep lower surface separation independent of shaft clearance. Widen the shaft guide and derived upper mouth with clearance; use the selected flare for both heads, retaining the upper 45° angle and initial Z bounds. Ideal radial capture remains 0.4 mm by increasing head flare to 0.7 mm alongside 0.6 mm total shaft clearance. Default Fixed spacing is 4 mm, with 621 pins in the default rectangle. Entering Print-in-place automatically raises insufficient spacing: default mechanics use 4.5 mm for 2 mm pins, 5 mm for 2.5 mm pins and 5.5 mm for 3 mm pins. Preserve already larger values. Larger/rotated pins must still satisfy validation.
 - Extension E is base top to pin top including the upper head in its initial position, not total length or travel. Total pin length = B + E. UI uses Generated pin extension, Set extension and Offset extension; mapping/editor info popups define the measurement.
 - Shaft uses actual cross-section; rounded outward offsets define heads (+h), guide (+c), lower mouth (+h+d) and upper mouth (+c+h). For requested angle θ and shortest lower surface gap g, d = g × sqrt(q⁻² + cot²θ), q = cos(π/63), accounting conservatively for the largest rounded profile facet. Lower head height = h × tanθ; lower mouth height L = (h+d−c) × tanθ. Upper head/mouth height remains h. Round uses 64 segments. Preview and export share the same dimension rules.
 - Require finite positive dimensions and gap, 0° < θ < 90°, h−c ≥ 0.2 mm, B−L−h ≥ 1 mm, E ≥ 2h and a positive shaft length between head tapers. Guide walls/edges ≥ 0.8 mm, both upper/lower mouth walls/edges ≥ 0.2 mm and adjacent head gaps ≥ 0.2 mm. Warn when mouth lips are below 0.8 mm. Reject conflicting angle/gap settings without resizing, deleting pins or changing spacing. Test actual lower triangle-surface distances, including serialized meshes; do not equate horizontal clearance with slope separation.
@@ -219,7 +218,7 @@ Verification passes: 392 frontend tests, 410 backend tests, TypeScript checking 
 
 - Keep the React/TypeScript application in `apps/web` and the Python export service in `apps/api`, retaining feature ownership and colocated tests.
 - Use pnpm workspaces for JavaScript dependencies, uv for Python dependencies/interpreter/environment, and Turborepo for root development/build/test commands. Commit both dependency lockfiles.
-- Keep product requirements and architecture decisions in root-level `docs/`.
+- Keep current product requirements and user documentation in root-level `docs/`.
 - Preserve the same-origin `/api` contract and local ports during the migration; do not change geometry, preview, or download behavior merely to reorganize files.
 - Avoid speculative shared packages or a Python workspace until multiple real consumers require them.
 
@@ -253,4 +252,4 @@ UI image bases define solid external silhouettes; explicit API holes remain supp
 
 Shapely independently rejects invalid/overlapping contours, nonfinite values, mismatched dimensions, duplicate IDs, boundary/padding violations, neighbor conflicts, material indices and complexity limits; no automatic polygon repairs. Native triangulation and ring-wall meshes produce guide bases efficiently; Boolean-reference and shared TypeScript/Python fixtures verify parity. Fixed STL unions pins/base; Print-in-place STL composes independent shells. 3MF retains material regions, names, compensated reuse transforms and centered initial assembly placement on one plate. Names contain stable ID, assembly XY, extension and shape/rotation.
 
-No SVG/manual contours, AI cutout, hexagonal layout, automatic bridges or mechanical simulation. See ADR-024 for replacement of the historical detachable contract.
+No SVG/manual contours, AI cutout, hexagonal layout, automatic bridges or mechanical simulation.
