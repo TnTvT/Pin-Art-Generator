@@ -16,15 +16,15 @@ export const CATALOG_CAPTURED_ON = BAMBU_PLA_DATA.capturedOn;
 export const CATALOG_SOURCES = BAMBU_PLA_DATA.series.map((series) => ({ type: series.type, url: series.sourceUrl }));
 
 export const FILAMENT_CATALOG: readonly FilamentColor[] = BAMBU_PLA_DATA.series.flatMap((series) => series.colors.map((color) => ({
-  id: `${series.type.toLowerCase()}-${color.sourceId}`,
+  id: `${series.type.toLowerCase()}-${color.code}`,
   brand: BAMBU_PLA_DATA.brand,
   material: BAMBU_PLA_DATA.material,
   type: series.type,
   color: color.color,
   code: color.code,
   hex: color.hex,
-  rgb: color.rgb,
-  sourceUrl: `https://3dfilamentprofiles.com/filament/details/${color.sourceId}`,
+  rgb: [1, 3, 5].map(offset => parseInt(color.hex.slice(offset, offset + 2), 16)) as [number, number, number],
+  sourceUrl: series.sourceUrl,
 })));
 
 const filamentById = new Map(FILAMENT_CATALOG.map((filament) => [filament.id, filament]));

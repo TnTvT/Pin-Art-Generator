@@ -2,7 +2,7 @@
 
 **Status:** Current product baseline
 
-**Last updated:** October 18, 2026
+**Last updated:** October 19, 2026
 
 ## 1. Purpose
 
@@ -96,6 +96,7 @@ All dimensions use millimeters. Pins extend along Z; a centered X/Y square latti
 - Map image top to positive Y so **Top view** reads upright.
 - Offer **Height** (default), **Color**, and **Height + Color**. Share the sampled pixels and row orientation between both outputs. Color-only generation uses uniform heights; height-only generation uses the default pin preset. Manual overrides remain higher priority.
 - Match colors to the bundled Basic/Matte presets with Color.js Lab conversion and ΔE2000; never generate custom colors. Deduplicate identical RGB + profile candidates, but keep same-RGB Basic/Matte distinct. Resolve equal distances by Basic first, then product code and ID.
+- Source the offline presets from the pinned MIT-licensed bambu-filaments catalog, retaining its license and provenance. Include 31 opaque single-color Basic and 25 Matte products, deduplicated by family and product code. Use product-based IDs, never restricted-source record IDs; derive RGB from hex. Default Gray and Turquoise, custom fallback and exported profile assignments remain unchanged.
 - **Auto palette** filters Both (default), PLA Basic or PLA Matte. **Max pin materials** defaults to 4, permits 1–16 and excludes the base. Optimize a weighted histogram of non-manually-colored pins with deterministic greedy selection and two bounded replacement passes. Reserve the base/manual materials and never exceed 16 final RGB + profile pairs; explain budget-limited palettes.
 - **My filaments** is a searchable grouped preset multiselect, initialized with the default base/pin presets and retained across source switches. Match only selected filaments; empty or over-budget results fail without trimming the user's selection.
 - Derive heights from original brightness, not palette colors; inversion only affects heights. Show generated palette/counts before manual overrides, actual final material count including the base, keyboard-focus/hover details, and on-demand help.

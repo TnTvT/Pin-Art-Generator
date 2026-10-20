@@ -5,6 +5,18 @@ import { FILAMENT_CATALOG } from '../filaments/catalog';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, validateExport } from './export-request';
 
 describe('export request mapping', () => {
+  it.each(['fixed', 'print-in-place'] as const)('preserves every licensed preset color and profile in %s requests', mode => {
+    const parameters = { ...DEFAULTS, width: 20, depth: 20, rows: 1, columns: 1, spacing: 6 };
+    for (const filament of FILAMENT_CATALOG) {
+      const materials = { ...DEFAULT_MODEL_MATERIALS, pins: { color: filament.hex.toLowerCase(), filamentId: filament.id } };
+      const request = buildExportRequest(parameters, new Float32Array([20]), materials, { ...DEFAULT_EXPORT_OPTIONS, mode }, '3mf');
+      const index = request.pinMaterials[0];
+      expect(request.materials[index]).toBe(filament.hex.toLowerCase());
+      expect(request.filamentProfiles[index]).toBe(filament.type === 'Basic' ? 'bambu-pla-basic' : 'bambu-pla-matte');
+      expect(request.heights).toEqual([20]);
+    }
+  });
+
   it('rejects legacy and explicit layouts exceeding 5,000 pins', () => {
     const parameters = { ...DEFAULTS, columns: 100, rows: 51, width: 500, depth: 500 };
     expect(validateExport(parameters, undefined, DEFAULT_EXPORT_OPTIONS)).toMatch(/5,000/);
@@ -45,10 +57,9 @@ describe('export request mapping', () => {
     expect(request.pinMaterials).toEqual([0, 0, 0, 0]);
   });
 
-  it('deduplicates the same profile and RGB even when catalog product IDs differ', () => {
-    const blueColors = FILAMENT_CATALOG.filter((filament) => filament.color === 'Blue' && filament.type === 'Basic');
-    expect(blueColors).toHaveLength(2);
-    const selections = blueColors.map((filament) => ({ color: filament.hex, filamentId: filament.id }));
+  it('deduplicates the same preset profile and RGB regardless of hex casing', () => {
+    const blue = FILAMENT_CATALOG.find((filament) => filament.color === 'Blue' && filament.type === 'Basic')!;
+    const selections = [blue.hex, blue.hex.toLowerCase()].map((color) => ({ color, filamentId: blue.id }));
     const request = buildExportRequest(DEFAULTS, undefined, { base: selections[0], pins: selections[1] }, DEFAULT_EXPORT_OPTIONS, '3mf');
     expect(request.materials).toEqual(['#0a2989']);
     expect(request.filamentProfiles).toEqual(['bambu-pla-basic']);
@@ -103,7 +114,7 @@ describe('print validation', () => {
 
   it('allows manual heights above generation and exports per-pin materials', () => {
     const parameters = { ...DEFAULTS, columns: 2, rows: 1 };
-    const pins = [{ color: '#ff0000', filamentId: null }, { color: '#ffffff', filamentId: 'matte-321' }];
+    const pins = [{ color: '#ff0000', filamentId: null }, { color: '#ffffff', filamentId: 'matte-11100' }];
     const request = buildExportRequest(parameters, new Float32Array([30, 40]), DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf', pins);
     expect(request.heights).toEqual([30, 40]);
     expect(request.materials).toEqual(['#8e9089', '#ff0000', '#ffffff']);

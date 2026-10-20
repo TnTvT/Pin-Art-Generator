@@ -4,7 +4,7 @@ import { DEFAULT_MODEL_MATERIALS, type MaterialSelection } from '../filaments/ma
 import { createEditorState, editorReducer, resolveDesign } from './model';
 
 const parameters = { ...DEFAULTS, rows: 1, columns: 2 };
-const white: MaterialSelection = { color: '#ffffff', filamentId: 'basic-77' };
+const white: MaterialSelection = { color: '#ffffff', filamentId: 'basic-10100' };
 const custom: MaterialSelection = { color: '#123456', filamentId: null };
 
 describe('generated material baselines', () => {
@@ -33,8 +33,8 @@ describe('generated material baselines', () => {
     expect([...resolveDesign(state, grid).heights]).toEqual([4, 8, 40, 16]);
   });
   it('distinguishes same-RGB generated groups with different profiles', () => {
-    const basic: MaterialSelection = { color: '#ffffff', filamentId: 'basic-77' };
-    const matte = { color: '#ffffff', filamentId: 'matte-321' };
+    const basic: MaterialSelection = { color: '#ffffff', filamentId: 'basic-10100' };
+    const matte = { color: '#ffffff', filamentId: 'matte-11100' };
     let state = editorReducer(createEditorState(2), { type: 'generation', materials: [basic, matte] });
     state = editorReducer(state, { type: 'material-group', source: basic, material: custom });
     expect(resolveDesign(state, parameters).pinSelections).toEqual([custom, matte]);

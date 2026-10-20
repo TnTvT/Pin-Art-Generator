@@ -3,8 +3,8 @@ import { FILAMENT_CATALOG, getFilament } from '../filaments/catalog';
 import { DEFAULT_MODEL_MATERIALS, materialKey } from '../filaments/materials';
 import { mapPinColors, paletteCandidates, type ColorMappingRequest } from './color-mapping';
 
-const white = getFilament('basic-77')!;
-const turquoise = getFilament('basic-903')!;
+const white = getFilament('basic-10100')!;
+const turquoise = getFilament('basic-10605')!;
 const matteWhite = FILAMENT_CATALOG.find(filament => filament.type === 'Matte' && filament.hex === '#FFFFFF')!;
 const rgb = (...ids: string[]) => new Uint8Array(ids.flatMap(id => [...getFilament(id)!.rgb]));
 const request = (changes: Partial<ColorMappingRequest> = {}): ColorMappingRequest => ({
@@ -15,7 +15,7 @@ const request = (changes: Partial<ColorMappingRequest> = {}): ColorMappingReques
 describe('preset image color mapping', () => {
   it('does not waste a four-material palette on an intermediate color when four exact presets fit', () => {
     const red = FILAMENT_CATALOG.find(filament => filament.type === 'Basic' && filament.hex === '#C12E1F')!;
-    const blue = FILAMENT_CATALOG.find(filament => filament.code === '10600')!;
+    const blue = FILAMENT_CATALOG.find(filament => filament.code === '10601')!;
     const ids = [white.id, turquoise.id, red.id, blue.id];
     const result = mapPinColors(request({ rgb: rgb(...ids) }));
     expect(result.materials.map(material => material.color)).toEqual(ids.map(id => getFilament(id)!.hex.toLowerCase()));

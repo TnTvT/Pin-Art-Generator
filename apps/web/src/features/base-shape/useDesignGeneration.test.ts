@@ -246,7 +246,7 @@ describe('atomic design generation', () => {
     const input: GenerationSettings = { ...settings, mode: 'color', source: { name: 'test', bitmap: {}, url: 'blob:test' } as SourceImage };
     const { result, rerender } = renderHook(({ currentEditor, currentSettings }) => useDesignGeneration(currentSettings, committed, currentEditor), { initialProps: { currentEditor: editor, currentSettings: input } });
     await waitFor(() => expect(result.current.design?.colors).toBe(colors));
-    const changedEditor = { ...editor, state: { ...editor.state, base: { color: '#ffffff', filamentId: 'basic-77' }, overrides: new Map([[0, { material: { color: '#123456', filamentId: null } }]]) } } as PinEditor;
+    const changedEditor = { ...editor, state: { ...editor.state, base: { color: '#ffffff', filamentId: 'basic-10100' }, overrides: new Map([[0, { material: { color: '#123456', filamentId: null } }]]) } } as PinEditor;
     rerender({ currentEditor: changedEditor, currentSettings: input });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.design?.colors).toBe(colors);

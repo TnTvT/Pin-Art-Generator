@@ -26,7 +26,7 @@ export interface ColorMappingResult {
 }
 
 export const DEFAULT_COLOR_MAPPING: ColorMappingOptions = {
-  source: 'auto', family: 'both', maximum: 4, filamentIds: ['basic-128', 'basic-903'],
+  source: 'auto', family: 'both', maximum: 4, filamentIds: ['basic-10103', 'basic-10605'],
 };
 
 function selection(filament: FilamentColor): MaterialSelection {

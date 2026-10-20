@@ -8,12 +8,15 @@ JavaScript packages are identified by `package.json`, workspace manifests and `p
 
 ## Filament reference catalog
 
-`apps/web/src/features/filaments/data/bambu-pla.ts` records Bambu Lab PLA Basic and PLA Matte names, product codes and approximate reference colors captured on September 30, 2026:
+The current `apps/web/src/features/filaments/data/bambu-pla.ts` catalog is independently selected from [piitaya/bambu-filaments](https://github.com/piitaya/bambu-filaments) at commit `73cf0567028942e2ea9962371fc033511aac2ed7`, retrieved October 19, 2026. That repository publishes its catalog under the [MIT License](https://github.com/piitaya/bambu-filaments/blob/73cf0567028942e2ea9962371fc033511aac2ed7/LICENSE), copyright (c) 2026 Paul Bottein. Its complete license and copyright notice are preserved in [the bundled license](apps/web/public/licenses/bambu-filaments-MIT.txt), also served at `/licenses/bambu-filaments-MIT.txt` by the web application.
 
-- [PLA Basic source](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/basic).
-- [PLA Matte source](https://3dfilamentprofiles.com/filaments/bambu-lab/pla/matte).
+- [Pinned source data](https://github.com/piitaya/bambu-filaments/blob/73cf0567028942e2ea9962371fc033511aac2ed7/filaments.json).
+- `fixtures/filaments/bambu-pla-source.json` preserves the source's Basic/Matte records, including RFID variants, for offline verification; the same upstream MIT notice applies to this fixture.
+- `apps/web/src/features/filaments/data/bambu-pla.provenance.json` records the source revision, selection policy and SHA-256 hashes. The upstream README identifies RFID tag data, Bambu Studio and SpoolmanDB as its sources; this project does not claim to have measured the colors or verified every upstream contributor's rights.
 
-Per-entry source IDs and catalog provenance remain in the data. RGB values are not calibrated printed-color measurements. The catalog's redistribution terms have not been confirmed; verify applicable reuse permission with the source owner before redistributing this bundled data. The project's MIT License does not establish that permission.
+The application retains only opaque, single-color PLA Basic and PLA Matte entries, merges RFID variants with the same family and product code, and uses product-based identities. There are 31 Basic and 25 Matte entries. RGB is calculated from the source hex values. Gradient/multi-color and translucent entries are excluded rather than represented by one misleading color. Reference colors are not calibrated printed-color measurements or availability guarantees.
+
+This replaces the previous restricted-source catalog; the replacement does not license earlier snapshots retained in Git history. Review historical content separately before redistributing that history. Product names and trademarks remain their owners' property; the upstream MIT grant does not imply vendor endorsement.
 
 ## Printer and slicer interoperability references
 

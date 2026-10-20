@@ -6,7 +6,7 @@ import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
 import type { ColorMappingResult } from './color-mapping';
 import GeneratedPalette from './GeneratedPalette';
 
-const white = { color: '#ffffff', filamentId: 'basic-77' };
+const white = { color: '#ffffff', filamentId: 'basic-10100' };
 const colors: ColorMappingResult = {
   materials: [white, DEFAULT_MODEL_MATERIALS.pins, white],
   palette: [{ material: white, count: 2 }, { material: DEFAULT_MODEL_MATERIALS.pins, count: 1 }],

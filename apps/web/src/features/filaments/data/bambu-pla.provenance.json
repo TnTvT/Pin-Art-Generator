@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/piitaya/bambu-filaments",
+  "revision": "73cf0567028942e2ea9962371fc033511aac2ed7",
+  "capturedOn": "2026-10-19",
+  "license": "MIT",
+  "licenseUrl": "https://github.com/piitaya/bambu-filaments/blob/73cf0567028942e2ea9962371fc033511aac2ed7/LICENSE",
+  "sourceUrl": "https://github.com/piitaya/bambu-filaments/blob/73cf0567028942e2ea9962371fc033511aac2ed7/filaments.json",
+  "sourceSha256": "34a78b1b37290bb29c5e7c548c73717ad811b9bdb94913dbad990a3cbcb37deb",
+  "fixtureSha256": "a36ebb51cf97b4f0adcda3a2958c031af1e0d952cf773a1195b3b079caddd526",
+  "licenseSha256": "38149cea1dfb5dc32c3f751e6209e983cbce3cc61414c7ee70c45ab50082d650",
+  "selection": "Opaque single-color PLA Basic and PLA Matte; deduplicated by product family and SKU; sorted by English color name then SKU.",
+  "sourceFixture": "fixtures/filaments/bambu-pla-source.json",
+  "upstreamSources": [
+    "https://github.com/queengooborg/Bambu-Lab-RFID-Library",
+    "https://github.com/bambulab/BambuStudio",
+    "https://github.com/Donkie/SpoolmanDB"
+  ]
+}

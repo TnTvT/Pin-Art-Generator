@@ -26,7 +26,7 @@ describe('filament color selection', () => {
     expect(screen.getByLabelText('Resolved color')).toHaveTextContent('#e8afcf');
     expect(screen.queryByLabelText('Base color')).not.toBeInTheDocument();
     expect(screen.getByText('RGB 232, 175, 207')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Source for Sakura Pink' })).toHaveAttribute('href', 'https://3dfilamentprofiles.com/filament/details/155');
+    expect(screen.getByRole('link', { name: 'Source for Sakura Pink' })).toHaveAttribute('href', 'https://github.com/piitaya/bambu-filaments/blob/73cf0567028942e2ea9962371fc033511aac2ed7/filaments.json');
   });
 
   it('searches by color and code and distinguishes identical hex colors', async () => {
@@ -34,14 +34,16 @@ describe('filament color selection', () => {
     renderWithProviders(<Field />);
     const select = screen.getByRole('combobox', { name: 'Base filament' });
     await user.clear(select);
-    await user.type(select, '10600');
-    await user.click(screen.getByRole('option', { name: 'Blue (10600)' }));
-    expect(select).toHaveValue('Blue (10600)');
-    expect(screen.getByLabelText('Resolved color')).toHaveTextContent('#0a2989');
+    await user.type(select, '10100');
+    await user.click(screen.getByRole('option', { name: 'Jade White (10100)' }));
+    expect(select).toHaveValue('Jade White (10100)');
+    expect(screen.getByLabelText('Resolved color')).toHaveTextContent('#ffffff');
     await user.clear(select);
-    await user.type(select, '10601');
-    await user.click(screen.getByRole('option', { name: 'Blue (10601)' }));
-    expect(select).toHaveValue('Blue (10601)');
+    await user.type(select, '11100');
+    await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
+    expect(select).toHaveValue('Ivory White (11100)');
+    expect(screen.getByLabelText('Resolved color')).toHaveTextContent('#ffffff');
+    expect(screen.getByLabelText('Filament identity')).toHaveTextContent('matte-11100');
   });
 
   it('supports custom palette editing and keeps the last valid color for incomplete drafts', async () => {
@@ -72,7 +74,7 @@ describe('filament color selection', () => {
   it('retains externally owned identity across remounts and clears it when choosing custom without changing RGB', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const value = { color: '#ffffff', filamentId: 'basic-77' };
+    const value = { color: '#ffffff', filamentId: 'basic-10100' };
     const { unmount } = renderWithProviders(<FilamentColorField label="Base color" value={value} onChange={onChange} />);
     expect(screen.getByRole('combobox', { name: 'Base filament' })).toHaveValue('Jade White (10100)');
     unmount();

@@ -244,24 +244,24 @@ describe('preview editing toolbar', () => {
     await user.click(screen.getByRole('button', { name: 'Undo' }));
     expect(screen.getByText('1 color selected')).toBeInTheDocument();
   });
-  it('shows Mixed for different catalog identities even when RGB and export profile match', async () => {
+  it('shows Mixed for different preset families even when RGB matches', async () => {
     const user = userEvent.setup();
     renderWithProviders(<Fixture />);
     await user.click(screen.getByRole('button', { name: 'Pick first' }));
     await openMaterial(user);
     await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
-    await user.click(screen.getByRole('option', { name: 'Blue (10600)' }));
+    await user.click(screen.getByRole('option', { name: 'Jade White (10100)' }));
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await user.click(screen.getByRole('button', { name: 'Pick second' }));
     await openMaterial(user);
     await user.click(screen.getByRole('combobox', { name: 'Selection filament' }));
-    await user.click(screen.getByRole('option', { name: 'Blue (10601)' }));
+    await user.click(screen.getByRole('option', { name: 'Ivory White (11100)' }));
     await user.click(screen.getByRole('button', { name: 'Apply material' }));
     await user.click(screen.getByRole('button', { name: 'Toggle first' }));
     expect(screen.getByText(/Material: Mixed/)).toBeInTheDocument();
     expect(screen.getByText('1 color selected')).toBeInTheDocument();
     await openMaterial(user);
-    expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Blue (10601)');
+    expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveValue('Ivory White (11100)');
     expect(screen.getByRole('button', { name: 'Apply material' })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Use selected material' }));
     expect(screen.getByRole('combobox', { name: 'Selection filament' })).toHaveAttribute('placeholder', 'Mixed');

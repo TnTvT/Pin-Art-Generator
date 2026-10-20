@@ -14,8 +14,8 @@ export interface ModelMaterials {
 }
 
 export const DEFAULT_MODEL_MATERIALS: ModelMaterials = {
-  base: { color: DEFAULT_MODEL_COLORS.base, filamentId: 'basic-128' },
-  pins: { color: DEFAULT_MODEL_COLORS.pins, filamentId: 'basic-903' },
+  base: { color: DEFAULT_MODEL_COLORS.base, filamentId: 'basic-10103' },
+  pins: { color: DEFAULT_MODEL_COLORS.pins, filamentId: 'basic-10605' },
 };
 
 export function resolveFilamentProfile(selection: MaterialSelection): FilamentProfile {

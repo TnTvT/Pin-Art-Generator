@@ -75,3 +75,5 @@ Commit both `pnpm-lock.yaml` and `apps/api/uv.lock`. Backend commands use `uv ru
 ## License
 
 Project-authored code and documentation are available under the [MIT License](LICENSE). Third-party dependencies, reference data and trademarks are not relicensed by it; see [third-party notices](THIRD_PARTY_NOTICES.md). Pin Art Studio is not affiliated with or endorsed by Bambu Lab, Snapmaker or the referenced data providers.
+
+The offline PLA Basic/Matte catalog is selected from the independently maintained, MIT-licensed [bambu-filaments dataset](https://github.com/piitaya/bambu-filaments/tree/73cf0567028942e2ea9962371fc033511aac2ed7). Its [upstream license](apps/web/public/licenses/bambu-filaments-MIT.txt) is included in the source and web build.

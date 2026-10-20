@@ -23,9 +23,9 @@ describe('design color details', () => {
   it('keeps one swatch for identical RGB while showing every used filament identity', async () => {
     const user = userEvent.setup();
     renderWithProviders(<DesignColorSummary selections={[
-      { color: '#FFFFFF', filamentId: 'basic-77' },
-      { color: '#ffffff', filamentId: 'matte-321' },
-      { color: '#ffffff', filamentId: 'matte-321' },
+      { color: '#FFFFFF', filamentId: 'basic-10100' },
+      { color: '#ffffff', filamentId: 'matte-11100' },
+      { color: '#ffffff', filamentId: 'matte-11100' },
       { color: '#ffffff', filamentId: null },
     ]} />);
     expect(screen.getByLabelText('Design colors')).toHaveTextContent('1 color');

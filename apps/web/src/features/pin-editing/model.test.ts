@@ -12,7 +12,7 @@ describe('pin editing transactions', () => {
     state.overrides = new Map(Array.from({ length: 5000 }, (_, index) => [index, {
       height: 20,
       geometry: { shape: 'triangle' as const, rotation: 30 },
-      material: { color: '#00b1b7', filamentId: 'basic-903' },
+      material: { color: '#00b1b7', filamentId: 'basic-10605' },
     }]));
     state = editorReducer(state, { type: 'select', ids: Array.from({ length: 5000 }, (_, index) => index), operation: 'replace' });
     const heights = new Float32Array(5000).fill(20);
@@ -96,7 +96,7 @@ describe('pin editing transactions', () => {
     expect(resolveDesign(state, parameters, generated).pinSelections.map(material => material.color)).toEqual(['#ff0000', '#ff0000', '#00b1b7', '#00b1b7']);
     state = editorReducer(state, { type: 'reset', target: 'material' });
     expect(Array.from(resolveDesign(state, parameters, generated).heights)).toEqual([30, 30, 15, 20]);
-    expect(resolveDesign(state, parameters, generated).pinSelections[0]).toEqual({ color: '#00b1b7', filamentId: 'basic-903' });
+    expect(resolveDesign(state, parameters, generated).pinSelections[0]).toEqual({ color: '#00b1b7', filamentId: 'basic-10605' });
   });
 
   it('rejects a seventeenth used material including the base and drops replaced materials', () => {
