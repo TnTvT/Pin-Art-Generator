@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.requests import ClientDisconnect
-from pin_art.admission import ExportRateLimit
+from pin_art.admission import ExportAvailability, ExportRateLimit
 from pin_art.jobs import run_worker
 from pin_art.schemas import ExportRequest
 
@@ -34,6 +34,7 @@ logger = logging.getLogger("pin_art.export")
 async def lifespan(application):
     application.state.export_lock = asyncio.Lock()
     application.state.export_rate_limit = ExportRateLimit()
+    application.state.export_availability = ExportAvailability()
     yield
 
 
@@ -58,10 +59,11 @@ app.openapi = export_openapi
 
 
 class ExportFileResponse(FileResponse):
-    def __init__(self, path, directory, lock=None, **kwargs):
+    def __init__(self, path, directory, lock=None, availability=None, **kwargs):
         super().__init__(path, **kwargs)
         self.directory = directory
         self.lock = lock
+        self.availability = availability
 
     async def __call__(self, scope, receive, send):
         try:
@@ -73,6 +75,8 @@ class ExportFileResponse(FileResponse):
             except OSError:
                 logger.exception("Export artifact cleanup failed")
             finally:
+                if self.availability is not None:
+                    self.availability.clear()
                 if self.lock is not None:
                     self.lock.release()
 
@@ -86,17 +90,27 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/exports/status")
+async def export_status():
+    return JSONResponse(app.state.export_availability.snapshot(app.state.export_lock.locked()), headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/exports")
 async def download_export(request: Request):
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
         return error(415, "JSON_REQUIRED", "Send an application/json design snapshot.")
     lock = app.state.export_lock
+    availability = app.state.export_availability
     if lock.locked():
-        return error(503, "EXPORT_BUSY", "Another export is running. Please retry when it finishes.", {"Retry-After": "5"})
+        status = availability.snapshot(True)
+        return JSONResponse({"error": {"code": "EXPORT_BUSY", "message": "Another export is running. Your request has not been queued.",
+                                       "estimatedWaitSeconds": status["estimatedWaitSeconds"], "estimateKind": status["estimateKind"]}},
+                            status_code=503, headers={"Retry-After": "5", "Cache-Control": "no-store"})
     retry_after = app.state.export_rate_limit.admit()
     if retry_after:
         return error(429, "EXPORT_RATE_LIMITED", "Too many export attempts. Wait before retrying.", {"Retry-After": str(retry_after)})
     await lock.acquire()
+    availability.update(BODY_TIMEOUT + EXPORT_TIMEOUT + DOWNLOAD_TIMEOUT + 3)
     directory = None
     complete = False
     started = time.monotonic()
@@ -115,6 +129,7 @@ async def download_export(request: Request):
         (root / "request.json").write_bytes(body)
         del body
         environment = {**os.environ, "PIN_ART_MAX_ARTIFACT_BYTES": str(MAX_ARTIFACT_BYTES), "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "2"}
+        availability.update(EXPORT_TIMEOUT + DOWNLOAD_TIMEOUT + 3)
         try:
             async with asyncio.timeout(EXPORT_TIMEOUT):
                 worker = await run_worker([sys.executable, "-m", WORKER_MODULE, str(root)], BACKEND_ROOT, request=request, env=environment, max_rss_bytes=MAX_WORKER_RSS_BYTES)
@@ -140,7 +155,8 @@ async def download_export(request: Request):
             return error(422, "EXPORT_TOO_LARGE", "Generated file exceeds 256 MB. Reduce the design complexity or use 3MF.")
         metrics = details.get("metrics", {})
         logger.info("Export complete: format=%s mode=%s pins=%s seconds=%.3f bytes=%s worker_peak_rss_bytes=%s", details.get("format"), details.get("mode"), details.get("pins"), time.monotonic() - started, target.stat().st_size, metrics.get("peakRssBytes"))
-        response = ExportFileResponse(target, directory=directory, lock=lock, filename=filename, media_type=details["contentType"], headers={"X-Plate-Count": str(details["plates"]), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+        availability.update(DOWNLOAD_TIMEOUT)
+        response = ExportFileResponse(target, directory=directory, lock=lock, availability=availability, filename=filename, media_type=details["contentType"], headers={"X-Plate-Count": str(details["plates"]), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
         complete = True
         return response
     except asyncio.CancelledError:
@@ -159,4 +175,5 @@ async def download_export(request: Request):
             except OSError:
                 logger.exception("Export artifact cleanup failed")
             finally:
+                availability.clear()
                 lock.release()

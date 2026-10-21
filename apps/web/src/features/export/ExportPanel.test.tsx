@@ -28,6 +28,111 @@ beforeEach(() => {
 });
 
 describe('export panel', () => {
+  it('shows a conservative wait estimate, polls only status, and enables manual retry when free', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: {
+        code: 'EXPORT_BUSY', message: 'Another export is running. Your request has not been queued.',
+        estimatedWaitSeconds: 95, estimateKind: 'upper-bound',
+      } }, { status: 503, headers: { 'Retry-After': '5' } }))
+        .mockResolvedValueOnce(Response.json({ busy: false, estimatedWaitSeconds: 0, estimateKind: 'upper-bound' }));
+      renderWithProviders(<Panel />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download 3MF' })); });
+      expect(screen.getByRole('alert')).toHaveTextContent('Exporter busy');
+      expect(screen.getByRole('alert')).toHaveTextContent('Estimated wait: up to about 1 min 35 s');
+      expect(screen.getByRole('alert')).toHaveTextContent('not been queued');
+      expect(screen.getByRole('button', { name: 'Retry export' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Download STL' })).toBeDisabled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][0]).toBe('/api/exports/status');
+      expect(screen.getByRole('alert')).toHaveTextContent('Ready to retry');
+      expect(screen.getByRole('button', { name: 'Retry export' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Download STL' })).toBeEnabled();
+      fetchMock.mockResolvedValueOnce(response());
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry export' })); });
+      expect(fetchMock.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(2);
+      expect(clickDownload).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops availability requests when dismissed and leaves failed checks manually retryable', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: { code: 'EXPORT_BUSY', message: 'Exporter busy.' } }, { status: 503 }))
+        .mockRejectedValueOnce(new Error('offline'));
+      const { unmount } = renderWithProviders(<Panel />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download STL' })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      expect(screen.getByRole('alert')).toHaveTextContent(/availability.*retry manually/i);
+      expect(screen.getByRole('button', { name: 'Retry export' })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: 'Clear error' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts an in-flight availability check on unmount without resubmitting', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: {
+        code: 'EXPORT_BUSY', message: 'Exporter busy.', estimatedWaitSeconds: 20, estimateKind: 'upper-bound',
+      } }, { status: 503 })).mockImplementationOnce(() => new Promise(() => {}));
+      const { unmount } = renderWithProviders(<Panel />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download STL' })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      const signal = fetchMock.mock.calls[1][1].signal as AbortSignal;
+      unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not declare availability when the estimate reaches zero', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: {
+        code: 'EXPORT_BUSY', message: 'Exporter busy.', estimatedWaitSeconds: 1, estimateKind: 'upper-bound',
+      } }, { status: 503 }));
+      const { unmount } = renderWithProviders(<Panel />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download STL' })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+      expect(screen.getByRole('alert')).toHaveTextContent('Taking longer than estimated');
+      expect(screen.getByRole('button', { name: 'Retry export' })).toBeDisabled();
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('times out a stalled status check and restores manual retry', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: {
+        code: 'EXPORT_BUSY', message: 'Exporter busy.', estimatedWaitSeconds: 20, estimateKind: 'upper-bound',
+      } }, { status: 503 })).mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+      const { unmount } = renderWithProviders(<Panel />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download STL' })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(13_000); });
+      expect(screen.getByRole('alert')).toHaveTextContent(/availability.*retry manually/i);
+      expect(screen.getByRole('button', { name: 'Retry export' })).toBeEnabled();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('selects U1 without changing the design, keeps selection through theme changes and snapshots it', async () => {
     const user = userEvent.setup();
     const parameters = { ...DEFAULTS, columns: 2, rows: 1 };

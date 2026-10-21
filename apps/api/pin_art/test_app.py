@@ -21,6 +21,52 @@ def test_api_rejects_invalid_design_with_structured_error():
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "INVALID_DESIGN"
         assert response.json()["error"]["message"]
+        assert client.get("/api/exports/status").json()["busy"] is False
+        assert app.state.export_availability.deadline is None
+
+
+def test_health_and_availability_remain_responsive_during_one_export(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    import pin_art.app as api
+    from pin_art.jobs import WorkerResult
+
+    started = threading.Event()
+    finish = threading.Event()
+
+    async def delayed_worker(command, cwd, **kwargs):
+        root = Path(command[-1])
+        started.set()
+        while not finish.is_set():
+            await asyncio.sleep(0.01)
+        (root / "sample.stl").write_bytes(b"model")
+        (root / "result.json").write_text(json.dumps({"filename": "sample.stl", "contentType": "model/stl", "plates": 1}))
+        return WorkerResult(0, "")
+
+    monkeypatch.setattr(api, "run_worker", delayed_worker)
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(client.post, "/api/exports", json=request_payload())
+        try:
+            assert started.wait(5)
+            assert client.get("/api/health").status_code == 200
+            status = client.get("/api/exports/status")
+            assert status.status_code == 200
+            assert status.headers["Cache-Control"] == "no-store"
+            assert status.json()["busy"] is True
+            assert 0 < status.json()["estimatedWaitSeconds"] <= 153
+            busy = client.post("/api/exports", json=request_payload())
+            assert busy.status_code == 503
+            assert busy.json()["error"]["estimateKind"] == "upper-bound"
+            assert busy.json()["error"]["estimatedWaitSeconds"] > 0
+            assert "not been queued" in busy.json()["error"]["message"]
+            assert busy.headers["Cache-Control"] == "no-store"
+            assert busy.headers["Retry-After"] == "5"
+            assert len(app.state.export_rate_limit.attempts) == 1
+        finally:
+            finish.set()
+        assert pending.result(timeout=5).status_code == 200
+        assert client.get("/api/exports/status").json()["busy"] is False
+        assert app.state.export_availability.deadline is None
 
 
 @pytest.mark.parametrize("extra", [{"mode": "detachable"}, {"socket": {"insertionDepth": 2}}, {"plate": {"width": 256}}])

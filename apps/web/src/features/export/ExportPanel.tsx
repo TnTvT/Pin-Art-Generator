@@ -4,7 +4,7 @@ import { getMetrics, type Parameters } from '../pin-design/model';
 import { type MaterialSelection, type ModelMaterials } from '../filaments/materials';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS, resolveExportMaterials, validateExport, type ExportFormat } from './export-request';
 import { DEFAULT_PRINTER, PRINTER_PROFILES, validatePrinterMaterials, type PrinterId } from './printer-profiles';
-import { fetchExport } from './export-client';
+import { ExportBusyError, fetchExport, fetchExportAvailability, type ExportAvailability } from './export-client';
 import InfoPopover from '../../components/InfoPopover/InfoPopover';
 
 interface ExportPanelProps {
@@ -23,6 +23,8 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
   const [error, setError] = useState<string | null>(null);
   const [failedFormat, setFailedFormat] = useState<ExportFormat>('3mf');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<ExportAvailability | null>(null);
+  const waitingForExporter = availability?.busy === true;
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const downloadUrls = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -54,12 +56,47 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
     };
   }, []);
 
+  useEffect(() => {
+    if (!waitingForExporter) return;
+    const checkController = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let requestTimeout: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    async function check() {
+      requestTimeout = setTimeout(() => checkController.abort(), 8_000);
+      try {
+        const status = await fetchExportAvailability(checkController.signal);
+        if (cancelled) return;
+        if (checkController.signal.aborted) throw new Error('Availability check timed out.');
+        setAvailability(status);
+        if (status.busy) timer = setTimeout(() => void check(), 5_000);
+      } catch {
+        if (cancelled) return;
+        setAvailability(null);
+        setError('Could not check exporter availability. Please retry manually.');
+      } finally {
+        clearTimeout(requestTimeout);
+      }
+    }
+    timer = setTimeout(() => void check(), 5_000);
+    const countdown = setInterval(() => setAvailability(current => current?.busy && current.estimatedWaitSeconds !== null
+      ? { ...current, estimatedWaitSeconds: Math.max(0, current.estimatedWaitSeconds - 1) } : current), 1_000);
+    return () => {
+      cancelled = true;
+      checkController.abort();
+      clearTimeout(timer);
+      clearTimeout(requestTimeout);
+      clearInterval(countdown);
+    };
+  }, [waitingForExporter]);
+
   async function exportModel(format: ExportFormat) {
-    if (controller.current || (format === 'stl' ? stlValidation : printerValidation)) return;
+    if (controller.current || waitingForExporter || (format === 'stl' ? stlValidation : printerValidation)) return;
     const requestController = new AbortController();
     controller.current = requestController;
     setBusy(format);
     setError(null);
+    setAvailability(null);
     setFeedback(null);
     setFailedFormat(format);
     try {
@@ -80,6 +117,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
       setFeedback(`Download ready: ${result.filename}${result.plateCount === null ? '' : ' · 1 plate'}.`);
     } catch (failure) {
       if (mounted.current && !requestController.signal.aborted) {
+        if (failure instanceof ExportBusyError) setAvailability(failure.availability);
         setError(failure instanceof Error ? failure.message : 'Export could not be completed. Please retry.');
       }
     } finally {
@@ -103,6 +141,7 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
             if (value && value in PRINTER_PROFILES) {
               setPrinter(value as PrinterId);
               setError(null);
+              setAvailability(null);
               setFeedback(null);
             }
           }} />
@@ -112,18 +151,24 @@ export default function ExportPanel({ parameters, heights, materials, pinSelecti
         {!validation && printerValidation && <p id="printer-block-reason" className="export-blocked" role="status">3MF blocked: {printerValidation}</p>}
         {!validation && stlValidation && <p id="stl-block-reason" className="export-blocked" role="status">STL blocked: {stlValidation}</p>}
         <div className="export-actions">
-          <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || !!stlValidation} aria-describedby={validation ? 'export-block-reason' : stlValidation ? 'stl-block-reason' : undefined}>Download STL</Button>
-          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || !!printerValidation} aria-describedby={validation ? 'export-block-reason' : printerValidation ? 'printer-block-reason' : undefined}>Download 3MF</Button>
+          <Button variant="default" fullWidth onClick={() => void exportModel('stl')} loading={busy === 'stl'} disabled={busy !== null || waitingForExporter || !!stlValidation} aria-describedby={validation ? 'export-block-reason' : stlValidation ? 'stl-block-reason' : undefined}>Download STL</Button>
+          <Button fullWidth onClick={() => void exportModel('3mf')} loading={busy === '3mf'} disabled={busy !== null || waitingForExporter || !!printerValidation} aria-describedby={validation ? 'export-block-reason' : printerValidation ? 'printer-block-reason' : undefined}>Download 3MF</Button>
         </div>
         <div aria-live="polite" role="status">
           {busy && <p className="field-help">Preparing {busy === '3mf' ? '3MF' : 'STL'}…</p>}
           {feedback && <p className="export-feedback">{feedback}</p>}
         </div>
-        {error && <Alert color="red" title="Export failed">
-          {error}
+        {error && <Alert color={availability ? 'blue' : 'red'} title={waitingForExporter ? 'Exporter busy' : availability ? 'Ready to retry' : 'Export failed'}>
+          {availability && !waitingForExporter ? 'The exporter is available. Retry when ready; nothing has been submitted automatically.' : error}
+          {waitingForExporter && <>
+            <p>{availability.estimatedWaitSeconds === null ? 'Checking availability…' : availability.estimatedWaitSeconds === 0
+              ? 'Taking longer than estimated. Checking availability…'
+              : <>Estimated wait: up to about <span style={{ whiteSpace: 'nowrap' }}>{Math.floor(availability.estimatedWaitSeconds / 60) ? `${Math.floor(availability.estimatedWaitSeconds / 60)} min ` : ''}{availability.estimatedWaitSeconds % 60} s</span>.</>}</p>
+            <p>This estimate is based on time limits, not a guaranteed finish time. Checking every 5 seconds.</p>
+          </>}
           <Group gap="xs" mt="sm">
-            <Button variant="light" size="xs" onClick={() => void exportModel(failedFormat)} disabled={busy !== null || !!(failedFormat === 'stl' ? stlValidation : printerValidation)}>Retry export</Button>
-            <Button variant="subtle" size="xs" onClick={() => setError(null)}>Clear error</Button>
+            <Button variant="light" size="xs" onClick={() => void exportModel(failedFormat)} disabled={busy !== null || waitingForExporter || !!(failedFormat === 'stl' ? stlValidation : printerValidation)}>Retry export</Button>
+            <Button variant="subtle" size="xs" onClick={() => { setError(null); setAvailability(null); }}>Clear error</Button>
           </Group>
         </Alert>}
       </div>

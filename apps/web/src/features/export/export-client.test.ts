@@ -2,11 +2,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULTS } from '../pin-design/model';
 import { DEFAULT_MODEL_MATERIALS } from '../filaments/materials';
 import { buildExportRequest, DEFAULT_EXPORT_OPTIONS } from './export-request';
-import { fetchExport } from './export-client';
+import { ExportBusyError, fetchExport, fetchExportAvailability } from './export-client';
 
 const request = () => buildExportRequest(DEFAULTS, undefined, DEFAULT_MODEL_MATERIALS, DEFAULT_EXPORT_OPTIONS, '3mf');
 
 describe('export fetch', () => {
+  it('preserves an approximate busy estimate without claiming a queued export', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
+      code: 'EXPORT_BUSY', message: 'Your request has not been queued.', estimatedWaitSeconds: 95, estimateKind: 'upper-bound',
+    } }), { status: 503, headers: { 'Retry-After': '5' } })));
+    const failure = await fetchExport(request(), new AbortController().signal).catch(error => error);
+    expect(failure).toBeInstanceOf(ExportBusyError);
+    expect(failure.availability).toEqual({ busy: true, estimatedWaitSeconds: 95, estimateKind: 'upper-bound' });
+    expect(failure.message).not.toMatch(/Retry in 5/);
+  });
+
+  it('checks availability without posting another export and rejects malformed estimates', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ busy: false, estimatedWaitSeconds: 0, estimateKind: 'upper-bound' }))
+      .mockResolvedValueOnce(Response.json({ busy: true, estimatedWaitSeconds: -10, estimateKind: 'upper-bound' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const signal = new AbortController().signal;
+    expect(await fetchExportAvailability(signal)).toEqual({ busy: false, estimatedWaitSeconds: 0, estimateKind: 'upper-bound' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/exports/status', { cache: 'no-store', signal });
+    await expect(fetchExportAvailability(signal)).rejects.toThrow(/availability/i);
+  });
+
   it('posts JSON with an abort signal and reads binary, filename and plate count', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('binary', {
       headers: { 'Content-Disposition': 'attachment; filename="pin-art.3mf"', 'X-Plate-Count': '1' },

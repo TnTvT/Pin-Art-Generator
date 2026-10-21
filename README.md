@@ -37,6 +37,8 @@ To run them in separate terminals, use `pnpm dev:web` and `pnpm dev:api`.
 
 The design is session-local; there is no project save/load yet. Appearance preference is saved independently of the design.
 
+Exports run one at a time per API process. If the exporter is busy, the UI shows an approximate wait based on time limits and checks availability without queuing or automatically resubmitting your design. Retry manually when it becomes available. The shared export attempt limit remains six per minute; this is not per-user fairness or a spending cap. Hosts should allow bounded concurrent HTTP requests so browsing, health checks and busy responses can continue during an export, while retaining one API process and one native-worker admission lock.
+
 ### Print-in-place is experimental
 
 Extension means the initial distance from the base top to the pin top, including the upper retaining head—not total pin length or travel. A short straight guide can allow pins to tilt; the UI reports that risk without blocking export. Clearances are starting values, not a guarantee of release, smooth motion or retention. Keep supports, brims and purge structures out of mechanical gaps, and verify with a small physical sample before a full print.
